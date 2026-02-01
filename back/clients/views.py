@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.utils import timezone
-from rest_framework import (viewsets,parsers,generics,permissions,serializers,filters,status,
+from rest_framework import (viewsets,parsers,generics,permissions,serializers,filters,status,mixins,
 )
 from django.db.models import Sum, Count, Q, F, Case, When, DecimalField
 from django.db.models.functions import TruncMonth
@@ -18,9 +18,7 @@ from .models import *
 from .serializers import *
 from django.db.models.functions import TruncDay
 import calendar 
-
-
-
+import json 
 
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 12
@@ -71,9 +69,17 @@ class TrainerSerializer(serializers.ModelSerializer):
 
 
 class ManageTrainersViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAdminUser]
     serializer_class = TrainerSerializer
+    # Allow any authenticated user (trainers) to access this list
+    permission_classes = [permissions.IsAuthenticated]
     queryset = User.objects.filter(is_superuser=False).order_by("-date_joined")
+
+    def get_permissions(self):
+        # Allow viewing (GET) for all trainers
+        if self.action in ['list', 'retrieve']:
+            return [permissions.IsAuthenticated()]
+        # Only Admins can create/edit/delete
+        return [permissions.IsAdminUser()]
 
 
 class ClientViewSet(viewsets.ModelViewSet):
@@ -842,3 +848,190 @@ class FoodDatabaseViewSet(viewsets.ModelViewSet):
         queryset = queryset[:20]
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+
+class CoachScheduleViewSet(viewsets.ModelViewSet):
+    serializer_class = CoachScheduleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = CoachSchedule.objects.all()
+        
+        # Filter by specific coach
+        coach_id = self.request.query_params.get('coach_id')
+        if coach_id:
+            queryset = queryset.filter(coach_id=coach_id)
+            
+        return queryset
+
+    @action(detail=False, methods=['get'])
+    def get_trainers(self, request):
+        # Return list of coaches (excluding superusers/admins) for the tabs
+        trainers = User.objects.filter(is_superuser=False).values('id', 'first_name', 'username')
+        return Response(list(trainers))
+    
+    
+    
+    
+class GroupTrainingViewSet(viewsets.GenericViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    @action(detail=False, methods=['get'])
+    def schedule(self, request):
+        coach_id = request.query_params.get('coach_id')
+        
+        # --- FIX: Only fetch schedules for clients with an ACTIVE subscription ---
+        queryset = CoachSchedule.objects.filter(client__subscriptions__is_active=True)
+        
+        if coach_id:
+            queryset = queryset.filter(coach_id=coach_id)
+            
+        # .distinct() prevents duplicates if a client accidentally has multiple active subs
+        queryset = queryset.distinct()
+        
+        serializer = CoachScheduleSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def add_to_schedule(self, request):
+        coach_id = request.data.get('coach')
+        client_id = request.data.get('client')
+        day = request.data.get('day')
+
+        if not all([coach_id, client_id, day]):
+            return Response({"error": "Missing fields"}, status=400)
+
+        obj, created = CoachSchedule.objects.get_or_create(
+            coach_id=coach_id,
+            client_id=client_id,
+            day=day
+        )
+        serializer = CoachScheduleSerializer(obj)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['delete'])
+    def remove_from_schedule(self, request):
+        pk = request.query_params.get('id')
+        CoachSchedule.objects.filter(id=pk).delete()
+        return Response({'status': 'deleted'})
+
+    @action(detail=False, methods=['get'])
+    def history(self, request):
+        logs = GroupSessionLog.objects.all().order_by('-date')
+        
+        page = self.paginate_queryset(logs)
+        if page is not None:
+            serializer = GroupSessionLogSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = GroupSessionLogSerializer(logs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def complete_session(self, request):
+        data = request.data
+        coach = request.user
+        day_name = data.get('day_name')
+        exercises = data.get('exercises', [])
+        participants_data = data.get('participants', [])
+
+        with transaction.atomic():
+            # Use json.dumps to safely store the list of objects as a string
+            exercises_json = json.dumps(exercises) if isinstance(exercises, list) else exercises
+
+            log = GroupSessionLog.objects.create(
+                coach=coach,
+                day_name=day_name,
+                exercises_summary=exercises_json
+            )
+
+            for p_data in participants_data:
+                client_id = p_data.get('client_id')
+                note = p_data.get('note', '')
+                
+                deducted = False
+                # Find the active subscription to deduct from
+                sub = ClientSubscription.objects.filter(
+                    client_id=client_id, is_active=True
+                ).first()
+
+                if sub:
+                    sub.sessions_used += 1
+                    # Auto-expire if session limit reached
+                    if sub.plan and sub.sessions_used >= sub.plan.units:
+                        sub.is_active = False
+                    sub.save()
+                    deducted = True
+
+                GroupSessionParticipant.objects.create(
+                    session=log,
+                    client_id=client_id,
+                    note=note,
+                    deducted=deducted
+                )
+
+        return Response({'status': 'Session Completed & Subscriptions Deducted'})
+
+    @action(detail=False, methods=['get'])
+    def client_history(self, request):
+        client_id = request.query_params.get('client_id')
+        if not client_id:
+            return Response({"error": "client_id is required"}, status=400)
+
+        participations = GroupSessionParticipant.objects.filter(
+            client_id=client_id
+        ).select_related('session', 'client').order_by('-session__date')
+
+        history_data = []
+
+        for p in participations:
+            session = p.session
+            client_name = p.client.name
+            
+            try:
+                if isinstance(session.exercises_summary, str):
+                    exercises_data = json.loads(session.exercises_summary)
+                else:
+                    exercises_data = session.exercises_summary
+            except:
+                exercises_data = []
+
+            child_performance = []
+            session_note_for_child = p.note
+
+            if isinstance(exercises_data, list):
+                for ex in exercises_data:
+                    results = ex.get('results', [])
+                    user_res = next((r for r in results if r.get('client') == client_name), None)
+                    
+                    if user_res:
+                        child_performance.append({
+                            'exercise': ex.get('name', 'Unknown'),
+                            'type': ex.get('type', 'strength'),
+                            'val1': user_res.get('val1', '-'),
+                            'val2': user_res.get('val2', '-'),
+                            'note': user_res.get('note', '')
+                        })
+
+            history_data.append({
+                'id': session.id,
+                'date': session.date,
+                'day_name': session.day_name,
+                'coach': session.coach.first_name if session.coach else "Unknown",
+                'session_note': session_note_for_child, 
+                'performance': child_performance
+            })
+
+        return Response(history_data)
+    
+    
+    
+
+class GroupWorkoutTemplateViewSet(viewsets.ModelViewSet):
+    serializer_class = GroupWorkoutTemplateSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = GroupWorkoutTemplate.objects.all().order_by('-created_at')
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)

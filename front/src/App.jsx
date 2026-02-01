@@ -16,6 +16,7 @@ import ManualNutritionPlan from './pages/ManualNutritionPlan';
 import ManualTrainingPlan from './pages/ManualTrainingPlan';
 import Children from './pages/Children';
 import ChildDetails from './pages/ChildDetails';
+import SessionDetail from './pages/SessionDetail';
 
 
 // Component to protect routes
@@ -46,6 +47,7 @@ function App() {
             <Route path="/quick-workout" element={<PrivateRoute><ManualTrainingPlan /></PrivateRoute>} />
             <Route path="/children" element={<PrivateRoute><Children /></PrivateRoute>} />
             <Route path="/children/:id" element={<PrivateRoute><ChildDetails /></PrivateRoute>} />
+            <Route path="/children/history/:id" element={<SessionDetail />} />
 
           </Routes>
         </div>

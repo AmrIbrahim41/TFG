@@ -505,3 +505,62 @@ class FoodDatabase(models.Model):
     class Meta:
         ordering = ['name']
         verbose_name_plural = "Food Database"
+
+
+
+
+
+
+
+
+
+
+
+
+# ... existing models ...
+
+class CoachSchedule(models.Model):
+    coach = models.ForeignKey(User, on_delete=models.CASCADE, related_name='schedules')
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='scheduled_days')
+    day = models.CharField(max_length=15) # Monday, Tuesday...
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('coach', 'client', 'day') 
+
+class GroupSessionLog(models.Model):
+    coach = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    date = models.DateTimeField(default=timezone.now)
+    day_name = models.CharField(max_length=20)  # e.g. "Monday Group"
+    
+    # CHANGED: JSONField is much safer than TextField for lists
+    exercises_summary = models.JSONField(default=list, blank=True) 
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.day_name} - {self.date.date()}"
+
+class GroupSessionParticipant(models.Model):
+    session = models.ForeignKey(GroupSessionLog, on_delete=models.CASCADE, related_name='participants')
+    client = models.ForeignKey(Client, on_delete=models.SET_NULL, null=True)
+    note = models.CharField(max_length=255, blank=True)
+    deducted = models.BooleanField(default=False)  # Was a session deducted?
+
+    def __str__(self):
+        return f"{self.client.name if self.client else 'Unknown'} in {self.session}"
+    
+    
+    
+    # ... existing code ...
+
+class GroupWorkoutTemplate(models.Model):
+    name = models.CharField(max_length=200)
+    # Storing exercises as JSON is efficient for templates: 
+    # Structure: [{"name": "Squat", "type": "strength", "target": "3x10"}, ...]
+    exercises = models.JSONField(default=list) 
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name

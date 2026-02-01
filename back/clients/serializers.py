@@ -349,3 +349,50 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
                     FoodItem.objects.bulk_create(food_items_to_create)
                     
         return instance
+    
+    
+
+
+class CoachScheduleSerializer(serializers.ModelSerializer):
+    client_name = serializers.ReadOnlyField(source='client.name')
+    client_photo = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = CoachSchedule
+        fields = ['id', 'coach', 'client', 'client_id', 'client_name', 'client_photo', 'day']
+
+    def get_client_photo(self, obj):
+        return obj.client.photo.url if obj.client.photo else None
+
+class GroupSessionParticipantSerializer(serializers.ModelSerializer):
+    client_name = serializers.ReadOnlyField(source='client.name')
+    class Meta:
+        model = GroupSessionParticipant
+        fields = ['client_name', 'note', 'deducted']
+
+class GroupSessionLogSerializer(serializers.ModelSerializer):
+    coach_name = serializers.ReadOnlyField(source='coach.first_name')
+    # Nested serializer to show participants details inside the log
+    participants = GroupSessionParticipantSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = GroupSessionLog
+        fields = [
+            'id', 
+            'coach_name', 
+            'date', 
+            'day_name', 
+            'exercises_summary', 
+            'participants'
+        ]
+        
+        
+        
+# ... existing code ...
+
+class GroupWorkoutTemplateSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.ReadOnlyField(source='created_by.first_name')
+
+    class Meta:
+        model = GroupWorkoutTemplate
+        fields = ['id', 'name', 'exercises', 'created_by', 'created_by_name', 'created_at']

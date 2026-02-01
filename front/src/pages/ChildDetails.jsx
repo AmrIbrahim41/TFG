@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
-import { ArrowLeft, Save, User, Trash2, Activity, Hash, Baby, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Save, User, Trash2, Activity, Hash, Baby, ShieldCheck, Dumbbell } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api, { BASE_URL } from '../api';
 import { AuthContext } from '../context/AuthContext';
 // IMPORT THE NEW CHILD INFO TAB
 import ChildInfoTab from '../components/children/ChildInfoTab';
 import ChildMembershipTab from '../components/children/ChildMembershipTab';
+// NEW IMPORT
+import ChildHistoryTab from '../components/children/ChildHistoryTab';
 
 const ChildDetails = () => {
     const { id } = useParams();
@@ -17,24 +19,23 @@ const ChildDetails = () => {
     const [dbAge, setDbAge] = useState('');
     const [activeTab, setActiveTab] = useState('info');
 
-    // --- UPDATED DATA STATE TO SUPPORT NEW FIELDS ---
+    // --- DATA STATE ---
     const [formData, setFormData] = useState({
         name: '', 
         manual_id: '', 
-        phone: '', // Child's secondary phone
-        parent_phone: '', // New Field
-        country: 'Egypt', // New Field
-        nature_of_work: '', // Used for "Sport Type"
+        phone: '', 
+        parent_phone: '', 
+        country: 'Egypt', 
+        nature_of_work: '', 
         birth_date: '', 
         address: '',
-        status: '', // Unused in UI now, but kept for backend compatibility if needed
-        smoking: false, // Unused in UI
+        status: '', 
+        smoking: false, 
         sleep_hours: '', 
         notes: '',
-        // New Training History Fields
         trained_gym_before: false,
         trained_coach_before: false,
-        injuries: '', // Replaces smoker text
+        injuries: '', 
         created_at: ''
     });
 
@@ -76,14 +77,13 @@ const ChildDetails = () => {
                 const res = await api.get(`/clients/${id}/`);
                 const data = res.data;
                 
-                // Map API data to State (Including new fields if backend has them)
                 setFormData({
                     name: data.name || '', 
                     manual_id: data.manual_id || '', 
                     phone: data.phone || '',
-                    parent_phone: data.parent_phone || '', // Ensure backend sends this
+                    parent_phone: data.parent_phone || '', 
                     country: data.country || 'Egypt',
-                    nature_of_work: data.nature_of_work || '', // Maps to Sport
+                    nature_of_work: data.nature_of_work || '', 
                     birth_date: data.birth_date || '', 
                     address: data.address || '', 
                     status: data.status || '',
@@ -124,7 +124,6 @@ const ChildDetails = () => {
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
-        // Logic for boolean toggles vs inputs
         const finalValue = type === 'checkbox' ? checked : value;
         setFormData(prev => ({ ...prev, [name]: finalValue }));
     };
@@ -206,6 +205,7 @@ const ChildDetails = () => {
     const tabs = [
         { id: 'info', label: 'Personal Info', icon: User },
         { id: 'membership', label: 'Membership', icon: ShieldCheck },
+        { id: 'history', label: 'Training Log', icon: Dumbbell }, // <--- NEW TAB
     ];
 
     return (
@@ -277,7 +277,6 @@ const ChildDetails = () => {
 
                     <div className="bg-[#121214] border border-zinc-800/60 rounded-[2rem] p-6 md:p-8 min-h-[500px] shadow-2xl relative animate-in slide-in-from-bottom-4 duration-500">
                         
-                        {/* --- RENDER NEW CHILD INFO TAB --- */}
                         {activeTab === 'info' && (
                             <ChildInfoTab 
                                 formData={formData} 
@@ -298,11 +297,16 @@ const ChildDetails = () => {
                             </div>
                         )}
 
+                        {/* NEW HISTORY TAB RENDER */}
+                        {activeTab === 'history' && (
+                            <ChildHistoryTab clientId={id} />
+                        )}
+
                     </div>
                 </div>
             </div>
 
-            {/* --- ASSIGN CHILD PLAN MODAL (UNCHANGED LOGIC) --- */}
+            {/* --- ASSIGN CHILD PLAN MODAL (UNCHANGED) --- */}
             {isSubModalOpen && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
                     <div className="bg-[#121214] border border-zinc-800 w-full max-w-md rounded-3xl p-6 relative shadow-2xl animate-in zoom-in-95 duration-200">
