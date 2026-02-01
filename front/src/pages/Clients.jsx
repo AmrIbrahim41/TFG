@@ -18,25 +18,35 @@ const Clients = () => {
     const [formData, setFormData] = useState({ name: '', manual_id: '', phone: '', photo: null });
     const [previewUrl, setPreviewUrl] = useState(null);
 
-    // Updated Fetch Function
-    // urlOverride: If provided (e.g., from Next button), use it directly.
-    // query: If provided, reset to page 1 with search.
-    // Updated Fetch Function
+    // --- UPDATED FETCH FUNCTION (Strictly Excludes Children) ---
     const fetchClients = async (urlOverride = null, query = '') => {
         setLoading(true);
         try {
             let url;
 
             if (urlOverride) {
-                // FIXED: Extract only the query params (e.g., "?page=2") 
-                // and append them to our known endpoint.
-                // This prevents "Double Base URL" errors (e.g. /api/api/clients)
-                // and avoids Cross-Origin/Domain mismatches.
-                const params = new URL(urlOverride).search;
-                url = `/clients/${params}`;
+                // If using a pagination link (Next/Prev), we parse it to ensure is_child=false is preserved
+                // This prevents the API from reverting to showing all clients on page 2
+                const urlObj = new URL(urlOverride);
+                
+                // Ensure 'is_child' param is always present and set to false
+                if (!urlObj.searchParams.has('is_child')) {
+                    urlObj.searchParams.append('is_child', 'false');
+                }
+                
+                // Use the relative path + search params
+                url = `/clients/${urlObj.search}`;
             } else {
                 // Default / Search behavior
-                url = query ? `/clients/?search=${query}` : '/clients/';
+                // We manually construct the query string to include is_child=false
+                const queryParams = new URLSearchParams();
+                queryParams.append('is_child', 'false'); // <--- CRITICAL FILTER
+                
+                if (query) {
+                    queryParams.append('search', query);
+                }
+                
+                url = `/clients/?${queryParams.toString()}`;
             }
 
             const response = await api.get(url);
@@ -64,7 +74,7 @@ const Clients = () => {
     // 2. Search Debounce: Wait 500ms after typing stops before calling API
     useEffect(() => {
         const delayDebounceFn = setTimeout(() => {
-            // When searching, we always reset to the first page (pass null for urlOverride)
+            // When searching, reset to page 1 (urlOverride = null)
             fetchClients(null, searchQuery);
         }, 500);
 
@@ -86,11 +96,12 @@ const Clients = () => {
         data.append('name', formData.name);
         data.append('manual_id', formData.manual_id);
         data.append('phone', formData.phone);
+        // We do NOT append 'is_child' here, defaulting to False (Adult) in the backend model
         if (formData.photo) data.append('photo', formData.photo);
 
         try {
             await api.post('/clients/', data, { headers: { 'Content-Type': 'multipart/form-data' } });
-            fetchClients(null, searchQuery); // Refresh list (keeping current search)
+            fetchClients(null, searchQuery); // Refresh list
             setIsModalOpen(false);
             setFormData({ name: '', manual_id: '', phone: '', photo: null });
             setPreviewUrl(null);
@@ -144,6 +155,11 @@ const Clients = () => {
             {loading ? (
                 <div className="flex justify-center py-32">
                     <Loader2 className="animate-spin text-orange-500 w-10 h-10" />
+                </div>
+            ) : clients.length === 0 ? (
+                 <div className="flex flex-col items-center justify-center py-20 text-zinc-500">
+                    <User size={48} className="mb-4 opacity-20" />
+                    <p>No athletes found.</p>
                 </div>
             ) : (
                 <>

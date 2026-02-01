@@ -1,6 +1,6 @@
 /**
  * Workout PDF Generator
- * Features: Bilingual support (Ar/En), Custom Font loading for Arabic, Professional Design
+ * Features: Bilingual support (Ar/En), Custom Font loading, Professional Design, Custom Branding Text
  */
 
 import { jsPDF } from 'jspdf';
@@ -63,7 +63,6 @@ const TRANSLATIONS = {
 
 /**
  * Loads the Cairo font for Arabic support
- * Fetches from a reliable CDN to avoid massive base64 strings in code
  */
 async function addArabicFont(pdf) {
     try {
@@ -72,7 +71,6 @@ async function addArabicFont(pdf) {
         const buffer = await response.arrayBuffer();
         const fontFileName = "Cairo-Bold.ttf";
         
-        // Convert array buffer to base64 string
         let binary = '';
         const bytes = new Uint8Array(buffer);
         const len = bytes.byteLength;
@@ -97,7 +95,8 @@ export async function generateWorkoutPDF({
     clientName = 'Client Name',
     trainerName = 'Trainer Name',
     date = new Date().toLocaleDateString(),
-    language = 'en'
+    language = 'en',
+    brand = 'TFG' // Default to TFG if no custom name is provided
 }) {
     const t = TRANSLATIONS[language];
     const isRTL = language === 'ar';
@@ -126,10 +125,11 @@ export async function generateWorkoutPDF({
     pdf.setFillColor(COLORS.primary);
     pdf.rect(0, 0, pageWidth, 2, 'F');
 
-    // Branding
+    // Branding (Custom Text)
     pdf.setFontSize(18);
     pdf.setTextColor(COLORS.white);
-    pdf.text('TFG', margin, 17);
+    // Use the custom brand text passed from the input
+    pdf.text(brand || 'TFG', margin, 17);
 
     // Title & Session Name
     const titleX = isRTL ? pageWidth - margin : margin;
@@ -181,7 +181,6 @@ export async function generateWorkoutPDF({
 
         pdf.setFontSize(10);
         pdf.setTextColor(COLORS.white);
-        // Clean text (remove icon for PDF rendering safety if font lacks emojis)
         pdf.text(card.value, textX, yPos + 16, { align: align });
     });
 
@@ -225,9 +224,6 @@ export async function generateWorkoutPDF({
                 set.equipment || '-'
             ]);
 
-            // For RTL tables, we might want to reverse columns, but standard numbers usually read LTR.
-            // Keeping standard column order for data clarity.
-            
             autoTable(pdf, {
                 startY: yPos,
                 head: [[t.set, t.reps, t.weight, t.technique, t.equipment]],
@@ -239,7 +235,7 @@ export async function generateWorkoutPDF({
                     lineColor: COLORS.zinc800,
                     lineWidth: 0.1,
                     font: isRTL ? "Cairo" : "helvetica",
-                    halign: 'center' // Center all data
+                    halign: 'center' 
                 },
                 headStyles: {
                     fillColor: COLORS.zinc800,

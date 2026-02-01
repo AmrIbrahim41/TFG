@@ -28,10 +28,9 @@ const ClientDetails = () => {
         name: '', manual_id: '', phone: '',
         nature_of_work: '', birth_date: '', address: '',
         status: 'Single', smoking: false, sleep_hours: '', notes: '',
-        created_at: '' // Added for "Since" Year
+        created_at: ''
     });
 
-    // We keep the DB age as a fallback, but rely on calculation
     const [dbAge, setDbAge] = useState('');
     const [photoUrl, setPhotoUrl] = useState(null);
     const [isSubscribed, setIsSubscribed] = useState(false);
@@ -61,7 +60,8 @@ const ClientDetails = () => {
         return dbAge || '--';
     }, [formData.birth_date, dbAge]);
 
-    const hasActiveSub = subscriptions.some(sub => sub.is_active);
+    // FIXED: Ensure subscriptions is an array before calling .some()
+    const hasActiveSub = Array.isArray(subscriptions) ? subscriptions.some(sub => sub.is_active) : false;
 
     useEffect(() => {
         const fetchData = async () => {
@@ -80,10 +80,17 @@ const ClientDetails = () => {
                 if (data.photo_url) setPhotoUrl(data.photo_url.startsWith('http') ? data.photo_url : `${BASE_URL}${data.photo_url}`);
 
                 const subRes = await api.get(`/client-subscriptions/?client_id=${id}`);
-                setSubscriptions(subRes.data);
+                // FIXED: Handle Pagination Result
+                if (subRes.data.results) {
+                    setSubscriptions(subRes.data.results);
+                } else {
+                    setSubscriptions(subRes.data);
+                }
 
-                const plansRes = await api.get('/subscriptions/');
+                // --- KEY CHANGE HERE: FETCH ONLY ADULT PLANS ---
+                const plansRes = await api.get('/subscriptions/?target=adult');
                 setAvailablePlans(plansRes.data);
+                // ----------------------------------------------
 
                 if (user?.is_superuser) {
                     const trainersRes = await api.get('/manage-trainers/');
@@ -128,8 +135,13 @@ const ClientDetails = () => {
             const payload = { client: id, plan: newSubData.plan, start_date: newSubData.start_date, is_active: true };
             if (user?.is_superuser && newSubData.trainer) payload.trainer = newSubData.trainer;
             await api.post('/client-subscriptions/', payload);
+            
+            // Refresh List
             const subRes = await api.get(`/client-subscriptions/?client_id=${id}`);
-            setSubscriptions(subRes.data);
+            // FIXED: Handle Pagination
+            const newSubs = subRes.data.results || subRes.data;
+            setSubscriptions(newSubs);
+            
             setIsSubscribed(true);
             setIsSubModalOpen(false);
             setNewSubData({ plan: '', trainer: '', start_date: new Date().toISOString().split('T')[0] });
@@ -143,9 +155,14 @@ const ClientDetails = () => {
         if (!confirm(`Mark as ${sub.is_active ? 'Inactive' : 'Active'}?`)) return;
         try {
             await api.patch(`/client-subscriptions/${sub.id}/`, { is_active: !sub.is_active });
+            
+            // Refresh List
             const subRes = await api.get(`/client-subscriptions/?client_id=${id}`);
-            setSubscriptions(subRes.data);
-            setIsSubscribed(subRes.data.some(s => s.is_active));
+            // FIXED: Handle Pagination
+            const newSubs = subRes.data.results || subRes.data;
+            setSubscriptions(newSubs);
+            
+            setIsSubscribed(newSubs.some(s => s.is_active));
         } catch (error) { alert("Error updating status."); }
     };
 
@@ -169,8 +186,7 @@ const ClientDetails = () => {
         { id: 'info', label: 'Personal Info', icon: User },
         { id: 'membership', label: 'Membership', icon: ShieldCheck },
         { id: 'training', label: 'Training Log', icon: Activity },
-        { id: 'diet', label: 'Nutrition', icon: Utensils },  // ← Changed from Calendar
-
+        { id: 'diet', label: 'Nutrition', icon: Utensils },
     ];
 
     return (
@@ -209,7 +225,6 @@ const ClientDetails = () => {
                         <div className="text-center space-y-3 mb-8">
                             <h1 className="text-2xl font-black text-white tracking-tight">{formData.name}</h1>
 
-                            {/* --- BOXED ID --- */}
                             <div className="flex justify-center">
                                 <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5">
                                     <Hash size={14} className="text-zinc-500" />
@@ -222,12 +237,10 @@ const ClientDetails = () => {
                         <div className="grid grid-cols-2 gap-3 mb-8">
                             <div className="bg-zinc-900/50 p-3 rounded-2xl border border-zinc-800/50 flex flex-col items-center">
                                 <span className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider">Age</span>
-                                {/* --- UPDATED DYNAMIC AGE --- */}
                                 <span className="text-lg font-bold text-white">{calculatedAge}</span>
                             </div>
                             <div className="bg-zinc-900/50 p-3 rounded-2xl border border-zinc-800/50 flex flex-col items-center">
                                 <span className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider">Since</span>
-                                {/* --- DYNAMIC YEAR --- */}
                                 <span className="text-lg font-bold text-white">
                                     {formData.created_at ? new Date(formData.created_at).getFullYear() : new Date().getFullYear()}
                                 </span>
@@ -252,8 +265,6 @@ const ClientDetails = () => {
                             )}
                         </div>
                     </div>
-
-                    {/* --- REMOVED PHONE SECTION FROM HERE --- */}
 
                     {/* Simplified Address Only Box */}
                     {formData.address && (
@@ -314,6 +325,7 @@ const ClientDetails = () => {
                                 <ClientNutritionTab
                                     subscriptions={subscriptions}
                                     clientAge={calculatedAge}
+                                    clientData={{id: id}} 
                                 />
                             </div>
                         )}

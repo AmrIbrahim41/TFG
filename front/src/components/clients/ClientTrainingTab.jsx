@@ -1,14 +1,61 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
-    Dumbbell, ChevronRight, CheckCircle, RefreshCw, 
+    Dumbbell, ChevronRight, ChevronLeft, CheckCircle, RefreshCw, 
     Save, ArrowLeft, Trash2, LayoutGrid, Calendar, 
-    Minus, Plus, Trophy, User, Clock, CircleDashed 
+    Minus, Plus, Trophy, User, CircleDashed 
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api';
 
+// --- PAGINATION COMPONENT (Local) ---
+const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => {
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    if (totalPages <= 1) return null;
+
+    return (
+        <div className="flex items-center justify-center gap-2 mt-6">
+            <button
+                onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white disabled:opacity-30 disabled:hover:text-zinc-500 transition-all"
+            >
+                <ChevronLeft size={16} />
+            </button>
+            
+            <div className="flex gap-1">
+                {Array.from({ length: totalPages }).map((_, idx) => (
+                    <button
+                        key={idx}
+                        onClick={() => onPageChange(idx + 1)}
+                        className={`
+                            w-8 h-8 rounded-lg font-bold text-xs transition-all border
+                            ${currentPage === idx + 1 
+                                ? 'bg-orange-500 border-orange-500 text-white shadow-lg shadow-orange-900/20' 
+                                : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-white hover:border-zinc-700'}
+                        `}
+                    >
+                        {idx + 1}
+                    </button>
+                ))}
+            </div>
+
+            <button
+                onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white disabled:opacity-30 disabled:hover:text-zinc-500 transition-all"
+            >
+                <ChevronRight size={16} />
+            </button>
+        </div>
+    );
+};
+
 const ClientTrainingTab = ({ subscriptions }) => {
     const navigate = useNavigate();
+    
+    // Pagination State for Subscriptions
+    const [page, setPage] = useState(1);
+    const itemsPerPage = 4;
 
     // Data States
     const [selectedSub, setSelectedSub] = useState(null);
@@ -18,7 +65,7 @@ const ClientTrainingTab = ({ subscriptions }) => {
 
     // Setup Form States
     const [setupStep, setSetupStep] = useState(0);
-    const [cycleLength, setCycleLength] = useState(3); // Default to 3
+    const [cycleLength, setCycleLength] = useState(3);
     const [dayNames, setDayNames] = useState({});
 
     // --- 1. FETCH LOGIC ---
@@ -174,13 +221,9 @@ const ClientTrainingTab = ({ subscriptions }) => {
                             {cycle.map((session, sIndex) => {
                                 const isCompleted = logs.some(l => l.session_number === session.number && l.is_completed);
                                 const completedLog = logs.find(l => l.session_number === session.number);
-
-                                // Format Date to DD/MM
                                 const dateStr = completedLog?.date_completed 
                                     ? new Date(completedLog.date_completed).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })
                                     : '--/--';
-
-                                // Trainer Name
                                 const trainerName = completedLog?.trainer_name || 'TFG Trainer';
 
                                 return (
@@ -196,10 +239,8 @@ const ClientTrainingTab = ({ subscriptions }) => {
                                             }
                                         `}
                                     >
-                                        {/* Status Line (Top Border) */}
                                         <div className={`absolute top-0 left-0 w-full h-1 ${isCompleted ? 'bg-emerald-500' : 'bg-transparent group-hover:bg-orange-500 transition-colors'}`} />
 
-                                        {/* --- CARD HEADER --- */}
                                         <div className="flex justify-between items-start p-4 pb-2">
                                             <span className={`text-[10px] font-black px-2 py-1 rounded-md border ${isCompleted ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-zinc-800 text-zinc-500 border-zinc-700'}`}>
                                                 SESSION {session.number}
@@ -213,22 +254,18 @@ const ClientTrainingTab = ({ subscriptions }) => {
                                             )}
                                         </div>
 
-                                        {/* --- CARD BODY --- */}
                                         <div className="px-4 mb-auto">
                                             <h5 className={`font-bold text-sm leading-tight line-clamp-2 ${isCompleted ? 'text-white' : 'text-zinc-400 group-hover:text-white transition-colors'}`}>
                                                 {session.name}
                                             </h5>
                                         </div>
 
-                                        {/* --- CARD FOOTER (DETAILS) --- */}
                                         {isCompleted ? (
                                             <div className="mt-3 px-4 py-3 bg-zinc-900/50 border-t border-zinc-800 flex flex-col gap-1.5">
-                                                {/* Date Row */}
                                                 <div className="flex items-center gap-2 text-zinc-400">
                                                     <Calendar size={12} className="text-emerald-500" />
                                                     <span className="text-[11px] font-mono font-medium">{dateStr}</span>
                                                 </div>
-                                                {/* Trainer Row */}
                                                 <div className="flex items-center gap-2 text-zinc-400">
                                                     <User size={12} className="text-blue-500" />
                                                     <span className="text-[11px] font-medium truncate max-w-[120px]">{trainerName}</span>
@@ -250,18 +287,22 @@ const ClientTrainingTab = ({ subscriptions }) => {
         );
     };
 
+    // Calculate displayed subscriptions for pagination
+    const displayedSubs = subscriptions.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+
     return (
         <div className="min-h-[500px]">
             {!selectedSub ? (
-                /* 1. SUBSCRIPTION SELECTION LIST */
+                /* 1. SUBSCRIPTION SELECTION (PAGINATED GRID) */
                 <div className="space-y-5 animate-in fade-in duration-300">
                     <div className="flex items-center gap-2 mb-2">
                         <LayoutGrid className="text-orange-500" size={20} />
                         <h3 className="text-xl font-bold text-white">Active Memberships</h3>
                     </div>
                     
+                    {/* Grid Layout replacing the Carousel */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {subscriptions.map((sub) => (
+                        {displayedSubs.map((sub) => (
                             <div 
                                 key={sub.id} 
                                 onClick={() => handleSelectSub(sub)} 
@@ -280,28 +321,36 @@ const ClientTrainingTab = ({ subscriptions }) => {
                                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${sub.is_active ? 'bg-zinc-900 border-zinc-700 text-orange-500' : 'bg-zinc-900 border-zinc-800 text-zinc-600'}`}>
                                             <Dumbbell size={24} />
                                         </div>
-                                        <div>
-                                            <h4 className="font-bold text-lg text-white group-hover:text-orange-400 transition-colors">{sub.plan_name}</h4>
+                                        <div className="min-w-0">
+                                            <h4 className="font-bold text-lg text-white group-hover:text-orange-400 transition-colors truncate pr-2">{sub.plan_name}</h4>
                                             <p className="text-xs text-zinc-500 font-medium">
                                                 {sub.plan_total_sessions} Sessions • Starts {new Date(sub.start_date).toLocaleDateString()}
                                             </p>
                                         </div>
                                     </div>
-                                    <div className="w-8 h-8 rounded-full bg-zinc-900 flex items-center justify-center group-hover:bg-orange-500 group-hover:text-white transition-all">
+                                    <div className="w-8 h-8 rounded-full bg-zinc-900 flex items-center justify-center shrink-0 group-hover:bg-orange-500 group-hover:text-white transition-all">
                                         <ChevronRight size={16} />
                                     </div>
                                 </div>
                             </div>
                         ))}
+
+                        {subscriptions.length === 0 && (
+                            <div className="col-span-full flex flex-col items-center justify-center py-16 border-2 border-dashed border-zinc-800 rounded-3xl text-zinc-500">
+                                <Dumbbell size={48} className="mb-4 opacity-20" />
+                                <p className="font-bold">No Subscriptions Found</p>
+                                <p className="text-sm">Assign a plan in the Membership tab first.</p>
+                            </div>
+                        )}
                     </div>
 
-                    {subscriptions.length === 0 && (
-                        <div className="flex flex-col items-center justify-center py-16 border-2 border-dashed border-zinc-800 rounded-3xl text-zinc-500">
-                            <Dumbbell size={48} className="mb-4 opacity-20" />
-                            <p className="font-bold">No Subscriptions Found</p>
-                            <p className="text-sm">Assign a plan in the Membership tab first.</p>
-                        </div>
-                    )}
+                    {/* Pagination Controls */}
+                    <Pagination 
+                        totalItems={subscriptions.length} 
+                        itemsPerPage={itemsPerPage} 
+                        currentPage={page} 
+                        onPageChange={setPage} 
+                    />
                 </div>
             ) : (
                 /* 2. PLAN VIEW OR WIZARD */

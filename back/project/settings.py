@@ -32,6 +32,10 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+   "unfold",  # <--- Must be first
+    "unfold.contrib.filters",  # Optional: Advanced filters
+    "unfold.contrib.forms",    # Optional: Pretty forms
+    "unfold.contrib.import_export",  # Optional: Import/Export support
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -54,6 +58,47 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+
+
+UNFOLD = {
+    "SITE_TITLE": "Gym Pro Management",
+    "SITE_HEADER": "Gym Pro",
+    "SITE_SYMBOL": "fitness_center",  # Google Material Icon name
+    "SHOW_HISTORY": True,
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": False,
+        "navigation": [
+            {
+                "title": "Main Operations",
+                "separator": True,
+                "items": [
+                    {"title": "Dashboard", "icon": "dashboard", "link": "/admin"},
+                    {"title": "Clients", "icon": "groups", "link": "/admin/api/client"},
+                    {"title": "Active Subs", "icon": "loyalty", "link": "/admin/api/clientsubscription/?is_active__exact=1"},
+                ],
+            },
+            {
+                "title": "Fitness Tools",
+                "separator": True,
+                "items": [
+                    {"title": "Nutrition Plans", "icon": "restaurant_menu", "link": "/admin/api/nutritionplan"},
+                    {"title": "Training Plans", "icon": "fitness_center", "link": "/admin/api/trainingplan"},
+                    {"title": "Food Database", "icon": "nutrition", "link": "/admin/api/fooddatabase"},
+                ],
+            },
+            {
+                "title": "System",
+                "separator": True,
+                "items": [
+                    {"title": "Staff & Trainers", "icon": "badge", "link": "/admin/auth/user"},
+                    {"title": "Packages", "icon": "inventory_2", "link": "/admin/api/subscription"},
+                ],
+            },
+        ],
+    },
+}
 
 ROOT_URLCONF = "project.urls"
 

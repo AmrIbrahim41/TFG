@@ -68,8 +68,8 @@ const AdminTrainers = () => {
     };
 
     return (
-        <div className="min-h-screen bg-zinc-950 text-white w-full p-6 lg:p-10 lg:pl-80 pt-24 lg:pt-10">
-            <div className="max-w-6xl mx-auto space-y-12">
+        <div className="min-h-screen bg-[#09090b] text-white w-full p-6 lg:pl-72 pt-24 lg:pt-8">
+            <div className="max-w-[1600px] mx-auto space-y-12">
                 
                 <div>
                     <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
@@ -125,7 +125,7 @@ const AdminTrainers = () => {
                 {/* --- Trainers List --- */}
                 <div>
                     <h2 className="text-xl font-bold mb-6 flex items-center gap-3"><User size={24} className="text-orange-500" /> Current Staff Team</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                         {trainers.map((trainer) => (
                             <div key={trainer.id} className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex items-center justify-between group hover:border-zinc-700 transition-all">
                                 {editingId === trainer.id ? (

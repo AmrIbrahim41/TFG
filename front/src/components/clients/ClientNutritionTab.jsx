@@ -1,663 +1,726 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-    Utensils, Plus, Trash2, ArrowLeft, Search, X, Check,
-    Calculator, Settings, Scale, Flame, ArrowDown, 
-    Dumbbell, Coffee, Minus, ChevronRight, Calendar, User, 
-    Download, Save, Loader2
+    Utensils, Calendar, User, Activity, 
+    Save, ArrowLeft, Target, Trash2, Plus, 
+    Flame, Droplets, Wheat, Beef, AlertTriangle, 
+    Leaf, FileText, Zap, Mars, Venus, Loader2, 
+    ChevronLeft, ChevronRight, Download, Scale,
+    Check, ChevronDown // Added Check and ChevronDown
 } from 'lucide-react';
 import api from '../../api';
-import toast from 'react-hot-toast';
+import { PDFDownloadLink } from '@react-pdf/renderer'; 
+import NutritionDocument from '../../utils/NutritionPDF'; 
 
-// IMPORT THE PDF COMPONENT
-import { NutritionPDFTemplate, downloadNutritionPDF } from '../../utils/NutritionPDF';
+// --- PAGINATION ---
+const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => {
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    if (totalPages <= 1) return null;
 
-// === MAIN COMPONENT ===
-const ClientNutritionTab = ({ subscriptions }) => {
-    const activeSub = subscriptions?.find(s => s.is_active) || subscriptions?.[0];
-    const [viewMode, setViewMode] = useState('list');
-    const [plans, setPlans] = useState([]);
-    const [selectedPlan, setSelectedPlan] = useState(null);
-    const [showCreateModal, setShowCreateModal] = useState(false);
+    return (
+        <div className="flex items-center justify-center gap-2 mt-8">
+            <button
+                onClick={() => onPageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white disabled:opacity-30 disabled:hover:text-zinc-500 transition-all"
+            >
+                <ChevronLeft size={16} />
+            </button>
+            <span className="text-xs font-bold text-zinc-500 px-2">Page {currentPage} of {totalPages}</span>
+            <button
+                onClick={() => onPageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white disabled:opacity-30 disabled:hover:text-zinc-500 transition-all"
+            >
+                <ChevronRight size={16} />
+            </button>
+        </div>
+    );
+};
 
+// --- LOGIC ENGINE ---
+const calculateNutrition = (inputs) => {
+    const {
+        gender = 'male', age = 25, heightCm = 170, weightKg = 80, 
+        activityLevel = 'moderate', deficitSurplus = 0, 
+        fatPercentage = 25, proteinPerLb = 1.0, 
+        mealsCount = 4
+    } = inputs;
+
+    const safeWeight = Math.max(0, parseFloat(weightKg) || 0);
+    const safeHeight = Math.max(0, parseFloat(heightCm) || 0);
+    const safeAge = Math.max(0, parseInt(age) || 0);
+    const safeMeals = Math.max(1, parseInt(mealsCount) || 1); 
+
+    const weightLbs = safeWeight * 2.20462;
+    
+    let bmr = (10 * safeWeight) + (6.25 * safeHeight) - (5 * safeAge);
+    bmr += (gender === 'male' ? 5 : -161);
+
+    const multipliers = { 'sedentary': 1.2, 'light': 1.375, 'moderate': 1.55, 'active': 1.725, 'very_active': 1.9 };
+    const tdee = Math.round(bmr * (multipliers[activityLevel] || 1.2));
+    const targetCalories = tdee + parseInt(deficitSurplus || 0);
+    
+    const proteinGrams = Math.round(weightLbs * parseFloat(proteinPerLb || 1));
+    const proteinCals = proteinGrams * 4;
+    
+    let fatCals = Math.round(targetCalories * (parseFloat(fatPercentage || 25) / 100));
+    let fatGrams = Math.round(fatCals / 9);
+
+    const usedCals = proteinCals + fatCals;
+    let remainingCals = targetCalories - usedCals;
+    let warning = null;
+
+    if (remainingCals < 0) {
+        warning = "Macros exceed Target Calories! Increase Calories or lower Fats/Protein.";
+        remainingCals = 0; 
+    }
+
+    const carbGrams = Math.round(remainingCals / 4);
+    const fiberGrams = Math.round((targetCalories / 1000) * 14);
+
+    return {
+        tdee, targetCalories, warning, 
+        macros: {
+            protein: { grams: proteinGrams, cals: proteinCals, pct: Math.round((proteinCals/targetCalories)*100) || 0 },
+            fats: { grams: fatGrams, cals: fatCals, pct: Math.round((fatCals/targetCalories)*100) || 0 },
+            carbs: { grams: carbGrams, cals: remainingCals, pct: Math.round((remainingCals/targetCalories)*100) || 0 },
+            fiber: { grams: fiberGrams } 
+        },
+        perMeal: {
+            proteinCals: Math.round(proteinCals / safeMeals),
+            carbsCals: Math.round(remainingCals / safeMeals),
+            fatsCals: Math.round(fatCals / safeMeals),
+            proteinGrams: Math.round(proteinGrams / safeMeals),
+            carbsGrams: Math.round(carbGrams / safeMeals),
+            fatsGrams: Math.round(fatGrams / safeMeals),
+        }
+    };
+};
+
+// --- MODERN SELECT COMPONENT ---
+const CustomSelect = ({ label, value, options, onChange, disabled }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const containerRef = useRef(null);
+
+    // Close dropdown when clicking outside
     useEffect(() => {
-        if (activeSub) fetchPlans();
-    }, [activeSub]);
+        const handleClickOutside = (event) => {
+            if (containerRef.current && !containerRef.current.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
-    const fetchPlans = async () => {
-        try {
-            const res = await api.get(`/nutrition-plans/?subscription_id=${activeSub.id}`);
-            setPlans(res.data);
-        } catch (error) { console.error("Error fetching plans", error); }
-    };
+    const selectedLabel = options.find(o => o.val === value)?.lbl || value;
 
-    const handleCreatePlan = async (name, weeks) => {
-        try {
-            await api.post('/nutrition-plans/', {
-                subscription: activeSub.id,
-                name: name,
-                duration_weeks: weeks,
-                calc_weight: 80, calc_tdee: 2500, calc_meals: 4
-            });
-            toast.success("Plan Created");
-            setShowCreateModal(false);
-            fetchPlans();
-        } catch (error) { toast.error("Failed to create plan"); }
-    };
+    return (
+        <div ref={containerRef} className={`relative w-full ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            {/* Trigger Button */}
+            <div 
+                onClick={() => !disabled && setIsOpen(!isOpen)}
+                className={`
+                    bg-zinc-900 border p-3 rounded-2xl cursor-pointer transition-all duration-200 group relative
+                    ${isOpen ? 'border-orange-500 ring-1 ring-orange-500/20' : 'border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50'}
+                `}
+            >
+                <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block group-hover:text-zinc-400 transition-colors">
+                    {label}
+                </label>
+                <div className="flex justify-between items-center">
+                    <span className="text-white font-bold text-lg truncate pr-2">
+                        {selectedLabel}
+                    </span>
+                    <ChevronDown 
+                        size={16} 
+                        className={`text-zinc-500 transition-transform duration-300 ${isOpen ? 'rotate-180 text-orange-500' : ''}`} 
+                    />
+                </div>
+            </div>
 
-    const handleDelete = async (e, id) => {
-        e.stopPropagation();
-        if(!confirm("Delete this plan permanently?")) return;
-        try {
-            await api.delete(`/nutrition-plans/${id}/`);
-            setPlans(plans.filter(p => p.id !== id));
-            toast.success("Deleted");
-        } catch (err) { toast.error("Error"); }
-    };
-
-    if (viewMode === 'list') {
-        return (
-            <div className="space-y-8 animate-in fade-in duration-500 w-full max-w-[1800px] mx-auto p-4 md:p-8">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-zinc-800 pb-6">
-                    <div className="flex items-center gap-4">
-                        <div className="p-4 bg-orange-500/10 rounded-2xl text-orange-500 border border-orange-500/20">
-                            <Utensils size={32}/>
-                        </div>
-                        <div>
-                            <h2 className="text-3xl font-black text-white">Nutrition Dashboard</h2>
-                            <p className="text-zinc-500 text-lg">Manage diet cycles for {activeSub?.client_name || 'Client'}</p>
-                        </div>
+            {/* Dropdown Menu */}
+            {isOpen && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-[#18181b] border border-zinc-800 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top">
+                    <div className="max-h-[240px] overflow-y-auto custom-scrollbar">
+                        {options.map((opt) => (
+                            <div 
+                                key={opt.val}
+                                onClick={() => { onChange(opt.val); setIsOpen(false); }}
+                                className={`
+                                    px-4 py-3 flex items-center justify-between cursor-pointer transition-colors border-b border-zinc-800/50 last:border-0
+                                    ${opt.val === value ? 'bg-orange-500/10 text-orange-500' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'}
+                                `}
+                            >
+                                <span className="font-bold text-sm">{opt.lbl}</span>
+                                {opt.val === value && <Check size={14} className="text-orange-500" />}
+                            </div>
+                        ))}
                     </div>
-                    <button 
-                        onClick={() => setShowCreateModal(true)}
-                        className="bg-white text-black hover:bg-orange-500 hover:text-white px-6 py-3 rounded-xl font-black text-sm uppercase tracking-wide transition-all shadow-lg flex items-center gap-2"
-                    >
-                        <Plus size={20} /> New Cycle
-                    </button>
                 </div>
+            )}
+        </div>
+    );
+};
 
-                {/* --- SINGLE COLUMN GRID FOR FULL WIDTH CARDS --- */}
-                <div className="grid grid-cols-1 gap-6">
-                    {plans.map(plan => (
-                        <div key={plan.id} onClick={() => { setSelectedPlan(plan); setViewMode('detail'); }}>
-                            <HorizontalPlanCard plan={plan} onDelete={(e) => handleDelete(e, plan.id)} />
-                        </div>
-                    ))}
-                    {plans.length === 0 && (
-                        <div className="col-span-full py-20 text-center border-2 border-dashed border-zinc-800 rounded-3xl text-zinc-600">
-                            <Utensils className="mx-auto mb-4 opacity-20" size={64}/>
-                            <div className="font-bold text-xl">No active nutrition plans</div>
-                        </div>
-                    )}
-                </div>
-
-                {showCreateModal && <CreatePlanModal onClose={() => setShowCreateModal(false)} onSubmit={handleCreatePlan} />}
+// --- UPDATED INPUT COMPONENT ---
+const ModernInput = ({ label, value, onChange, type="text", suffix, options, disabled=false, className="", min }) => {
+    
+    // If options exist, render the new CustomSelect
+    if (options) {
+        return (
+            <div className={className}>
+                <CustomSelect 
+                    label={label} 
+                    value={value} 
+                    options={options} 
+                    onChange={onChange} 
+                    disabled={disabled} 
+                />
             </div>
         );
     }
 
+    // Otherwise render the standard text/number input
     return (
-        <PlanDetailView 
-            plan={selectedPlan} 
-            clientName={activeSub?.client_name}
-            onBack={() => { setViewMode('list'); fetchPlans(); }} 
-        />
-    );
-};
-
-// === UPDATED HORIZONTAL CARD ===
-const HorizontalPlanCard = ({ plan, onDelete }) => {
-    return (
-        <div className="group relative bg-[#121214] rounded-[2rem] border border-zinc-800/60 hover:border-orange-500/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-orange-900/20 cursor-pointer overflow-hidden flex flex-col md:flex-row">
-            
-            {/* LEFT SIDE: Info */}
-            <div className="p-8 flex flex-col justify-between flex-1 relative z-10 border-b md:border-b-0 md:border-r border-zinc-800/50">
-                <div>
-                    <div className="flex items-center gap-2 mb-4">
-                        <span className="px-3 py-1 bg-green-500/10 text-green-500 text-[10px] font-black uppercase tracking-widest rounded-full border border-green-500/20">Active</span>
-                        <span className="text-zinc-500 text-xs font-bold flex items-center gap-2 px-2 border-l border-zinc-800">
-                             <Calendar size={14}/> {new Date(plan.created_at).toLocaleDateString()}
-                        </span>
-                    </div>
-                    <h3 className="text-4xl font-black text-white leading-tight group-hover:text-orange-500 transition-colors mb-3">{plan.name}</h3>
-                    <div className="flex items-center gap-3 text-zinc-400 text-sm font-bold bg-zinc-900/50 w-fit px-4 py-2 rounded-xl border border-zinc-800/50">
-                        <User size={16}/> <span>Created by: <span className="text-white">{plan.created_by_name || 'Coach'}</span></span>
-                    </div>
-                </div>
-                <div className="mt-8 flex items-center gap-4">
-                     <div className="bg-zinc-900/80 px-6 py-4 rounded-2xl border border-zinc-800 flex items-center gap-4">
-                        <div className="text-right">
-                             <div className="text-[10px] uppercase text-zinc-500 font-bold">Duration</div>
-                             <div className="text-2xl font-black text-white leading-none">{plan.duration_weeks}<span className="text-sm ml-1 text-zinc-600">wks</span></div>
-                        </div>
-                        <div className="h-8 w-[1px] bg-zinc-800"></div>
-                        <div>
-                             <div className="text-[10px] uppercase text-zinc-500 font-bold">Type</div>
-                             <div className="text-sm font-bold text-white leading-none mt-1">Standard</div>
-                        </div>
-                     </div>
-                     <button onClick={onDelete} className="w-14 h-[4.5rem] flex items-center justify-center rounded-2xl bg-zinc-900 text-zinc-600 hover:bg-red-500 hover:text-white transition-all border border-zinc-800 group/del">
-                        <Trash2 size={24} className="group-hover/del:scale-110 transition-transform" />
-                    </button>
-                </div>
-            </div>
-
-            {/* RIGHT SIDE: Stats */}
-            <div className="p-8 w-full md:w-[450px] md:min-w-[400px] bg-[#0c0c0e] flex flex-col justify-center border-l border-zinc-800/50">
-                <div className="flex justify-between items-center mb-8">
-                    <span className="text-xs font-black text-zinc-500 uppercase tracking-widest">Daily Target</span>
-                    <span className="text-3xl font-black text-white">{plan.target_calories} <span className="text-orange-500 text-base">kcal</span></span>
-                </div>
-                <div className="space-y-6">
-                    <MacroRow label="Protein" val={plan.target_protein} color="bg-red-500" />
-                    <MacroRow label="Carbs" val={plan.target_carbs} color="bg-blue-500" />
-                    <MacroRow label="Fats" val={plan.target_fats} color="bg-yellow-500" />
-                </div>
-                <div className="mt-8 pt-6 border-t border-zinc-800/50 flex justify-end">
-                    <span className="text-sm font-bold text-zinc-500 group-hover:text-white flex items-center gap-2 transition-colors">
-                        Open Planner <div className="bg-zinc-800 rounded-full p-1"><ChevronRight size={14} /></div>
-                    </span>
-                </div>
-            </div>
+        <div className={`bg-zinc-900 border border-zinc-800 p-3 rounded-2xl relative focus-within:ring-1 focus-within:ring-orange-500/50 focus-within:border-orange-500 transition-all ${disabled ? 'opacity-50' : ''} ${className}`}>
+            <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block">{label}</label>
+            <input 
+                disabled={disabled} 
+                type={type} 
+                min={min}
+                value={value} 
+                onChange={(e) => {
+                    if (type === 'number' && min !== undefined) {
+                        const val = parseFloat(e.target.value);
+                        if (val < min && e.target.value !== '') return; 
+                    }
+                    onChange(e.target.value)
+                }} 
+                className="w-full bg-transparent text-white font-bold text-lg outline-none placeholder-zinc-700" 
+            />
+            {suffix && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-600">{suffix}</span>}
         </div>
     );
 };
 
-const MacroRow = ({ label, val, color }) => (
-    <div>
-        <div className="flex justify-between text-[11px] font-bold text-zinc-500 uppercase mb-2"><span>{label}</span><span className="text-white">{val}g</span></div>
-        <div className="h-3 w-full bg-zinc-900 rounded-full overflow-hidden border border-zinc-800"><div className={`h-full ${color}`} style={{ width: '60%' }}></div></div>
-    </div>
-);
-
-
-// === PLAN DETAIL VIEW (With Save Fix) ===
-const PlanDetailView = ({ plan, clientName, onBack }) => {
-    // --- STATE ---
-    const [calcParams, setCalcParams] = useState({
-        weight: plan.calc_weight || 80,             
-        fatPercent: plan.calc_fat_percent || 25,         
-        proteinMultiplier: plan.calc_protein_multiplier || 2.2, 
-        proteinAdvance: plan.calc_protein_advance || 0.8,    
-        tdee: plan.calc_tdee || 2500,             
-        deferCal: plan.calc_defer_cal || 500,          
-        meals: plan.calc_meals || 4,               
-        snacks: plan.calc_snacks || 2
-    });
-
-    const [showCalculator, setShowCalculator] = useState(true); 
-    const [foodDB, setFoodDB] = useState([]);
+const ClientNutritionTab = ({ subscriptions, clientData }) => {
+    const [view, setView] = useState('list'); 
+    const [plans, setPlans] = useState([]);
+    const [totalCount, setTotalCount] = useState(0);
+    const [page, setPage] = useState(1);
+    const [loading, setLoading] = useState(false);
     
-    // --- LOAD SAVED MEALS INTO STATE ---
-    // This function runs once on mount to populate the dashboard from the database
-    const [dailyLog, setDailyLog] = useState(() => {
-        if (!plan.meal_plans || plan.meal_plans.length === 0) return [];
-        
-        const loadedLog = [];
-        // Map backend meal_type (breakfast, lunch...) to UI slots (Meal 1, Meal 2...)
-        const typeToSlot = {
-            'breakfast': { type: 'meal', index: 1 },
-            'lunch': { type: 'meal', index: 2 },
-            'dinner': { type: 'meal', index: 3 },
-            'snack1': { type: 'snack', index: 1 },
-            'snack2': { type: 'snack', index: 2 },
-            'snack3': { type: 'snack', index: 3 }
-        };
-
-        plan.meal_plans.forEach(mp => {
-            let slotInfo = typeToSlot[mp.meal_type];
-            // Fallback for Meal 4, 5 etc if strictly named 'meal4' in backend or similar
-            if (!slotInfo) {
-                 // Simple heuristic: if we have more than 3 meals, map them sequentially if possible
-                 // For now, we assume standard 3 meals + snacks structure or custom logic
-                 // If you saved them as 'meal_4', you might need to adjust the backend enum or mapping here
-                 // Defaulting to "Meal 4" logic if undefined but exists
-                 if(mp.meal_name && mp.meal_name.startsWith("Meal")) {
-                     const num = parseInt(mp.meal_name.split(' ')[1]) || 4;
-                     slotInfo = { type: 'meal', index: num };
-                 } else if (mp.meal_name && mp.meal_name.startsWith("Snack")) {
-                     const num = parseInt(mp.meal_name.split(' ')[1]) || 1;
-                     slotInfo = { type: 'snack', index: num };
-                 }
-            }
-
-            if (slotInfo && mp.foods) {
-                mp.foods.forEach(food => {
-                    loadedLog.push({
-                        id: Date.now() + Math.random(),
-                        slotType: slotInfo.type,
-                        slotIndex: slotInfo.index,
-                        name: food.name,
-                        amount: food.quantity,
-                        calories: food.calories,
-                        protein: food.protein,
-                        carbs: food.carbs,
-                        fat: food.fats
-                    });
-                });
-            }
-        });
-        return loadedLog;
+    const [activePlan, setActivePlan] = useState(null);
+    const [foodDatabase, setFoodDatabase] = useState([]);
+    const [newPlanName, setNewPlanName] = useState('');
+    const [newPlanWeeks, setNewPlanWeeks] = useState(4);
+    
+    // STATE: Includes Carb Adjustment & Brand Text
+    const [calcState, setCalcState] = useState({
+        gender: 'male', age: 25, heightCm: 175, weightKg: 80,
+        activityLevel: 'moderate', deficitSurplus: -500,
+        fatPercentage: 25, proteinPerLb: 1.0,
+        mealsCount: 4, snacksCount: 0,
+        carbAdjustment: 0, 
+        brandText: 'TFG' 
     });
 
-    const [isSaving, setIsSaving] = useState(false);
-    const [saveSuccess, setSaveSuccess] = useState(false);
-    const [showModal, setShowModal] = useState(false);
-    const [currentSlot, setCurrentSlot] = useState(null); 
+    const [results, setResults] = useState(null);
+    const [planNotes, setPlanNotes] = useState('');
 
-    const pdfRef = useRef();
+    const clientId = clientData?.id || (subscriptions && subscriptions[0] ? subscriptions[0].client : null);
+    const defaultSubId = subscriptions && subscriptions[0] ? subscriptions[0].id : null;
+
+    // --- FIX: Resolve Client Name properly ---
+    const pdfClientName = activePlan?.client_name || clientData?.name || (subscriptions && subscriptions[0]?.client_details?.name) || "Athlete";
+
+    useEffect(() => { if (clientId) fetchPlans(page); }, [clientId, page]);
+    useEffect(() => { fetchFoodDatabase(); }, []);
 
     useEffect(() => {
-        api.get('/food-database/').then(res => setFoodDB(res.data));
-    }, []);
-
-    // --- CALCULATIONS ---
-    const targetCalories = Math.max(0, calcParams.tdee - calcParams.deferCal);
-    const targetProteinG = Math.round(calcParams.weight * calcParams.proteinMultiplier * calcParams.proteinAdvance);
-    const targetFatCal = Math.round(targetCalories * (calcParams.fatPercent / 100));
-    const targetFatG = Math.round(targetFatCal / 9);
-    const targetCarbsCal = Math.max(0, targetCalories - (targetProteinG * 4) - targetFatCal);
-    const targetCarbsG = Math.round(targetCarbsCal / 4);
-
-    const perMeal = {
-        protein: (targetProteinG / (calcParams.meals || 1)).toFixed(0),
-        fat: (targetFatG / (calcParams.meals || 1)).toFixed(0),
-        carbs: (targetCarbsG / (calcParams.meals || 1)).toFixed(0),
-        cals: Math.round(targetCalories / (calcParams.meals || 1))
-    };
-
-    const totals = dailyLog.reduce((acc, item) => ({
-        cals: acc.cals + item.calories,
-        protein: acc.protein + item.protein,
-        carbs: acc.carbs + item.carbs,
-        fat: acc.fat + item.fat
-    }), { cals: 0, protein: 0, carbs: 0, fat: 0 });
-
-    const balance = targetCalories - totals.cals;
-
-    // --- SAVE HANDLER (CORRECTED) ---
-    const handleSaveCalculator = async () => {
-        setIsSaving(true);
-        setSaveSuccess(false);
-
-        // 1. Prepare Meal Plans Payload
-        const mealPlansPayload = [];
-        
-        const getSlotItems = (type, idx) => dailyLog.filter(i => i.slotType === type && i.slotIndex === idx);
-
-        // Map Meal 1-3 to types, others fallback
-        const mealTypeMap = { 1: 'breakfast', 2: 'lunch', 3: 'dinner' }; 
-        
-        for (let i = 1; i <= calcParams.meals; i++) {
-            const items = getSlotItems('meal', i);
-            if (items.length > 0) {
-                mealPlansPayload.push({
-                    day: 'Monday',
-                    meal_type: mealTypeMap[i] || 'dinner', // Fallback
-                    meal_name: `Meal ${i}`,
-                    foods: items.map(item => ({
-                        name: item.name,
-                        quantity: item.amount,
-                        unit: 'g',
-                        calories: item.calories,
-                        protein: item.protein,
-                        carbs: item.carbs,
-                        fats: item.fat,
-                        category: 'Protein'
-                    }))
-                });
-            }
+        if (view === 'detail') {
+            const res = calculateNutrition(calcState);
+            setResults(res);
         }
+    }, [calcState, view]);
 
-        const snackTypeMap = { 1: 'snack1', 2: 'snack2', 3: 'snack3' };
-        for (let i = 1; i <= calcParams.snacks; i++) {
-            const items = getSlotItems('snack', i);
-            if (items.length > 0) {
-                mealPlansPayload.push({
-                    day: 'Monday',
-                    meal_type: snackTypeMap[i] || 'snack1',
-                    meal_name: `Snack ${i}`,
-                    foods: items.map(item => ({
-                        name: item.name,
-                        quantity: item.amount,
-                        unit: 'g',
-                        calories: item.calories,
-                        protein: item.protein,
-                        carbs: item.carbs,
-                        fats: item.fat,
-                        category: 'Snacks'
-                    }))
-                });
-            }
+    useEffect(() => {
+        if (activePlan) {
+            setCalcState({
+                gender: activePlan.calc_gender || 'male',
+                age: activePlan.calc_age || 25,
+                heightCm: activePlan.calc_height || 170,
+                weightKg: activePlan.calc_weight || 80,
+                activityLevel: activePlan.calc_activity_level || 'moderate',
+                deficitSurplus: activePlan.calc_defer_cal || 0,
+                fatPercentage: activePlan.calc_fat_percent || 25,
+                proteinPerLb: activePlan.calc_protein_multiplier || 1.0,
+                mealsCount: activePlan.calc_meals || 4,
+                snacksCount: activePlan.calc_snacks || 0,
+                carbAdjustment: activePlan.calc_carb_adjustment || 0, // Load from DB
+                brandText: activePlan.pdf_brand_text || 'TFG'         // Load from DB
+            });
+            setPlanNotes(activePlan.notes || '');
         }
+    }, [activePlan]);
 
-        const payload = {
-            target_calories: targetCalories,
-            target_protein: targetProteinG,
-            target_carbs: targetCarbsG,
-            target_fats: targetFatG,
-            calc_weight: calcParams.weight,
-            calc_tdee: calcParams.tdee,
-            calc_defer_cal: calcParams.deferCal,
-            calc_fat_percent: calcParams.fatPercent,
-            calc_protein_multiplier: calcParams.proteinMultiplier,
-            calc_protein_advance: calcParams.proteinAdvance,
-            calc_meals: calcParams.meals,
-            calc_snacks: calcParams.snacks,
-            meal_plans: mealPlansPayload // Send the meals!
-        };
+    const weightLbs = useMemo(() => {
+        return ((parseFloat(calcState.weightKg) || 0) * 2.20462).toFixed(1);
+    }, [calcState.weightKg]);
 
+    const fetchPlans = async (pageNum = 1) => {
+        if (!clientId) return;
+        setLoading(true);
         try {
-            await api.patch(`/nutrition-plans/${plan.id}/`, payload);
-            setTimeout(() => {
-                setIsSaving(false);
-                setSaveSuccess(true);
-                toast.success("Plan Saved Successfully!");
-                setTimeout(() => setSaveSuccess(false), 3000);
-            }, 800);
-        } catch (e) {
-            console.error(e);
-            setIsSaving(false);
-            toast.error("Failed to save settings");
-        }
+            const res = await api.get(`/nutrition-plans/?client_id=${clientId}&page=${pageNum}`);
+            if (res.data.results) {
+                setPlans(res.data.results);
+                setTotalCount(res.data.count);
+            } else {
+                setPlans(res.data);
+                setTotalCount(res.data.length);
+            }
+        } catch (err) { console.error(err); } 
+        finally { setLoading(false); }
     };
 
-    const handleAddFoodFromModal = (foodItem) => {
-        setDailyLog([...dailyLog, foodItem]);
-        setShowModal(false);
-        toast.success("Food Added");
+    const fetchFoodDatabase = async () => {
+        try {
+            const res = await api.get('/food-database/');
+            setFoodDatabase(res.data);
+        } catch (err) { console.error("Failed to load foods", err); }
     };
 
-    const renderMealCard = (type, index, title, icon) => {
-        const items = dailyLog.filter(x => x.slotType === type && x.slotIndex === index);
-        return (
-            <MealCard 
-                key={`${type}-${index}`} type={type} index={index} title={title} 
-                items={items} icon={icon}
-                onAdd={() => { setCurrentSlot({type, index}); setShowModal(true); }}
-                onRemove={(id) => setDailyLog(dailyLog.filter(i => i.id !== id))}
-            />
-        );
+    const handleCreatePlan = async () => {
+        if (!newPlanName || !defaultSubId) return alert("Enter name and ensure valid subscription");
+        try {
+            const payload = { subscription: defaultSubId, name: newPlanName, duration_weeks: newPlanWeeks, target_calories: 2000 };
+            const res = await api.post('/nutrition-plans/', payload);
+            fetchPlans(page);
+            setNewPlanName('');
+            setActivePlan(res.data);
+            setView('detail');
+        } catch (err) { alert("Error creating plan."); }
     };
 
-    return (
-        <div className="space-y-8 animate-in fade-in pb-32 w-full max-w-[1800px] mx-auto p-4 md:p-8">
-            
-            {/* Top Navigation */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-6">
-                <div className="flex items-center gap-4">
-                    <button onClick={onBack} className="w-12 h-12 rounded-full bg-zinc-900 flex items-center justify-center text-zinc-400 hover:bg-white hover:text-black transition-all"><ArrowLeft size={20} /></button>
-                    <div>
-                        <h2 className="text-2xl font-black text-white">{plan.name}</h2>
-                        <div className="flex gap-2 mt-1"><span className="px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-400 text-xs font-bold border border-zinc-700">{plan.duration_weeks} Weeks</span></div>
-                    </div>
-                </div>
+    const handleSavePlan = async () => {
+        if (!activePlan || !results) return;
+        try {
+            const payload = {
+                calc_gender: calcState.gender,
+                calc_age: parseInt(calcState.age),
+                calc_height: parseFloat(calcState.heightCm),
+                calc_weight: parseFloat(calcState.weightKg),
+                calc_activity_level: calcState.activityLevel,
+                calc_defer_cal: parseInt(calcState.deficitSurplus),
+                calc_fat_percent: parseFloat(calcState.fatPercentage),
+                calc_protein_multiplier: parseFloat(calcState.proteinPerLb),
+                calc_meals: parseInt(calcState.mealsCount),
+                calc_snacks: parseInt(calcState.snacksCount),
                 
-                <div className="flex flex-wrap gap-2">
-                    <button 
-                        onClick={() => downloadNutritionPDF(pdfRef.current, `${plan.name}_${plan.client_name || clientName}.pdf`)}
-                        className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white px-5 py-3 rounded-xl font-bold transition-all text-xs uppercase tracking-wide border border-zinc-700"
-                    >
-                        <Download size={16} /> PDF
-                    </button>
-                    
-                    <button onClick={handleSaveCalculator} disabled={isSaving} className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all text-xs uppercase tracking-wide shadow-lg ${saveSuccess ? 'bg-green-500 text-black scale-105' : 'bg-orange-600 hover:bg-orange-500 text-white'}`}>
-                        {isSaving ? <Loader2 size={16} className="animate-spin"/> : <Save size={16} />} {isSaving ? 'Saving...' : saveSuccess ? 'Saved!' : 'Save Plan'}
-                    </button>
+                // NEW FIELDS
+                calc_carb_adjustment: parseInt(calcState.carbAdjustment),
+                pdf_brand_text: calcState.brandText,
 
-                    <button onClick={() => setShowCalculator(!showCalculator)} className="flex items-center gap-2 bg-zinc-900 hover:text-orange-500 text-zinc-500 px-5 py-3 rounded-xl font-bold transition-all text-xs uppercase tracking-wide border border-zinc-800">
-                        <Settings size={16} /> {showCalculator ? 'Hide' : 'Machine'}
-                    </button>
-                </div>
-            </div>
-
-            {/* === THE CALCULATOR === */}
-            {showCalculator && (
-                <div className="bg-[#09090b] border border-zinc-800 rounded-[2.5rem] p-6 md:p-10 shadow-2xl animate-in slide-in-from-top-4">
-                     <div className="flex items-center gap-4 mb-8">
-                        <div className="bg-gradient-to-br from-orange-500 to-red-500 p-3 rounded-2xl text-white shadow-lg shadow-orange-500/20"><Calculator size={24}/></div>
-                        <div><h3 className="text-xl font-black text-white uppercase tracking-wider leading-none">The Machine</h3></div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="bg-zinc-900/40 p-6 rounded-3xl border border-zinc-800 flex flex-col gap-5">
-                            <div className="flex items-center gap-2 text-zinc-500 mb-2"><Scale size={16} className="text-zinc-400" /> <span className="text-xs font-black uppercase tracking-widest">Bio-Data</span></div>
-                            <div className="space-y-6">
-                                <StepperControl label="Weight" sub="kg" value={calcParams.weight} onChange={(v) => setCalcParams({...calcParams, weight: v})} step={1} />
-                                <StepperControl label="TDEE" sub="kcal" value={calcParams.tdee} onChange={(v) => setCalcParams({...calcParams, tdee: v})} step={50} />
-                            </div>
-                        </div>
-                        <div className="bg-zinc-900/40 p-6 rounded-3xl border border-zinc-800 flex flex-col gap-5">
-                            <div className="flex items-center gap-2 text-zinc-500 mb-2"><ArrowDown size={16} className="text-red-400" /> <span className="text-xs font-black uppercase tracking-widest">Strategy</span></div>
-                            <div className="space-y-6">
-                                <StepperControl label="Deficit" sub="kcal" color="text-red-400" value={calcParams.deferCal} onChange={(v) => setCalcParams({...calcParams, deferCal: v})} step={50} />
-                                <StepperControl label="Fat Split" sub="%" color="text-yellow-400" value={calcParams.fatPercent} onChange={(v) => setCalcParams({...calcParams, fatPercent: v})} step={1} />
-                            </div>
-                        </div>
-                        <div className="bg-zinc-900/40 p-6 rounded-3xl border border-zinc-800 flex flex-col gap-5">
-                            <div className="flex items-center gap-2 text-zinc-500 mb-2"><Dumbbell size={16} className="text-blue-400" /> <span className="text-xs font-black uppercase tracking-widest">Protein</span></div>
-                            <div className="space-y-6">
-                                <StepperControl label="Multiplier" sub="x" color="text-blue-400" value={calcParams.proteinMultiplier} onChange={(v) => setCalcParams({...calcParams, proteinMultiplier: parseFloat(v.toFixed(1))})} step={0.1}/>
-                                <StepperControl label="Lean Factor" sub="x" color="text-blue-400" value={calcParams.proteinAdvance} onChange={(v) => setCalcParams({...calcParams, proteinAdvance: parseFloat(v.toFixed(1))})} step={0.1}/>
-                            </div>
-                        </div>
-                        <div className="bg-zinc-900/40 p-6 rounded-3xl border border-zinc-800 flex flex-col gap-5">
-                            <div className="flex items-center gap-2 text-zinc-500 mb-2"><Utensils size={16} className="text-emerald-400" /> <span className="text-xs font-black uppercase tracking-widest">Schedule</span></div>
-                            <div className="space-y-6">
-                                <StepperControl label="Meals" sub="daily" value={calcParams.meals} onChange={(v) => setCalcParams({...calcParams, meals: v})} step={1} />
-                                <StepperControl label="Snacks" sub="daily" value={calcParams.snacks} onChange={(v) => setCalcParams({...calcParams, snacks: v})} step={1} />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* === DASHBOARD === */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-gradient-to-br from-zinc-900 to-black border border-zinc-800 rounded-[2rem] p-8 flex flex-col justify-center relative overflow-hidden">
-                    <div className="text-xs font-black text-zinc-500 uppercase tracking-widest mb-4">Total Budget</div>
-                    <div className="text-6xl lg:text-7xl font-black text-white tracking-tighter leading-none">{targetCalories}</div>
-                    <div className={`text-sm font-mono font-bold mt-4 flex items-center gap-2 ${balance < 0 ? 'text-red-500' : 'text-emerald-500'}`}>
-                         {balance > 0 ? '+' : ''}{balance} <span className="opacity-60 text-xs text-zinc-500 uppercase">Remaining</span>
-                    </div>
-                </div>
-                <BigMacroBar label="Protein" current={totals.protein} target={targetProteinG} color="bg-red-500" textColor="text-red-400" />
-                <BigMacroBar label="Carbs" current={totals.carbs} target={targetCarbsG} color="bg-blue-500" textColor="text-blue-400" />
-                <BigMacroBar label="Fats" current={totals.fat} target={targetFatG} color="bg-yellow-500" textColor="text-yellow-400" />
-            </div>
-
-            {/* === MEALS GRID === */}
-            <div className="space-y-6 pt-4">
-                <h3 className="text-2xl font-black text-white border-b border-zinc-800 pb-4">Daily Meals</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                    {Array.from({ length: calcParams.meals }).map((_, i) => renderMealCard('meal', i + 1, `Meal ${i + 1}`, Utensils))}
-                    {Array.from({ length: calcParams.snacks }).map((_, i) => renderMealCard('snack', i + 1, `Snack ${i + 1}`, Coffee))}
-                </div>
-            </div>
-
-            {/* === HIDDEN PDF TEMPLATE (IMPORTED) === */}
-            <NutritionPDFTemplate 
-                ref={pdfRef}
-                plan={{ ...plan, items: dailyLog }} // PASSING ITEMS TO PDF
-                clientName={plan.client_name || clientName} 
-                calcParams={calcParams}
-            />
-
-            {showModal && (
-                <FoodSearchModal 
-                    onClose={() => setShowModal(false)} 
-                    foodDB={foodDB} 
-                    currentSlot={currentSlot}
-                    onAdd={handleAddFoodFromModal}
-                />
-            )}
-        </div>
-    );
-};
-
-// === HELPER COMPONENTS ===
-const FoodSearchModal = ({ onClose, foodDB, currentSlot, onAdd }) => {
-    const [searchQuery, setSearchQuery] = useState('');
-    const [selectedFood, setSelectedFood] = useState(null);
-    const [gramAmount, setGramAmount] = useState(100);
-
-    const filteredFoods = foodDB.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()));
-
-    const handleConfirm = () => {
-        if (!selectedFood) return;
-        const ratio = gramAmount / 100;
-        const newItem = {
-            id: Date.now(),
-            slotType: currentSlot.type,
-            slotIndex: currentSlot.index,
-            name: selectedFood.name,
-            amount: gramAmount,
-            calories: Math.round(selectedFood.calories_per_100g * ratio),
-            protein: Math.round(selectedFood.protein_per_100g * ratio),
-            carbs: Math.round(selectedFood.carbs_per_100g * ratio),
-            fat: Math.round(selectedFood.fats_per_100g * ratio),
-        };
-        onAdd(newItem);
+                calc_tdee: parseInt(results.tdee),
+                target_calories: parseInt(results.targetCalories),
+                target_protein: parseInt(results.macros.protein.grams),
+                target_carbs: parseInt(results.macros.carbs.grams),
+                target_fats: parseInt(results.macros.fats.grams),
+                notes: planNotes
+            };
+            await api.patch(`/nutrition-plans/${activePlan.id}/`, payload);
+            alert("✅ Targets & Notes Saved!");
+            fetchPlans(page);
+        } catch (err) { alert("Failed to save."); }
     };
 
-    return (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl animate-in fade-in">
-            <div className="bg-[#18181b] w-full max-w-5xl rounded-[2.5rem] border border-zinc-800 shadow-2xl overflow-hidden flex flex-col md:flex-row h-[700px]">
-                <div className="w-full md:w-6/12 border-r border-zinc-800 flex flex-col bg-[#0c0c0e]">
-                    <div className="p-6 border-b border-zinc-800">
-                        <h3 className="text-xl font-black text-white mb-4">Select Food</h3>
-                        <div className="relative">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={18}/>
-                            <input autoFocus placeholder="Search database..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                                className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl pl-12 pr-4 py-4 text-white font-bold outline-none focus:border-orange-500 transition-all"/>
+    const handleDeletePlan = async (id, e) => {
+        e.stopPropagation();
+        if(!confirm("Delete this plan?")) return;
+        try {
+            await api.delete(`/nutrition-plans/${id}/`);
+            fetchPlans(page);
+            if(activePlan?.id === id) setView('list');
+        } catch (err) { alert("Error deleting."); }
+    };
+
+    const formatActivity = (str) => {
+        if (!str) return 'Moderate';
+        return str.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+    };
+
+    const exchangeList = useMemo(() => {
+        if (!results || !foodDatabase.length) return null;
+        const targets = results.perMeal; 
+        const groups = {
+            'Protein Sources': { items: [], targetCals: targets.proteinCals, color: 'text-red-500', bg: 'bg-red-500/10' },
+            'Carbohydrates': { items: [], targetCals: targets.carbsCals, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+            'Fats': { items: [], targetCals: targets.fatsCals, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
+        };
+
+        const carbModifier = 1 + (parseFloat(calcState.carbAdjustment || 0) / 100);
+
+        foodDatabase.forEach(food => {
+            const cat = food.category?.toLowerCase() || '';
+            let targetGroup = '';
+            
+            if (cat === 'protein') targetGroup = 'Protein Sources';
+            else if (cat === 'carbs') targetGroup = 'Carbohydrates';
+            else if (cat === 'fats') targetGroup = 'Fats';
+            
+            if (targetGroup && food.calories_per_100g > 0) {
+                const targetCals = groups[targetGroup].targetCals;
+                let requiredWeight = (targetCals / food.calories_per_100g) * 100;
+                
+                if (targetGroup === 'Carbohydrates') {
+                    requiredWeight = requiredWeight * carbModifier;
+                }
+
+                const meta = {
+                    cals: Math.round((food.calories_per_100g * requiredWeight) / 100),
+                    pro: Math.round((food.protein_per_100g * requiredWeight) / 100),
+                    carbs: Math.round((food.carbs_per_100g * requiredWeight) / 100),
+                    fats: Math.round((food.fats_per_100g * requiredWeight) / 100),
+                };
+                groups[targetGroup].items.push({ name: food.name, weight: Math.round(requiredWeight), unit: 'g', meta: meta });
+            }
+        });
+        return groups;
+    }, [results, foodDatabase, calcState.carbAdjustment]);
+
+    if (view === 'list') {
+        return (
+            <div className="space-y-8 animate-in fade-in duration-500 min-h-[500px] p-2">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-orange-500 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/20">
+                            <Utensils className="text-white" size={24} />
+                        </div>
+                        <div>
+                            <h2 className="text-3xl font-black text-white">Nutrition Plans</h2>
+                            <p className="text-zinc-500 font-medium text-sm">Manage client macros & diet sheets</p>
                         </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-2">
-                        {filteredFoods.map(food => (
-                            <div key={food.id} onClick={() => setSelectedFood(food)}
-                                className={`p-4 rounded-2xl cursor-pointer transition-all border group relative overflow-hidden ${selectedFood?.id === food.id ? 'bg-zinc-800 border-orange-500' : 'bg-[#121214] border-transparent hover:bg-zinc-800'}`}>
-                                <div className="flex justify-between items-start relative z-10">
-                                    <div>
-                                        <div className={`font-bold text-lg ${selectedFood?.id === food.id ? 'text-white' : 'text-zinc-300'}`}>{food.name}</div>
-                                        <div className="text-xs font-mono text-zinc-500 mt-1">{food.calories_per_100g} kcal / 100g</div>
+                </div>
+
+                <div className="bg-zinc-900/30 border border-zinc-800 p-6 rounded-[24px] relative overflow-hidden group hover:border-zinc-700 transition-all">
+                    <div className="flex flex-col md:flex-row items-end gap-4 relative z-10">
+                        <div className="flex-1 w-full space-y-2">
+                            <label className="text-xs font-bold text-zinc-500 uppercase ml-1">New Plan Name</label>
+                            <input 
+                                placeholder="e.g. Cutting Phase 1" 
+                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-orange-500 transition-all"
+                                value={newPlanName} 
+                                onChange={e => setNewPlanName(e.target.value)} 
+                            />
+                        </div>
+                        <div className="w-full md:w-32 space-y-2">
+                            <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Weeks</label>
+                            <input 
+                                type="number" 
+                                placeholder="4" 
+                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-orange-500 transition-all" 
+                                value={newPlanWeeks} 
+                                onChange={e => setNewPlanWeeks(e.target.value)} 
+                            />
+                        </div>
+                        <button 
+                            onClick={handleCreatePlan} 
+                            disabled={!newPlanName} 
+                            className="w-full md:w-auto px-8 py-3 bg-white text-black hover:bg-orange-500 hover:text-white disabled:opacity-50 font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
+                        >
+                            <Plus size={18} /> Create Strategy
+                        </button>
+                    </div>
+                </div>
+
+                {loading ? (
+                    <div className="py-20 flex justify-center text-orange-500"><Loader2 className="animate-spin w-10 h-10" /></div>
+                ) : (
+                    <div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                            {plans.map(plan => {
+                                const isMale = (plan.calc_gender || 'male') === 'male';
+                                const activity = formatActivity(plan.calc_activity_level);
+
+                                return (
+                                    <div 
+                                        key={plan.id} 
+                                        onClick={() => { setActivePlan(plan); setView('detail'); }} 
+                                        className="group relative bg-zinc-900 border border-zinc-800 rounded-[24px] p-6 hover:border-orange-500/50 hover:bg-zinc-900/80 hover:shadow-2xl hover:shadow-orange-900/10 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col justify-between h-[220px]"
+                                    >
+                                        <div className="absolute -right-6 -bottom-6 text-zinc-800/50 group-hover:text-orange-500/5 group-hover:scale-110 group-hover:-rotate-12 transition-all duration-500">
+                                            <Target size={140} strokeWidth={1} />
+                                        </div>
+
+                                        <div className="relative z-10 flex flex-col h-full gap-4">
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex gap-2">
+                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-800/50 border border-zinc-700/50 text-[10px] font-bold text-zinc-400 uppercase tracking-wider backdrop-blur-sm">
+                                                        <Calendar size={10} /> {plan.duration_weeks}W
+                                                    </span>
+                                                    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full border text-xs backdrop-blur-sm ${isMale ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-pink-500/10 border-pink-500/20 text-pink-400'}`}>
+                                                        {isMale ? <Mars size={12}/> : <Venus size={12}/>}
+                                                    </span>
+                                                </div>
+
+                                                <button onClick={(e) => handleDeletePlan(plan.id, e)} className="w-8 h-8 flex items-center justify-center rounded-full text-zinc-600 hover:bg-red-500/10 hover:text-red-500 transition-all z-20">
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
+                                            
+                                            <div>
+                                                <h3 className="text-xl font-black text-white leading-tight mb-1 group-hover:text-orange-500 transition-colors line-clamp-2">{plan.name}</h3>
+                                                <p className="text-xs text-zinc-500">Created {new Date(plan.created_at).toLocaleDateString()}</p>
+                                            </div>
+
+                                            <div className="flex items-center justify-between gap-2 mt-auto">
+                                                <div className="flex items-center gap-1.5 px-3 py-2 bg-zinc-950 rounded-xl border border-zinc-800/50 text-zinc-400">
+                                                    <Zap size={14} className="text-emerald-500 fill-emerald-500/20" />
+                                                    <span className="text-[10px] font-bold uppercase tracking-wide">{activity}</span>
+                                                </div>
+
+                                                <div className="flex items-center gap-2 px-3 py-2 bg-zinc-950 rounded-xl border border-zinc-800/50 group-hover:border-orange-500/20 transition-colors ml-auto">
+                                                    <Flame size={14} className="text-orange-500 fill-orange-500/20" />
+                                                    <span className="text-white font-bold text-sm">{plan.target_calories || 0}</span>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    {selectedFood?.id === food.id && <div className="w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center text-black"><Check size={14} strokeWidth={3}/></div>}
+                                );
+                            })}
+                            
+                            {plans.length === 0 && (
+                                <div className="col-span-full py-16 text-center border-2 border-dashed border-zinc-800 rounded-3xl text-zinc-500">
+                                    <Utensils size={48} className="mx-auto mb-4 opacity-20" />
+                                    <p className="font-bold">No Nutrition Plans Found</p>
+                                    <p className="text-sm">Create a new strategy above to get started.</p>
                                 </div>
-                                <div className="flex gap-2 mt-3 relative z-10">
-                                    <div className="flex-1 bg-black/40 rounded-lg p-1.5 text-center border border-zinc-800">
-                                        <div className="text-[9px] text-red-400 font-bold uppercase">Pro</div>
-                                        <div className="text-xs font-mono font-bold text-zinc-300">{food.protein_per_100g}</div>
+                            )}
+                        </div>
+
+                        <Pagination totalItems={totalCount} itemsPerPage={12} currentPage={page} onPageChange={setPage} />
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    if (view === 'detail' && results) {
+        
+        // Point 9: Get Trainer Name
+        const trainerName = activePlan.created_by_name || "Coach";
+
+        return (
+            <div className="animate-in slide-in-from-bottom-4 duration-500 pb-20">
+                <div className="flex items-center justify-between mb-8">
+                    <div className="flex items-center gap-4">
+                        <button onClick={() => setView('list')} className="w-10 h-10 flex items-center justify-center bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white"><ArrowLeft size={18} /></button>
+                        <div>
+                            <h2 className="text-xl font-black text-white">{activePlan.name}</h2>
+                            <p className="text-xs text-zinc-500">Auto-generated Options</p>
+                        </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                        {results && activePlan && (
+                            <PDFDownloadLink
+                                document={
+                                    <NutritionDocument 
+                                        plan={activePlan}
+                                        clientName={pdfClientName} // Point 10 Fixed
+                                        trainerName={trainerName} 
+                                        brandText={calcState.brandText} 
+                                        carbAdjustment={calcState.carbAdjustment} 
+                                        results={results}
+                                        exchangeList={exchangeList}
+                                        notes={planNotes}
+                                    />
+                                }
+                                fileName={`${activePlan.name.replace(/\s+/g, '_')}_Plan.pdf`}
+                            >
+                                {({ blob, url, loading: pdfLoading, error }) => (
+                                    <button 
+                                        disabled={pdfLoading}
+                                        className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold rounded-xl border border-zinc-700 text-sm flex items-center gap-2 transition-all disabled:opacity-50"
+                                    >
+                                        {pdfLoading ? <Loader2 size={16} className="animate-spin"/> : <Download size={16} />} 
+                                        PDF
+                                    </button>
+                                )}
+                            </PDFDownloadLink>
+                        )}
+
+                        <button onClick={handleSavePlan} className="px-6 py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl shadow-lg shadow-orange-900/20 text-sm flex items-center gap-2">
+                            <Save size={16} /> Save Targets
+                        </button>
+                    </div>
+                </div>
+
+                {/* --- VERTICAL LAYOUT STACK --- */}
+                <div className="space-y-6 max-w-7xl mx-auto">
+                    
+                    {/* 1. CLIENT DATA (ROW) */}
+                    <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-6">
+                        <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+                            <User size={18} className="text-orange-500"/> Client Data
+                        </h3>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                            <ModernInput label="Gender" value={calcState.gender} onChange={(v) => setCalcState({...calcState, gender: v})} options={[{val:'male', lbl:'Male'}, {val:'female', lbl:'Female'}]} />
+                            
+                            <ModernInput label="Age" value={calcState.age} onChange={(v) => setCalcState({...calcState, age: v})} type="number" min="0" />
+                            <ModernInput label="Height" value={calcState.heightCm} onChange={(v) => setCalcState({...calcState, heightCm: v})} type="number" suffix="cm" min="0" />
+                            
+                            <div className="col-span-1">
+                                <ModernInput label="Weight" value={calcState.weightKg} onChange={(v) => setCalcState({...calcState, weightKg: v})} type="number" suffix="kg" min="0" />
+                            </div>
+                            <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-2xl flex flex-col justify-center">
+                                <label className="text-[10px] uppercase font-bold text-zinc-500 flex items-center gap-1"><Scale size={10} /> In Lbs</label>
+                                <span className="text-white font-bold text-lg">{weightLbs}</span>
+                            </div>
+
+                            <ModernInput label="Activity" value={calcState.activityLevel} onChange={(v) => setCalcState({...calcState, activityLevel: v})} options={[
+                                {val:'sedentary', lbl:'Sedentary'}, {val:'light', lbl:'Light'}, {val:'moderate', lbl:'Moderate'}, {val:'active', lbl:'Active'}
+                            ]} />
+                        </div>
+                    </div>
+
+                    {/* 2. STRATEGY (ROW) */}
+                    <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-6">
+                        <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+                            <Activity size={18} className="text-emerald-500"/> Strategy
+                        </h3>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                            <ModernInput label="Deficit/Surplus" value={calcState.deficitSurplus} onChange={(v) => setCalcState({...calcState, deficitSurplus: v})} type="number" suffix="kcal" />
+                            <ModernInput label="Pro Ratio" value={calcState.proteinPerLb} onChange={(v) => setCalcState({...calcState, proteinPerLb: v})} type="number" suffix="g/lb" min="0" />
+                            <ModernInput label="Fat Ratio" value={calcState.fatPercentage} onChange={(v) => setCalcState({...calcState, fatPercentage: v})} type="number" suffix="%" min="0" />
+                            <ModernInput label="Carb Manip %" value={calcState.carbAdjustment} onChange={(v) => setCalcState({...calcState, carbAdjustment: v})} type="number" suffix="+/-" className="border-blue-500/30" />
+                            <ModernInput label="Main Meals" value={calcState.mealsCount} onChange={(v) => setCalcState({...calcState, mealsCount: v})} type="number" min="1" />
+                            <ModernInput label="Snacks" value={calcState.snacksCount} onChange={(v) => setCalcState({...calcState, snacksCount: v})} type="number" suffix="#" min="0" />
+                        </div>
+                    </div>
+
+                    {/* NEW: PDF BRAND CUSTOMIZATION */}
+                    <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-6">
+                        <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+                            <FileText size={18} className="text-purple-500"/> PDF Customization
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <ModernInput 
+                                label="Brand / Logo Text" 
+                                value={calcState.brandText} 
+                                onChange={(v) => setCalcState({...calcState, brandText: v})} 
+                                placeholder="e.g. IRON GYM"
+                            />
+                        </div>
+                    </div>
+
+                    {results.warning && (
+                        <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-2xl flex items-start gap-3">
+                            <AlertTriangle className="text-red-500 shrink-0" size={20} />
+                            <p className="text-xs font-bold text-red-400">{results.warning}</p>
+                        </div>
+                    )}
+
+                    {/* 3. DAILY TARGET (ROW) */}
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+                        <div className="text-center md:text-left min-w-[200px]">
+                            <p className="text-xs font-bold text-zinc-500 uppercase">Daily Target</p>
+                            <p className="text-5xl font-black text-white">{results.targetCalories} <span className="text-lg text-zinc-500 font-bold">kcal</span></p>
+                        </div>
+                        
+                        <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-6 w-full">
+                            <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800/50">
+                                <span className="text-zinc-400 flex items-center gap-2 text-xs uppercase font-bold mb-1"><Beef size={14} className="text-red-500"/> Protein</span>
+                                <span className="text-white font-black text-2xl">{results.macros.protein.grams}g</span>
+                                <div className="text-zinc-600 text-xs font-medium mt-1">{results.perMeal.proteinGrams}g / meal</div>
+                            </div>
+                            <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800/50">
+                                <span className="text-zinc-400 flex items-center gap-2 text-xs uppercase font-bold mb-1"><Wheat size={14} className="text-blue-500"/> Carbs</span>
+                                <span className="text-white font-black text-2xl">{results.macros.carbs.grams}g</span>
+                                <div className="text-zinc-600 text-xs font-medium mt-1">{results.perMeal.carbsGrams}g / meal</div>
+                            </div>
+                            <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800/50">
+                                <span className="text-zinc-400 flex items-center gap-2 text-xs uppercase font-bold mb-1"><Droplets size={14} className="text-yellow-500"/> Fats</span>
+                                <span className="text-white font-black text-2xl">{results.macros.fats.grams}g</span>
+                                <div className="text-zinc-600 text-xs font-medium mt-1">{results.perMeal.fatsGrams}g / meal</div>
+                            </div>
+                             <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800/50">
+                                <span className="text-zinc-400 flex items-center gap-2 text-xs uppercase font-bold mb-1"><Leaf size={14} className="text-emerald-500"/> Fiber</span>
+                                <span className="text-white font-black text-2xl">{results.macros.fiber.grams}g</span>
+                                <div className="text-zinc-600 text-xs font-medium mt-1">Minimum</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 4. ITEMS TABLE (ROW) */}
+                    <div className="space-y-6">
+                        {exchangeList && Object.entries(exchangeList).map(([groupName, data]) => (
+                            <div key={groupName} className="bg-[#121214] border border-zinc-800 rounded-3xl overflow-hidden">
+                                <div className={`p-4 border-b border-zinc-800 flex justify-between items-center ${data.bg}`}>
+                                    <h3 className={`font-black uppercase tracking-wider text-sm ${data.color}`}>{groupName}</h3>
+                                    <div className="flex items-center gap-2">
+                                        {groupName === 'Carbohydrates' && calcState.carbAdjustment !== 0 && (
+                                            <span className="text-[10px] font-bold text-white bg-blue-500 px-2 py-1 rounded-md">
+                                                {calcState.carbAdjustment > 0 ? '+' : ''}{calcState.carbAdjustment}% Modified
+                                            </span>
+                                        )}
+                                        <div className="text-xs font-bold text-white bg-black/20 px-3 py-1 rounded-lg">
+                                            Target: {Math.round(data.targetCals)} kcal / meal
+                                        </div>
                                     </div>
-                                    <div className="flex-1 bg-black/40 rounded-lg p-1.5 text-center border border-zinc-800">
-                                        <div className="text-[9px] text-blue-400 font-bold uppercase">Carb</div>
-                                        <div className="text-xs font-mono font-bold text-zinc-300">{food.carbs_per_100g}</div>
-                                    </div>
-                                    <div className="flex-1 bg-black/40 rounded-lg p-1.5 text-center border border-zinc-800">
-                                        <div className="text-[9px] text-yellow-400 font-bold uppercase">Fat</div>
-                                        <div className="text-xs font-mono font-bold text-zinc-300">{food.fats_per_100g}</div>
+                                </div>
+                                <div className="p-0">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 divide-y md:divide-y-0 md:gap-px bg-zinc-800/50">
+                                        {data.items.length > 0 ? (
+                                            data.items.map((item, idx) => (
+                                                <div key={idx} className="bg-[#121214] p-4 hover:bg-zinc-900 transition-colors flex justify-between items-center">
+                                                    <span className="font-bold text-zinc-300">{item.name}</span>
+                                                    <div className="text-right">
+                                                        <div>
+                                                            <span className={`font-black text-lg ${groupName === 'Carbohydrates' && calcState.carbAdjustment !== 0 ? 'text-blue-400' : 'text-white'}`}>
+                                                                {item.weight}
+                                                            </span>
+                                                            <span className="text-zinc-500 text-xs font-bold ml-1">{item.unit}</span>
+                                                        </div>
+                                                        <div className="text-[10px] text-zinc-500 font-medium">~ {item.meta.cals} kcal</div>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="col-span-full p-8 text-center text-zinc-500 text-sm bg-[#121214]">
+                                                No items found for this category in database.
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
                         ))}
                     </div>
-                </div>
-                <div className="w-full md:w-6/12 bg-[#121214] p-8 flex flex-col relative">
-                    <button onClick={onClose} className="absolute top-6 right-6 p-2 bg-zinc-900 rounded-full text-zinc-500 hover:text-white"><X size={24}/></button>
-                    {!selectedFood ? (
-                        <div className="flex flex-col items-center justify-center h-full text-zinc-700 gap-4">
-                            <Utensils size={64} className="opacity-10"/>
-                            <p className="text-lg font-bold opacity-50">Select an item to calculate</p>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col h-full justify-center animate-in slide-in-from-right-4 duration-300">
-                            <h3 className="text-4xl font-black text-white mb-2">{selectedFood.name}</h3>
-                            <div className="text-zinc-500 mb-10 font-bold">Base: {selectedFood.calories_per_100g} kcal / 100g</div>
-                            <label className="text-xs font-black text-zinc-500 uppercase mb-3 ml-2">Amount (grams)</label>
-                            <input type="number" value={gramAmount} onChange={e => setGramAmount(parseInt(e.target.value) || 0)}
-                                className="w-full bg-black border-2 border-zinc-800 rounded-3xl p-6 text-6xl font-black text-white text-center outline-none focus:border-orange-500 font-mono mb-10 shadow-inner"/>
-                            <div className="grid grid-cols-4 gap-3 mb-8">
-                                <StatBox label="Cal" val={Math.round(selectedFood.calories_per_100g * (gramAmount/100))} />
-                                <StatBox label="Pro" val={Math.round(selectedFood.protein_per_100g * (gramAmount/100))} col="text-red-400"/>
-                                <StatBox label="Carb" val={Math.round(selectedFood.carbs_per_100g * (gramAmount/100))} col="text-blue-400"/>
-                                <StatBox label="Fat" val={Math.round(selectedFood.fats_per_100g * (gramAmount/100))} col="text-yellow-400"/>
-                            </div>
-                            <button onClick={handleConfirm} className="w-full bg-orange-600 hover:bg-orange-500 text-white py-5 rounded-2xl font-black text-xl transition-all flex items-center justify-center gap-3 shadow-xl shadow-orange-900/20">
-                                <Check size={24} strokeWidth={3} /> ADD TO MEAL
-                            </button>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
 
-const StatBox = ({ label, val, col = "text-white" }) => (
-    <div className="bg-zinc-900 rounded-2xl p-4 text-center border border-zinc-800">
-        <div className="text-[10px] font-bold text-zinc-500 uppercase mb-1">{label}</div>
-        <div className={`text-xl font-black ${col}`}>{val}</div>
-    </div>
-);
-
-const StepperControl = ({ label, sub, value, onChange, color = "text-white", step = 1 }) => (
-    <div className="flex items-center justify-between group">
-        <label className="text-sm font-bold text-zinc-400">{label}</label>
-        <div className="flex items-center gap-3 bg-zinc-950 p-1.5 rounded-xl border border-zinc-800 group-hover:border-zinc-700 transition-colors">
-            <button onClick={() => onChange(Math.max(0, parseFloat((value - step).toFixed(1))))} className="w-8 h-8 rounded-lg bg-zinc-900 text-zinc-500 hover:bg-zinc-800 hover:text-white flex items-center justify-center"><Minus size={14} /></button>
-            <div className="flex items-baseline justify-center min-w-[70px] gap-1"><span className={`text-xl font-mono font-black ${color}`}>{value}</span><span className="text-[10px] text-zinc-600 font-bold uppercase">{sub}</span></div>
-            <button onClick={() => onChange(parseFloat((value + step).toFixed(1)))} className="w-8 h-8 rounded-lg bg-zinc-900 text-zinc-500 hover:bg-zinc-800 hover:text-white flex items-center justify-center"><Plus size={14} /></button>
-        </div>
-    </div>
-);
-
-const BigMacroBar = ({ label, current, target, color, textColor }) => (
-    <div className="bg-zinc-900/30 rounded-[2rem] p-8 border border-zinc-800 flex flex-col justify-center h-full relative overflow-hidden">
-        <div className="flex justify-between items-end mb-6 relative z-10">
-            <span className="text-xs font-black text-zinc-500 uppercase tracking-wider">{label}</span>
-            <span className={`text-4xl font-mono font-black ${textColor}`}>{current}<span className="text-zinc-600 text-sm ml-1">/{target}g</span></span>
-        </div>
-        <div className="h-4 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800 relative z-10">
-            <div className={`h-full ${color}`} style={{ width: `${Math.min((current / target) * 100, 100)}%` }}></div>
-        </div>
-    </div>
-);
-
-const MealCard = ({ type, index, title, items, onAdd, onRemove, icon: Icon }) => {
-    const totalCals = items.reduce((sum, i) => sum + i.calories, 0);
-    return (
-        <div className="flex flex-col h-full bg-[#121214] border border-zinc-800 rounded-[1.5rem] hover:bg-zinc-900/80 transition-all group overflow-hidden shadow-lg hover:shadow-2xl">
-            <div className="p-6 flex justify-between items-start border-b border-zinc-800/50 bg-black/20">
-                <div className="flex items-center gap-5">
-                    <div className="w-14 h-14 rounded-2xl bg-zinc-800/50 border border-zinc-700/50 flex items-center justify-center text-zinc-400 shadow-inner"><Icon size={24} /></div>
-                    <div><h4 className="text-xl font-bold text-white">{title}</h4><div className="flex items-center gap-2 mt-1">{totalCals > 0 ? <span className="text-xs font-mono font-bold px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">{totalCals} cal</span> : <span className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Empty</span>}</div></div>
-                </div>
-                <button onClick={onAdd} className="bg-zinc-800 text-zinc-400 hover:bg-white hover:text-black p-3 rounded-xl transition-all opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 shadow-lg"><Plus size={20} /></button>
-            </div>
-            <div className="flex-1 p-4 space-y-3 min-h-[160px] bg-zinc-900/20">
-                {items.length === 0 ? <div className="h-full flex flex-col items-center justify-center text-zinc-700 border-2 border-dashed border-zinc-800/50 rounded-2xl gap-2 hover:border-zinc-700 cursor-pointer" onClick={onAdd}><Plus size={24} className="opacity-20"/><span className="text-xs font-bold uppercase tracking-widest opacity-40">Add Food</span></div> : items.map(item => (
-                    <div key={item.id} className="bg-black/40 rounded-xl p-3 border border-zinc-800/50 flex justify-between items-center group/item hover:border-zinc-600 transition-all">
-                        <div><div className="font-bold text-zinc-200 text-base">{item.name}</div><div className="text-xs font-mono text-zinc-500 mt-1 flex gap-3"><span>{item.amount}g</span><span className="text-zinc-700">|</span><span className="text-red-400">{item.protein}P</span><span className="text-blue-400">{item.carbs}C</span><span className="text-yellow-400">{item.fat}F</span></div></div>
-                        <button onClick={() => onRemove(item.id)} className="text-zinc-600 hover:text-red-500 px-2 transition-colors"><Trash2 size={18}/></button>
+                    {/* 5. NOTES (ROW) */}
+                    <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-6">
+                        <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+                            <FileText size={18} className="text-emerald-500"/> Coach Notes & Recommendations
+                        </h3>
+                        <textarea
+                            value={planNotes}
+                            onChange={(e) => setPlanNotes(e.target.value)}
+                            placeholder="Write your grocery list, supplement recommendations, or snack ideas here..."
+                            className="w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 text-zinc-300 font-medium outline-none focus:border-emerald-500/50 transition-colors resize-none text-sm leading-relaxed min-h-[150px]"
+                        ></textarea>
+                        <p className="text-[10px] text-zinc-500 mt-2 font-bold uppercase tracking-wider text-right">
+                            Use this area for fruits, veggies & snacks
+                        </p>
                     </div>
-                ))}
-            </div>
-        </div>
-    );
-};
 
-const CreatePlanModal = ({ onClose, onSubmit }) => {
-    const [name, setName] = useState('');
-    const [weeks, setWeeks] = useState(4);
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-            <div className="bg-[#18181b] border border-zinc-800 rounded-3xl w-full max-w-md p-6 shadow-2xl">
-                <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-black text-white">New Nutrition Cycle</h3><button onClick={onClose}><X className="text-zinc-500 hover:text-white"/></button></div>
-                <div className="space-y-4">
-                    <div><label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Phase Name</label><input autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Winter Bulk" className="w-full bg-black border border-zinc-800 rounded-xl p-4 text-white font-bold outline-none focus:border-orange-500"/></div>
-                    <div><label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Duration (Weeks)</label><input type="number" value={weeks} onChange={e => setWeeks(e.target.value)} className="w-full bg-black border border-zinc-800 rounded-xl p-4 text-white font-bold outline-none focus:border-orange-500"/></div>
-                    <button onClick={() => { if(name) onSubmit(name, weeks); }} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-xl mt-4">CREATE PLAN</button>
                 </div>
             </div>
-        </div>
-    );
+        );
+    }
+    return null;
 };
 
 export default ClientNutritionTab;

@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.3.2",
     "arabic-reshaper": "^1.1.0",
     "axios": "^1.13.3",
     "bidi-js": "^1.0.3",
@@ -22,6 +23,7 @@
     "react-dom": "^19.2.0",
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.13.0",
+    "recharts": "^3.7.0",
     "rtl-detect": "^1.1.2"
   },
   "devDependencies": {

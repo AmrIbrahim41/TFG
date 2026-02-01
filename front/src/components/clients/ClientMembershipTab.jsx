@@ -1,12 +1,41 @@
 import React, { useState } from 'react';
 import { Plus, Calendar, Scale, Power, UserCheck, Ruler, Droplets, Target, Activity, Waves, Dumbbell, ArrowRight, Save, Loader2 } from 'lucide-react';
 
+// --- PAGINATION COMPONENT ---
+const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => {
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    if (totalPages <= 1) return null;
+
+    return (
+        <div className="flex items-center justify-center gap-2 mt-2">
+            {Array.from({ length: totalPages }).map((_, idx) => (
+                <button
+                    key={idx}
+                    onClick={() => onPageChange(idx + 1)}
+                    className={`
+                        w-8 h-8 rounded-lg font-bold text-xs transition-all border
+                        ${currentPage === idx + 1 
+                            ? 'bg-orange-500 border-orange-500 text-white shadow-lg shadow-orange-900/20' 
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-white hover:border-zinc-700'}
+                    `}
+                >
+                    {idx + 1}
+                </button>
+            ))}
+        </div>
+    );
+};
+
 const ClientMembershipTab = ({ 
     subscriptions, hasActiveSub, setIsSubModalOpen, 
     setSelectedSub, selectedSub, toggleSubStatus, handleSaveInBody 
 }) => {
     // Local loading state for better UX
     const [isSaving, setIsSaving] = useState(false);
+    
+    // CLIENT PAGINATION STATE
+    const [page, setPage] = useState(1);
+    const itemsPerPage = 4; // Show 4 items per page
 
     // Helper: Water % for Animation
     const getWaterPercentage = () => {
@@ -56,6 +85,9 @@ const ClientMembershipTab = ({
         }
     };
 
+    // Slice for pagination
+    const displayedSubs = subscriptions.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+
     return (
         <div className="space-y-8 animate-in fade-in duration-300">
             
@@ -70,9 +102,9 @@ const ClientMembershipTab = ({
                     )}
                 </div>
 
-                <div className="max-h-[320px] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="min-h-[200px]">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {subscriptions.map((sub) => {
+                        {displayedSubs.map((sub) => {
                             const total = sub.plan_total_sessions || 0;
                             const used = sub.sessions_used || 0;
                             const remaining = Math.max(total - used, 0);
@@ -146,6 +178,13 @@ const ClientMembershipTab = ({
                         )}
                     </div>
                 </div>
+
+                <Pagination 
+                    totalItems={subscriptions.length} 
+                    itemsPerPage={itemsPerPage} 
+                    currentPage={page} 
+                    onPageChange={setPage} 
+                />
             </div>
 
             {/* --- Section 2: InBody Analysis Form --- */}

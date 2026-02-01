@@ -26,7 +26,15 @@ class Client(models.Model):
     status = models.CharField(max_length=50, default='Active', help_text="Active, Inactive, Injured, etc.")
     smoking = models.BooleanField(default=False, help_text="Is the client a smoker?")
     sleep_hours = models.FloatField(blank=True, null=True, help_text="Average hours of sleep")
+    
+    
+    is_child = models.BooleanField(default=False, help_text="Distinguish between adult clients and children")
+    parent_phone = models.CharField(max_length=20, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
+    country = models.CharField(max_length=50, default='Egypt', blank=True)
+    trained_gym_before = models.BooleanField(default=False)
+    trained_coach_before = models.BooleanField(default=False)
+    injuries = models.TextField(blank=True, null=True, help_text="Injuries or Surgeries history")
 
     def __str__(self):
         return self.name
@@ -40,54 +48,69 @@ class Client(models.Model):
 
 
 
+class Country(models.Model):
+    name = models.CharField(max_length=100, unique=True) # e.g. Egypt
+    code = models.CharField(max_length=5, unique=True)   # e.g. EG
+    dial_code = models.CharField(max_length=10)          # e.g. +20
+
+    def __str__(self):
+        return f"{self.flag} {self.name} ({self.dial_code})"
+
+
 
 
 class Subscription(models.Model):
     name = models.CharField(max_length=100) # e.g. "Gold Package"
     units = models.IntegerField(help_text="Number of sessions/visits")
     duration_days = models.IntegerField(help_text="Duration in days (e.g. 30 for 1 month)")
-    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00) # Optional but good to have
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00) 
+    is_child_plan = models.BooleanField(default=False, help_text="Is this package for children?")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.name} ({self.units} units)"
-    
-    
-from .models import Client, Subscription 
-    
+
+
+
 class ClientSubscription(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='subscriptions')
     plan = models.ForeignKey(Subscription, on_delete=models.SET_NULL, null=True)
-    trainer = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True) # NEW: Trainer Link
+    trainer = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     
     start_date = models.DateField(default=timezone.now)
     end_date = models.DateField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
-    
-    # NEW: Session Tracking
     sessions_used = models.IntegerField(default=0, help_text="Number of sessions attended")
 
-    # NEW: Expanded InBody Data
-    inbody_height = models.FloatField(default=0.0, help_text="Height in CM")
-    inbody_weight = models.FloatField(default=0.0, help_text="Weight in KG")
-    inbody_muscle = models.FloatField(default=0.0, help_text="Muscle Mass in KG")
-    inbody_fat = models.FloatField(default=0.0, help_text="Body Fat Percentage")
-    inbody_tbw = models.FloatField(default=0.0, help_text="Total Body Water")
+    # InBody Data (Collapsed for brevity - keep your existing fields here)
+    inbody_height = models.FloatField(default=0.0)
+    inbody_weight = models.FloatField(default=0.0)
+    inbody_muscle = models.FloatField(default=0.0)
+    inbody_fat = models.FloatField(default=0.0)
+    inbody_tbw = models.FloatField(default=0.0)
     
     GOAL_CHOICES = [('Weight Loss', 'Weight Loss'), ('Bulking', 'Bulking'), ('Cutting', 'Cutting'), ('Maintenance', 'Maintenance')]
     inbody_goal = models.CharField(max_length=50, choices=GOAL_CHOICES, blank=True, default='Weight Loss')
     
     ACTIVITY_CHOICES = [('Light', 'Light'), ('Moderate', 'Moderate'), ('High', 'High')]
     inbody_activity = models.CharField(max_length=50, choices=ACTIVITY_CHOICES, blank=True, default='Moderate')
-    
     inbody_notes = models.TextField(blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
+        # FIX: Only set end_date if it is NOT set yet. 
+        # This prevents the date from shifting if you edit the subscription later.
         if not self.end_date and self.plan:
             self.end_date = self.start_date + timedelta(days=self.plan.duration_days)
         super().save(*args, **kwargs)
+
+    @property
+    def progress_percentage(self):
+        """Helper for the Admin bar"""
+        if not self.plan or self.plan.units == 0:
+            return 0
+        return int((self.sessions_used / self.plan.units) * 100)
 
     def __str__(self):
         return f"{self.client.name} - {self.plan.name if self.plan else 'Unknown'}"
@@ -115,12 +138,8 @@ class TrainingDaySplit(models.Model):
 
     def __str__(self):
         return f"{self.order}: {self.name}"
-    
 
-    
-from .models import ClientSubscription, TrainingDaySplit # Keep existing imports
-    
-    
+
 # 1. Track Completed Sessions
 class SessionLog(models.Model):
     subscription = models.ForeignKey(ClientSubscription, on_delete=models.CASCADE, related_name='logs')
@@ -164,9 +183,6 @@ class TrainingSet(models.Model):
     class Meta:
         ordering = ['order']
         
-        
-        
-# ... keep existing models ...
 
 # NEW: Represents a specific day (e.g., Session 5)
 class TrainingSession(models.Model):
@@ -242,14 +258,28 @@ class NutritionPlan(models.Model):
     duration_weeks = models.IntegerField(default=4)
 
     # --- The Machine: Calculator State (Saved Inputs) ---
+    GENDER_CHOICES = [('male', 'Male'), ('female', 'Female')]
+    calc_gender = models.CharField(max_length=10, choices=GENDER_CHOICES, default='male', blank=True)
+    calc_age = models.IntegerField(blank=True, null=True, help_text="Age in years (can be from client)")
+    calc_height = models.FloatField(default=170.0, help_text="Height in cm")
     calc_weight = models.FloatField(default=80.0)
+    ACTIVITY_CHOICES = [
+        ('sedentary', 'Sedentary'),
+        ('light', 'Light'),
+        ('moderate', 'Moderate'),
+        ('active', 'Active'),
+        ('very_active', 'Very Active'),
+    ]
+    calc_activity_level = models.CharField(max_length=20, choices=ACTIVITY_CHOICES, default='moderate', blank=True)
     calc_tdee = models.IntegerField(default=2500)
-    calc_defer_cal = models.IntegerField(default=500) # Deficit
+    calc_defer_cal = models.IntegerField(default=500)  # Deficit (negative) or surplus (positive)
     calc_fat_percent = models.FloatField(default=25.0)
     calc_protein_multiplier = models.FloatField(default=2.2)
     calc_protein_advance = models.FloatField(default=0.8)
     calc_meals = models.IntegerField(default=4)
     calc_snacks = models.IntegerField(default=2)
+    calc_carb_adjustment = models.IntegerField(default=0, help_text="Percentage +/- for carbs")
+    pdf_brand_text = models.CharField(max_length=50, default="AZ", help_text="Text to display as logo on PDF")
 
     # --- The Machine: Targets (Calculated Outputs) ---
     target_calories = models.IntegerField(default=2000)
@@ -458,6 +488,8 @@ class FoodDatabase(models.Model):
     carbs_per_100g = models.FloatField()
     fats_per_100g = models.FloatField()
     fiber_per_100g = models.FloatField(default=0.0)
+    serving_unit = models.CharField(max_length=50, default="g", help_text="e.g. 'slice', 'egg', 'scoop'") 
+    grams_per_serving = models.FloatField(default=100.0, help_text="Weight of one serving in grams")
     
     # Common serving info
     common_serving_size = models.FloatField(default=100, help_text="Common serving in grams")

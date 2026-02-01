@@ -4,12 +4,12 @@ from .views import *
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
+    
 )
 
 router = DefaultRouter()
 router.register(r'clients', ClientViewSet)
 router.register(r'manage-trainers', ManageTrainersViewSet, basename='manage-trainers') 
-router.register(r'subscriptions', SubscriptionViewSet) 
 router.register(r'client-subscriptions', ClientSubscriptionViewSet, basename='client-subscriptions')
 router.register(r'training-plans', TrainingPlanViewSet, basename='training-plans')
 router.register(r'exercises', TrainingExerciseViewSet, basename='exercises')
@@ -21,6 +21,10 @@ router.register(r'meal-plans', MealPlanViewSet, basename='meal-plans')
 router.register(r'food-items', FoodItemViewSet, basename='food-items')
 router.register(r'nutrition-progress', NutritionProgressViewSet, basename='nutrition-progress')
 router.register(r'food-database', FoodDatabaseViewSet, basename='food-database')
+router.register(r'dashboard', DashboardAnalyticsViewSet, basename='dashboard')
+router.register(r'subscriptions', SubscriptionViewSet, basename='subscription')
+router.register(r'countries', CountryViewSet, basename='countries')
+
 
 urlpatterns = [
     path('', include(router.urls)),

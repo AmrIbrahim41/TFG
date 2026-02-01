@@ -1,28 +1,25 @@
-from rest_framework import (
-    viewsets,
-    parsers,
-    generics,
-    permissions,
-    serializers,
-    filters,
-)
-from rest_framework.response import Response
-from rest_framework.decorators import api_view, permission_classes, action
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from datetime import timedelta
+
 from django.contrib.auth.models import User
+from django.db import transaction
+from django.utils import timezone
+from rest_framework import (viewsets,parsers,generics,permissions,serializers,filters,status,
+)
+from django.db.models import Sum, Count, Q, F, Case, When, DecimalField
+from django.db.models.functions import TruncMonth
+from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.response import Response
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework.pagination import PageNumberPagination
-from rest_framework.parsers import (
-    MultiPartParser,
-    FormParser,
-    JSONParser,
-)
-from django.utils import timezone
-
 from .models import *
 from .serializers import *
-from django.db import transaction  # <--- تأكد من إضافة هذا السطر في أعلى الملف خالص
+from django.db.models.functions import TruncDay
+import calendar 
+
+
 
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -31,7 +28,7 @@ class StandardResultsSetPagination(PageNumberPagination):
     max_page_size = 1000
 
 
-# 1. Custom Login
+# ... [Keep Login/Token classes as they were] ...
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):
@@ -46,7 +43,6 @@ class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
 
 
-# 2. Trainer Serializer
 class TrainerSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -74,7 +70,6 @@ class TrainerSerializer(serializers.ModelSerializer):
         return instance
 
 
-# 3. ViewSets
 class ManageTrainersViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminUser]
     serializer_class = TrainerSerializer
@@ -88,30 +83,182 @@ class ClientViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter]
     search_fields = ["name", "phone", "manual_id"]
     pagination_class = StandardResultsSetPagination
+    def get_queryset(self):
+        queryset = Client.objects.all().order_by("-created_at")
+        is_child = self.request.query_params.get('is_child')
+        
+        # Filter by Child Status
+        if is_child == 'true':
+            queryset = queryset.filter(is_child=True)
+        elif is_child == 'false':
+            queryset = queryset.filter(is_child=False)
+            
+        return queryset
 
+
+# views.py
 
 class SubscriptionViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-    queryset = Subscription.objects.all().order_by("price")
     serializer_class = SubscriptionSerializer
+    
+    def get_queryset(self):
+        # Default: order by child status (adults first) then price
+        queryset = Subscription.objects.all().order_by('is_child_plan', 'price')
+        
+        # --- NEW FILTERING LOGIC ---
+        target = self.request.query_params.get('target') # 'child' or 'adult'
+        
+        if target == 'child':
+            queryset = queryset.filter(is_child_plan=True)
+        elif target == 'adult':
+            queryset = queryset.filter(is_child_plan=False)
+            
+        return queryset
+
+
+
+# In views.py
+
+class DashboardAnalyticsViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        user = request.user
+        now = timezone.now()
+        
+        # --- 1. TRAINER VIEW ---
+        if not user.is_superuser:
+            # OPTIMIZATION: select_related fetches client & plan in the same query
+            subs = ClientSubscription.objects.filter(trainer=user, is_active=True)\
+                .select_related('client', 'plan')
+            
+            current_month_revenue = ClientSubscription.objects.filter(
+                trainer=user,
+                created_at__month=now.month,
+                created_at__year=now.year
+            ).aggregate(total=Sum('plan__price'))['total'] or 0
+
+            # ... (Rest of trainer logic remains the same) ...
+            # (Just ensure you serialize 'subs' efficiently)
+            client_list = [{
+                'id': sub.client.id,
+                'name': sub.client.name,
+                'plan': sub.plan.name if sub.plan else "No Plan",
+                # ...
+            } for sub in subs]
+
+            return Response({
+                'role': 'trainer',
+                'summary': {'active_clients': subs.count(), 'current_month_revenue': current_month_revenue},
+                'clients': client_list
+            })
+
+        # --- 2. ADMIN VIEW (HEAVILY OPTIMIZED) ---
+        else:
+            month = int(request.query_params.get('month', now.month))
+            year = int(request.query_params.get('year', now.year))
+
+            # SINGLE QUERY TO GET ALL TRAINER STATS & REVENUE
+            trainers = User.objects.filter(is_superuser=False).annotate(
+                active_packages=Count('clientsubscription', filter=Q(clientsubscription__is_active=True)),
+                inactive_packages=Count('clientsubscription', filter=Q(clientsubscription__is_active=False)),
+                total_assigned=Count('clientsubscription'),
+                # Calculate Monthly Revenue per trainer inside the DB
+                monthly_revenue=Sum(
+                    Case(
+                        When(
+                            clientsubscription__created_at__month=month,
+                            clientsubscription__created_at__year=year,
+                            then=F('clientsubscription__plan__price')
+                        ),
+                        default=0,
+                        output_field=DecimalField()
+                    )
+                )
+            )
+
+            trainers_stats = []
+            for trainer in trainers:
+                trainers_stats.append({
+                    'id': trainer.id,
+                    'name': trainer.first_name or trainer.username,
+                    'active_packages': trainer.active_packages,
+                    'inactive_packages': trainer.inactive_packages,
+                    'total_assigned': trainer.total_assigned,
+                    'monthly_revenue': trainer.monthly_revenue or 0 # Logic moved to DB
+                })
+
+            # Financials (Total)
+            current_month_qs = ClientSubscription.objects.filter(created_at__month=month, created_at__year=year)
+            total_sales = current_month_qs.count()
+            total_revenue = current_month_qs.aggregate(total=Sum('plan__price'))['total'] or 0
+            
+            # Chart Data (Optimized)
+            chart_data = (
+                ClientSubscription.objects.filter(created_at__year=year)
+                .annotate(month=TruncMonth('created_at'))
+                .values('month')
+                .annotate(revenue=Sum('plan__price'))
+                .order_by('month')
+            )
+            
+            # Format Chart Data
+            formatted_chart = []
+            revenue_map = {item['month'].month: item['revenue'] for item in chart_data}
+            for i in range(1, 13):
+                formatted_chart.append({
+                    'name': calendar.month_name[i][:3],
+                    'revenue': revenue_map.get(i, 0)
+                })
+
+            return Response({
+                'role': 'admin',
+                'trainers_overview': trainers_stats,
+                'financials': {
+                    'month': month,
+                    'year': year,
+                    'total_sales': total_sales,
+                    'total_revenue': total_revenue,
+                    'chart_data': formatted_chart
+                }
+            })
 
 
 class ClientSubscriptionViewSet(viewsets.ModelViewSet):
     serializer_class = ClientSubscriptionSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
-        queryset = ClientSubscription.objects.all().order_by("-start_date")
+        # OPTIMIZATION: Fetch related Client, Plan, and Trainer data immediately
+        queryset = ClientSubscription.objects.all().select_related('client', 'plan', 'trainer').order_by("-start_date")
+        
         client_id = self.request.query_params.get("client_id")
         if client_id:
             queryset = queryset.filter(client=client_id)
         return queryset
 
+    # CONCURRENCY FIX: Use atomic transaction
     def perform_create(self, serializer):
-        if not self.request.user.is_superuser:
-            serializer.save(trainer=self.request.user)
-        else:
-            serializer.save()
+        with transaction.atomic():
+            if not self.request.user.is_superuser:
+                serializer.save(trainer=self.request.user)
+            else:
+                serializer.save()
+
+
+
+# views.py
+
+class CountryViewSet(viewsets.ModelViewSet):
+    queryset = Country.objects.all().order_by('name')
+    serializer_class = CountrySerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly] 
+
+
+
 
 
 class TrainingPlanViewSet(viewsets.ModelViewSet):
@@ -227,14 +374,33 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(is_completed=False)
         return queryset
 
-    # --- 1. SMART GET (View/Edit) ---
-    # --- 1. SMART GET (View/Edit) ---
     @action(detail=False, methods=["get"], url_path="get-data")
     def get_session_data(self, request):
         sub_id = request.query_params.get("subscription")
-        session_num = int(request.query_params.get("session_number"))
+        session_number_param = request.query_params.get("session_number")
+
+        if not sub_id or session_number_param is None:
+            return Response(
+                {"error": "subscription and session_number are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            session_num = int(session_number_param)
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "session_number must be a valid integer"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         response_data = {}
+
+        try:
+            sub = ClientSubscription.objects.get(id=sub_id)
+        except ClientSubscription.DoesNotExist:
+            return Response(
+                {"error": "Subscription not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         try:
             session = TrainingSession.objects.get(
@@ -242,8 +408,6 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
             )
             response_data = self.get_serializer(session).data
 
-            # --- FIX: INJECT TRAINER NAME ---
-            # If completed, use the person who completed it. If not, use the subscription's trainer.
             if session.completed_by:
                 response_data["trainer_name"] = (
                     session.completed_by.first_name or session.completed_by.username
@@ -258,10 +422,8 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
             return Response(response_data)
 
         except TrainingSession.DoesNotExist:
-            sub = ClientSubscription.objects.get(id=sub_id)
             plan = getattr(sub, "training_plan", None)
 
-            # --- FIX: GET TRAINER FROM SUBSCRIPTION ---
             trainer_name = sub.trainer.first_name if sub.trainer else "TFG Trainer"
 
             if not plan:
@@ -294,7 +456,7 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
                 "session_number": session_num,
                 "name": target_split.name,
                 "is_completed": False,
-                "trainer_name": trainer_name,  # <--- Added Here
+                "trainer_name": trainer_name,
                 "exercises": [],
             }
 
@@ -313,7 +475,6 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
 
             return Response(simulated_data)
 
-    # --- 2. SAVE (Updated) ---
     @action(detail=False, methods=["post"], url_path="save-data")
     def save_session_data(self, request):
         data = request.data
@@ -322,14 +483,11 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
         exercises = data.get("exercises", [])
         complete_it = data.get("mark_complete", False)
 
-        # 1. التحقق من وجود الاشتراك فقط (بدون منع المدربين الآخرين)
         try:
             sub = ClientSubscription.objects.get(id=sub_id)
         except ClientSubscription.DoesNotExist:
             return Response({"error": "Subscription not found"}, status=404)
 
-        # 2. حماية البيانات (Atomic Transaction)
-        # هذا السطر يضمن أن العملية كلها تنجح أو تفشل كلها، فلا تضيع التمارين
         with transaction.atomic():
             session, created = TrainingSession.objects.get_or_create(
                 subscription=sub,
@@ -342,13 +500,11 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
             if complete_it:
                 session.is_completed = True
                 session.date_completed = timezone.now().date()
-                # هنا بنسجل مين المدرب اللي قفل السشن فعلياً (حتى لو مش هو صاحب الاشتراك)
                 session.completed_by = request.user
 
             session.save()
 
             if complete_it:
-                # إعادة حساب الجلسات المستخدمة
                 sub.sessions_used = TrainingSession.objects.filter(
                     subscription=sub, is_completed=True
                 ).count()
@@ -360,7 +516,6 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
                     sub.is_active = False
                 sub.save()
 
-            # حذف القديم وإعادة بناء الجديد بأمان داخل الـ transaction
             session.exercises.all().delete()
             for ex_idx, ex_data in enumerate(exercises):
                 ex_obj = SessionExercise.objects.create(
@@ -378,7 +533,6 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
 
         return Response({"status": "saved"})
 
-    # --- 3. GET HISTORY ---
     @action(detail=False, methods=["get"], url_path="history")
     def get_history(self, request):
         sub_id = request.query_params.get("subscription")
@@ -422,36 +576,10 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
         return Response(result)
 
 
-# -----------------------------------------------------------------------------------------------------
-# -----------------------------------------------------------------------------------------------------
-# -----------------------------------------------------------------------------------------------------
-# -----------------------------------------------------------------------------------------------------
-# -----------------------------------------------------------------------------------------------------
-
-
-# Add these views to your views.py file
-
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from django.utils import timezone
-from datetime import datetime, timedelta
-
-from .models import NutritionPlan, MealPlan, FoodItem, NutritionProgress, FoodDatabase
-from .serializers import (
-    NutritionPlanSerializer,
-    NutritionPlanCreateSerializer,
-    MealPlanSerializer,
-    MealPlanCreateSerializer,
-    FoodItemSerializer,
-    NutritionProgressSerializer,
-    FoodDatabaseSerializer,
-)
-
-
 class NutritionPlanViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
+    # Added Pagination here
+    pagination_class = StandardResultsSetPagination
 
     def get_serializer_class(self):
         if self.action in ["create", "update", "partial_update"]:
@@ -461,12 +589,10 @@ class NutritionPlanViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = NutritionPlan.objects.all()
 
-        # Filter by subscription to show all cards for that sub
         subscription_id = self.request.query_params.get("subscription_id")
         if subscription_id:
             queryset = queryset.filter(subscription_id=subscription_id)
 
-        # Filter by client
         client_id = self.request.query_params.get("client_id")
         if client_id:
             queryset = queryset.filter(subscription__client_id=client_id)
@@ -474,18 +600,14 @@ class NutritionPlanViewSet(viewsets.ModelViewSet):
         return queryset.order_by("-created_at")
 
     def perform_create(self, serializer):
-        # Automatically assign the logged-in user
         serializer.save(created_by=self.request.user)
 
+    # ... [Keep the rest of the actions (weekly_overview, duplicate_week) unchanged] ...
     @action(detail=True, methods=["get"])
     def weekly_overview(self, request, pk=None):
-        """
-        Get weekly nutrition overview with totals
-        """
         nutrition_plan = self.get_object()
         meal_plans = nutrition_plan.meal_plans.all()
 
-        # Group by day
         weekly_data = {}
         for day in [
             "Monday",
@@ -511,39 +633,76 @@ class NutritionPlanViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def duplicate_week(self, request, pk=None):
         nutrition_plan = self.get_object()
-
-        # 1. Force evaluation of the list BEFORE modifying anything
-        # We fetch the original meals and their foods into memory
         original_meals = list(nutrition_plan.meal_plans.all().prefetch_related("foods"))
 
         if not original_meals:
-            return Response({"error": "No meals to duplicate"}, status=400)
+            return Response(
+                {"error": "No meals to duplicate"}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         with transaction.atomic():
+            plan_fields = {
+                "subscription_id": nutrition_plan.subscription_id,
+                "name": f"{nutrition_plan.name} (Copy)",
+                "duration_weeks": nutrition_plan.duration_weeks,
+                "calc_gender": nutrition_plan.calc_gender,
+                "calc_age": nutrition_plan.calc_age,
+                "calc_height": nutrition_plan.calc_height,
+                "calc_weight": nutrition_plan.calc_weight,
+                "calc_activity_level": nutrition_plan.calc_activity_level,
+                "calc_tdee": nutrition_plan.calc_tdee,
+                "calc_defer_cal": nutrition_plan.calc_defer_cal,
+                "calc_fat_percent": nutrition_plan.calc_fat_percent,
+                "calc_protein_multiplier": nutrition_plan.calc_protein_multiplier,
+                "calc_protein_advance": nutrition_plan.calc_protein_advance,
+                "calc_meals": nutrition_plan.calc_meals,
+                "calc_snacks": nutrition_plan.calc_snacks,
+                "target_calories": nutrition_plan.target_calories,
+                "target_protein": nutrition_plan.target_protein,
+                "target_carbs": nutrition_plan.target_carbs,
+                "target_fats": nutrition_plan.target_fats,
+                "notes": nutrition_plan.notes,
+                "created_by": request.user,
+            }
+            new_plan = NutritionPlan.objects.create(**plan_fields)
+
             for meal in original_meals:
-                # Cache the foods list from the original meal
                 original_foods = list(meal.foods.all())
-
-                # Create NEW meal
-                meal.pk = None
-                # Optional: You might want to rename the day to avoid duplicates like "Monday (Copy)"
-                # meal.day = f"{meal.day} (Copy)"
-                meal.save()
-
-                # Create NEW foods attached to the NEW meal
+                new_meal = MealPlan.objects.create(
+                    nutrition_plan=new_plan,
+                    day=meal.day,
+                    meal_type=meal.meal_type,
+                    meal_name=meal.meal_name,
+                    meal_time=meal.meal_time,
+                    total_calories=meal.total_calories,
+                    total_protein=meal.total_protein,
+                    total_carbs=meal.total_carbs,
+                    total_fats=meal.total_fats,
+                    notes=meal.notes,
+                )
                 for food in original_foods:
-                    food.pk = None
-                    food.meal_plan = meal
-                    food.save()
+                    FoodItem.objects.create(
+                        meal_plan=new_meal,
+                        name=food.name,
+                        quantity=food.quantity,
+                        unit=food.unit,
+                        calories=food.calories,
+                        protein=food.protein,
+                        carbs=food.carbs,
+                        fats=food.fats,
+                        fiber=food.fiber,
+                        category=food.category,
+                        preparation=food.preparation,
+                        order=food.order,
+                    )
 
-        return Response({"status": "Week duplicated successfully"})
+        return Response(
+            {"status": "Week duplicated successfully", "new_plan_id": new_plan.id}
+        )
 
 
+# ... [Keep MealPlanViewSet, FoodItemViewSet, NutritionProgressViewSet, FoodDatabaseViewSet unchanged] ...
 class MealPlanViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for managing individual meal plans
-    """
-
     permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
@@ -553,96 +712,67 @@ class MealPlanViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = MealPlan.objects.all()
-
-        # Filter by nutrition plan
         nutrition_plan_id = self.request.query_params.get("nutrition_plan_id")
         if nutrition_plan_id:
             queryset = queryset.filter(nutrition_plan_id=nutrition_plan_id)
-
-        # Filter by day
         day = self.request.query_params.get("day")
         if day:
             queryset = queryset.filter(day=day)
-
-        # Filter by meal type
         meal_type = self.request.query_params.get("meal_type")
         if meal_type:
             queryset = queryset.filter(meal_type=meal_type)
-
         return queryset.select_related("nutrition_plan").prefetch_related("foods")
 
     @action(detail=True, methods=["post"])
     def mark_completed(self, request, pk=None):
-        """
-        Mark a meal as completed
-        """
         meal_plan = self.get_object()
         meal_plan.is_completed = True
         meal_plan.completed_at = timezone.now()
         meal_plan.save()
-
         return Response({"status": "Meal marked as completed"})
 
     @action(detail=True, methods=["post"])
     def add_photo(self, request, pk=None):
-        """
-        Add photo to meal
-        """
         meal_plan = self.get_object()
         photo = request.FILES.get("photo")
-
         if photo:
             meal_plan.photo = photo
             meal_plan.save()
             return Response({"status": "Photo uploaded successfully"})
-
         return Response(
             {"error": "No photo provided"}, status=status.HTTP_400_BAD_REQUEST
         )
 
     @action(detail=True, methods=["post"])
     def calculate_totals(self, request, pk=None):
-        """
-        Recalculate meal totals from food items
-        """
         meal_plan = self.get_object()
         foods = meal_plan.foods.all()
-
         meal_plan.total_calories = sum(f.calories for f in foods)
         meal_plan.total_protein = sum(f.protein for f in foods)
         meal_plan.total_carbs = sum(f.carbs for f in foods)
         meal_plan.total_fats = sum(f.fats for f in foods)
         meal_plan.save()
-
         serializer = self.get_serializer(meal_plan)
         return Response(serializer.data)
 
 
 class FoodItemViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for managing food items
-    """
-
+    filter_backends = [filters.SearchFilter]
+    search_fields = ["name", "category"]
     serializer_class = FoodItemSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         queryset = FoodItem.objects.all()
-
-        # Filter by meal plan
         meal_plan_id = self.request.query_params.get("meal_plan_id")
         if meal_plan_id:
             queryset = queryset.filter(meal_plan_id=meal_plan_id)
-
         return queryset.select_related("meal_plan")
 
     def perform_create(self, serializer):
         food_item = serializer.save()
-
-        # Auto-recalculate meal totals
         meal_plan = food_item.meal_plan
         foods = meal_plan.foods.all()
-
         meal_plan.total_calories = sum(f.calories for f in foods)
         meal_plan.total_protein = sum(f.protein for f in foods)
         meal_plan.total_carbs = sum(f.carbs for f in foods)
@@ -652,8 +782,6 @@ class FoodItemViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         meal_plan = instance.meal_plan
         instance.delete()
-
-        # Recalculate totals after deletion
         foods = meal_plan.foods.all()
         meal_plan.total_calories = sum(f.calories for f in foods)
         meal_plan.total_protein = sum(f.protein for f in foods)
@@ -663,83 +791,54 @@ class FoodItemViewSet(viewsets.ModelViewSet):
 
 
 class NutritionProgressViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for tracking nutrition progress
-    """
-
     serializer_class = NutritionProgressSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         queryset = NutritionProgress.objects.all()
-
-        # Filter by nutrition plan
         nutrition_plan_id = self.request.query_params.get("nutrition_plan_id")
         if nutrition_plan_id:
             queryset = queryset.filter(nutrition_plan_id=nutrition_plan_id)
-
-        # Filter by date range
         start_date = self.request.query_params.get("start_date")
         end_date = self.request.query_params.get("end_date")
-
         if start_date:
             queryset = queryset.filter(date__gte=start_date)
         if end_date:
             queryset = queryset.filter(date__lte=end_date)
-
         return queryset.select_related("nutrition_plan")
 
     @action(detail=False, methods=["get"])
     def weekly_progress(self, request):
-        """
-        Get progress for the current week
-        """
         nutrition_plan_id = request.query_params.get("nutrition_plan_id")
         if not nutrition_plan_id:
             return Response(
                 {"error": "nutrition_plan_id required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
         today = timezone.now().date()
         week_start = today - timedelta(days=today.weekday())
         week_end = week_start + timedelta(days=6)
-
         progress = NutritionProgress.objects.filter(
             nutrition_plan_id=nutrition_plan_id, date__range=[week_start, week_end]
         )
-
         serializer = self.get_serializer(progress, many=True)
         return Response(serializer.data)
 
 
 class FoodDatabaseViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for food database (pre-populated food items)
-    """
-
     serializer_class = FoodDatabaseSerializer
     permission_classes = [IsAuthenticated]
     queryset = FoodDatabase.objects.all()
 
     @action(detail=False, methods=["get"])
     def search(self, request):
-        """
-        Search foods by name
-        """
         query = request.query_params.get("q", "")
         category = request.query_params.get("category", "")
-
         queryset = self.get_queryset()
-
         if query:
             queryset = queryset.filter(name__icontains=query)
-
         if category:
             queryset = queryset.filter(category=category)
-
-        # Limit results
         queryset = queryset[:20]
-
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)

@@ -1,6 +1,10 @@
 from rest_framework import serializers
 from .models import *
-
+from django.db.models import Sum, Count
+from .models import *
+import datetime
+from django.db.models.functions import TruncDay
+from django.db import transaction
 
 
 class ClientSerializer(serializers.ModelSerializer):
@@ -27,6 +31,12 @@ class ClientSerializer(serializers.ModelSerializer):
             "sleep_hours",
             "notes",
             "is_subscribed",
+            "is_child",
+            "parent_phone",
+            "country",
+            "trained_gym_before",
+            "trained_coach_before",
+            "injuries",
         ]
 
     def get_photo_url(self, obj):
@@ -35,8 +45,7 @@ class ClientSerializer(serializers.ModelSerializer):
         return None
 
     def get_is_subscribed(self, obj):
-        # Returns True if there is at least one active subscription
-        return obj.subscriptions.filter(is_active=True).exists()
+     return obj.subscriptions.filter(is_active=True).exists()
 
     # --- NEW SECURITY RULE ---
     def validate(self, data):
@@ -66,6 +75,14 @@ class SubscriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Subscription
         fields = "__all__"
+
+
+
+class CountrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Country
+        fields = '__all__'
+
 
 
 class ClientSubscriptionSerializer(serializers.ModelSerializer):
@@ -143,8 +160,6 @@ class TrainingPlanSerializer(serializers.ModelSerializer):
         fields = ["id", "subscription", "cycle_length", "created_at", "splits"]
 
 
-from .models import TrainingSession, SessionExercise, SessionSet # Import
-
 class SessionSetSerializer(serializers.ModelSerializer):
     class Meta:
         model = SessionSet
@@ -164,22 +179,6 @@ class TrainingSessionSerializer(serializers.ModelSerializer):
     class Meta:
         model = TrainingSession
         fields = ['id', 'subscription', 'session_number', 'name', 'is_completed', 'date_completed', 'exercises', 'trainer_name']
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-# Add these serializers to your serializers.py file
 
 
 class FoodItemSerializer(serializers.ModelSerializer):
@@ -203,18 +202,29 @@ class MealPlanSerializer(serializers.ModelSerializer):
 
 
 class NutritionPlanSerializer(serializers.ModelSerializer):
-    created_by_name = serializers.ReadOnlyField(source='created_by.first_name') 
+    created_by_name = serializers.SerializerMethodField()  # username of card creator
     client_name = serializers.ReadOnlyField(source='subscription.client.name')
+    client_age = serializers.SerializerMethodField()
 
     class Meta:
         model = NutritionPlan
         fields = [
-            'id', 'subscription', 'client_name', 'name', 'duration_weeks',
-            'calc_weight', 'calc_tdee', 'calc_defer_cal', 'calc_fat_percent',
+            'id', 'subscription', 'client_name', 'client_age', 'name', 'duration_weeks',
+            'calc_gender', 'calc_age', 'calc_height', 'calc_weight', 'calc_activity_level',
+            'calc_tdee', 'calc_defer_cal', 'calc_fat_percent',
             'calc_protein_multiplier', 'calc_protein_advance', 'calc_meals', 'calc_snacks',
+            # NEW FIELDS ADDED HERE
+            'calc_carb_adjustment', 'pdf_brand_text',
             'target_calories', 'target_protein', 'target_carbs', 'target_fats',
             'notes', 'created_at', 'updated_at', 'created_by', 'created_by_name'
         ]
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.username if obj.created_by else None
+
+    def get_client_age(self, obj):
+        client = getattr(obj.subscription, 'client', None)
+        return client.age if client else None
 
 
 class NutritionProgressSerializer(serializers.ModelSerializer):
@@ -238,15 +248,15 @@ class FoodItemCreateSerializer(serializers.ModelSerializer):
 
 class MealPlanCreateSerializer(serializers.ModelSerializer):
     foods = FoodItemCreateSerializer(many=True, required=False)
-    
+
     class Meta:
         model = MealPlan
         fields = [
-            'day', 'meal_type', 'meal_name', 'meal_time', 
+            'nutrition_plan', 'day', 'meal_type', 'meal_name', 'meal_time',
             'total_calories', 'total_protein', 'total_carbs', 'total_fats',
-            'notes', 'foods'
+            'notes', 'foods',
         ]
-    
+
     def create(self, validated_data):
         foods_data = validated_data.pop('foods', [])
         meal_plan = MealPlan.objects.create(**validated_data)
@@ -258,6 +268,9 @@ class MealPlanCreateSerializer(serializers.ModelSerializer):
         return meal_plan
 
 
+
+
+
 class NutritionPlanCreateSerializer(serializers.ModelSerializer):
     meal_plans = MealPlanCreateSerializer(many=True, required=False)
     
@@ -265,61 +278,74 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
         model = NutritionPlan
         fields = [
             'subscription', 'name', 'duration_weeks',
-            'calc_weight', 'calc_tdee', 'calc_defer_cal', 'calc_fat_percent',
+            'calc_gender', 'calc_age', 'calc_height', 'calc_weight', 'calc_activity_level',
+            'calc_tdee', 'calc_defer_cal', 'calc_fat_percent',
             'calc_protein_multiplier', 'calc_protein_advance', 'calc_meals', 'calc_snacks',
+            'calc_carb_adjustment', 'pdf_brand_text',
             'target_calories', 'target_protein', 'target_carbs', 'target_fats',
-            'meal_plans' # <--- Ensure this is included
+            'meal_plans'
         ]
     
     def create(self, validated_data):
         meal_plans_data = validated_data.pop('meal_plans', [])
+        
+        # Set defaults if missing
+        validated_data.setdefault('target_calories', 2000)
+        validated_data.setdefault('target_protein', 150)
+        validated_data.setdefault('target_carbs', 200)
+        validated_data.setdefault('target_fats', 60)
+
+        # 1. Create Plan
         nutrition_plan = NutritionPlan.objects.create(**validated_data)
         
+        # 2. Process Meals & Foods (Optimized)
+        food_items_to_create = []
+
         for meal_data in meal_plans_data:
             foods_data = meal_data.pop('foods', [])
+            # We save MealPlan individually to get the ID required for FoodItems
             meal_plan = MealPlan.objects.create(nutrition_plan=nutrition_plan, **meal_data)
+            
+            # Prepare Foods for Bulk Create
             for food_data in foods_data:
-                FoodItem.objects.create(meal_plan=meal_plan, **food_data)
+                food_items_to_create.append(
+                    FoodItem(meal_plan=meal_plan, **food_data)
+                )
+
+        # 3. Bulk Create Foods (1 Query instead of N)
+        if food_items_to_create:
+            FoodItem.objects.bulk_create(food_items_to_create)
         
         return nutrition_plan
 
-    # --- NEW: ADD THIS UPDATE METHOD ---
     def update(self, instance, validated_data):
-        # 1. Update standard fields
-        instance.name = validated_data.get('name', instance.name)
-        instance.duration_weeks = validated_data.get('duration_weeks', instance.duration_weeks)
-        
-        # Update Calculator Targets
-        instance.target_calories = validated_data.get('target_calories', instance.target_calories)
-        instance.target_protein = validated_data.get('target_protein', instance.target_protein)
-        instance.target_carbs = validated_data.get('target_carbs', instance.target_carbs)
-        instance.target_fats = validated_data.get('target_fats', instance.target_fats)
-        
-        # Update Calculator State
-        instance.calc_weight = validated_data.get('calc_weight', instance.calc_weight)
-        instance.calc_tdee = validated_data.get('calc_tdee', instance.calc_tdee)
-        instance.calc_defer_cal = validated_data.get('calc_defer_cal', instance.calc_defer_cal)
-        instance.calc_fat_percent = validated_data.get('calc_fat_percent', instance.calc_fat_percent)
-        instance.calc_protein_multiplier = validated_data.get('calc_protein_multiplier', instance.calc_protein_multiplier)
-        instance.calc_protein_advance = validated_data.get('calc_protein_advance', instance.calc_protein_advance)
-        instance.calc_meals = validated_data.get('calc_meals', instance.calc_meals)
-        instance.calc_snacks = validated_data.get('calc_snacks', instance.calc_snacks)
-        
+        # Update standard fields
+        for attr, value in validated_data.items():
+            if attr != 'meal_plans':
+                setattr(instance, attr, value)
         instance.save()
 
-        # 2. Handle Nested Meal Plans (The "Save Meals" Logic)
+        # Handle Nested Meal Plans
         if 'meal_plans' in validated_data:
             meal_plans_data = validated_data.pop('meal_plans')
             
-            # Wipe existing meals for this plan to avoid duplicates
-            instance.meal_plans.all().delete()
-            
-            # Re-create meals from the new data
-            for meal_data in meal_plans_data:
-                foods_data = meal_data.pop('foods', [])
-                meal_plan = MealPlan.objects.create(nutrition_plan=instance, **meal_data)
+            # Atomic transaction to ensure we don't delete without replacing if error occurs
+            with transaction.atomic():
+                # Clear old meals (This addresses the logic error)
+                instance.meal_plans.all().delete()
                 
-                for food_data in foods_data:
-                    FoodItem.objects.create(meal_plan=meal_plan, **food_data)
+                food_items_to_create = []
+                for meal_data in meal_plans_data:
+                    foods_data = meal_data.pop('foods', [])
+                    meal_plan = MealPlan.objects.create(nutrition_plan=instance, **meal_data)
+                    
+                    for food_data in foods_data:
+                        food_items_to_create.append(
+                            FoodItem(meal_plan=meal_plan, **food_data)
+                        )
+                
+                # Bulk create foods
+                if food_items_to_create:
+                    FoodItem.objects.bulk_create(food_items_to_create)
                     
         return instance

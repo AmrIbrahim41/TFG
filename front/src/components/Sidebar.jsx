@@ -1,6 +1,9 @@
 import React, { useState, useContext } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, Dumbbell, Utensils, ShieldCheck, Menu, X, LogOut, User,Ticket,Database } from 'lucide-react';
+import { 
+    LayoutDashboard, Users, Dumbbell, Utensils, ShieldCheck, 
+    Menu, X, LogOut, User, Ticket, Database, Calculator, Baby 
+} from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 
 const Sidebar = () => {
@@ -10,10 +13,13 @@ const Sidebar = () => {
     const navItems = [
         { path: '/', label: 'Dashboard', icon: LayoutDashboard },
         { path: '/clients', label: 'Clients', icon: Users },
+        { path: '/children', label: 'Children', icon: Baby }, 
         { path: '/subscriptions', label: 'Subscriptions', icon: Ticket },
-        { path: '/plans', label: 'Training Plans', icon: Dumbbell },
         { path: '/food-database', label: 'Food Database', icon: Database },
-        { path: '/nutrition', label: 'Nutrition', icon: Utensils },
+        { path: '/quick-plan', label: 'Quick Nutrition', icon: Calculator },
+        { path: '/quick-workout', label: 'Quick Workout', icon: Dumbbell },
+        
+        
         // Only show Admin Panel if user exists and is a superuser
         ...(user?.is_superuser ? [{ path: '/admin', label: 'Admin Panel', icon: ShieldCheck }] : []),
     ];
