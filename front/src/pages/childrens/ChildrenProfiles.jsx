@@ -4,7 +4,7 @@ import {
     User, Plus, Search, Loader2, Baby, ArrowRight, Sparkles, 
     Hash, ChevronLeft, ChevronRight 
 } from 'lucide-react';
-import api, { BASE_URL } from '../api';
+import api, { BASE_URL } from '../../api';
 
 const ChildrenProfiles = () => {
     const navigate = useNavigate();

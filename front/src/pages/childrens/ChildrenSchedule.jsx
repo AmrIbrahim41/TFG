@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, User, Play, Loader2, X } from 'lucide-react';
 import { useLocation } from 'react-router-dom'; // Import useLocation
-import api, { BASE_URL } from '../api';
+import api, { BASE_URL } from '../../api';
 import ActiveGroupSession from './ActiveGroupSession'; 
 
 const ChildrenSchedule = () => {

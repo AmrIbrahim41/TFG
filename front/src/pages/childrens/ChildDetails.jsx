@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { ArrowLeft, Save, User, Trash2, Activity, Hash, Baby, ShieldCheck, Dumbbell } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api, { BASE_URL } from '../api';
-import { AuthContext } from '../context/AuthContext';
+import api, { BASE_URL } from '../../api';
+import { AuthContext } from '../../context/AuthContext';
 // IMPORT THE NEW CHILD INFO TAB
-import ChildInfoTab from '../components/children/ChildInfoTab';
-import ChildMembershipTab from '../components/children/ChildMembershipTab';
+import ChildInfoTab from '../../components/children/ChildInfoTab';
+import ChildMembershipTab from '../../components/children/ChildMembershipTab';
 // NEW IMPORT
-import ChildHistoryTab from '../components/children/ChildHistoryTab';
+import ChildHistoryTab from '../../components/children/ChildHistoryTab';
 
 const ChildDetails = () => {
     const { id } = useParams();

@@ -6,7 +6,7 @@ import {
     History, User, Activity, FileText, MessageSquare, 
     Calendar // <--- ADDED THIS BACK
 } from 'lucide-react';
-import api, { BASE_URL } from '../api';
+import api, { BASE_URL } from '../../api';
 
 const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
     // --- STATE ---

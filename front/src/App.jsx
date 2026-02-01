@@ -14,8 +14,8 @@ import WorkoutEditor from './pages/WorkoutEditor';
 import FoodDatabase from './pages/FoodDatabase';
 import ManualNutritionPlan from './pages/ManualNutritionPlan';
 import ManualTrainingPlan from './pages/ManualTrainingPlan';
-import Children from './pages/Children';
-import ChildDetails from './pages/ChildDetails';
+import Children from './pages/childrens/Children';
+import ChildDetails from './pages/childrens/ChildDetails';
 import SessionDetail from './pages/SessionDetail';
 
 

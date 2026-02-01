@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, Users, Dumbbell, User, ArrowRight, Clock } from 'lucide-react';
-import api from '../api';
+import api from '../../api';
 
 const ChildrenHistory = () => {
     const [history, setHistory] = useState([]);
