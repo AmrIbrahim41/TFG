@@ -396,3 +396,70 @@ class GroupWorkoutTemplateSerializer(serializers.ModelSerializer):
     class Meta:
         model = GroupWorkoutTemplate
         fields = ['id', 'name', 'exercises', 'created_by', 'created_by_name', 'created_at']
+        
+        
+        
+        
+        
+        
+        
+# In serializers.py
+
+# In serializers.py
+
+# --- serializers.py ---
+
+class SessionTransferRequestSerializer(serializers.ModelSerializer):
+    from_trainer_name = serializers.ReadOnlyField(source='from_trainer.first_name')
+    to_trainer_name = serializers.ReadOnlyField(source='to_trainer.first_name')
+    client_name = serializers.ReadOnlyField(source='subscription.client.name')
+    plan_name = serializers.ReadOnlyField(source='subscription.plan.name')
+    client_photo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SessionTransferRequest
+        fields = [
+            'id', 'from_trainer', 'to_trainer', 'subscription',
+            'from_trainer_name', 'to_trainer_name', 'client_name', 'plan_name', 'client_photo',
+            'sessions_count', 'schedule_notes', 'status', 'created_at'
+        ]
+        # CRITICAL FIX: These fields are managed by the backend, so Frontend doesn't need to send them.
+        read_only_fields = ['from_trainer', 'status', 'created_at']
+
+    def get_client_photo(self, obj):
+        if obj.subscription.client.photo:
+            return obj.subscription.client.photo.url
+        return None
+
+    # --- STRICT VALIDATIONS ---
+    def validate(self, data):
+        user = self.context['request'].user
+        target_trainer = data.get('to_trainer')
+        subscription = data.get('subscription')
+        count = data.get('sessions_count')
+
+        # 1. Prevent Self-Transfer
+        if target_trainer == user:
+            raise serializers.ValidationError({"to_trainer": "You cannot transfer sessions to yourself."})
+
+        # 2. Verify Ownership (Security)
+        if subscription.trainer != user:
+            raise serializers.ValidationError({"subscription": "You do not own this client subscription."})
+
+        # 3. Verify Active Status
+        if not subscription.is_active:
+            raise serializers.ValidationError({"subscription": "Cannot transfer sessions from an inactive or expired subscription."})
+
+        # 4. Check Session Balance (Math Check)
+        if subscription.plan:
+            remaining_sessions = subscription.plan.units - subscription.sessions_used
+            if count > remaining_sessions:
+                raise serializers.ValidationError({
+                    "sessions_count": f"Client only has {remaining_sessions} sessions remaining. You cannot transfer {count}."
+                })
+        
+        # 5. Sanity Check
+        if count <= 0:
+            raise serializers.ValidationError({"sessions_count": "You must transfer at least 1 session."})
+
+        return data

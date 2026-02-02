@@ -19,6 +19,8 @@ from .serializers import *
 from django.db.models.functions import TruncDay
 import calendar 
 import json 
+from decimal import Decimal 
+
 
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 12
@@ -126,6 +128,11 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
 
 # In views.py
 
+# In views.py
+
+
+# In views.py
+
 class DashboardAnalyticsViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -134,45 +141,140 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
         user = request.user
         now = timezone.now()
         
+        try:
+            month = int(request.query_params.get('month', now.month))
+            year = int(request.query_params.get('year', now.year))
+        except ValueError:
+            month, year = now.month, now.year
+
+        # --- HELPER: Calculate Group Session Adjustments ---
+        # This function finds money that should move due to Group Classes
+        def get_group_adjustments():
+            group_adjustments = {} # { trainer_id: amount }
+
+            # Find group sessions in this month
+            group_logs = GroupSessionLog.objects.filter(
+                date__month=month,
+                date__year=year
+            ).select_related('coach').prefetch_related('participants__client')
+
+            for log in group_logs:
+                coach = log.coach
+                if not coach: continue # No coach to pay
+
+                # Check every participant
+                for participant in log.participants.all():
+                    # Only count if a session was actually deducted
+                    if not participant.deducted or not participant.client:
+                        continue
+
+                    # Find the client's subscription to determine Price & Owner
+                    # We look for the active subscription or the most recent one
+                    client_sub = ClientSubscription.objects.filter(
+                        client=participant.client, 
+                        is_active=True
+                    ).select_related('plan', 'trainer').first()
+
+                    if not client_sub:
+                        # Fallback: Try most recent if expired
+                        client_sub = ClientSubscription.objects.filter(
+                            client=participant.client
+                        ).select_related('plan', 'trainer').order_by('-created_at').first()
+
+                    # Logic: If Sub Owner != Group Coach, move money
+                    if client_sub and client_sub.plan and client_sub.plan.units > 0:
+                        owner = client_sub.trainer
+                        
+                        # Use Decimal for precision
+                        session_value = Decimal(client_sub.plan.price) / Decimal(client_sub.plan.units)
+
+                        # If there is an owner and they are NOT the group coach
+                        if owner and owner.id != coach.id:
+                            # Deduct from Owner
+                            group_adjustments[owner.id] = group_adjustments.get(owner.id, Decimal(0)) - session_value
+                            # Add to Group Coach
+                            group_adjustments[coach.id] = group_adjustments.get(coach.id, Decimal(0)) + session_value
+            
+            return group_adjustments
+
         # --- 1. TRAINER VIEW ---
         if not user.is_superuser:
-            # OPTIMIZATION: select_related fetches client & plan in the same query
-            subs = ClientSubscription.objects.filter(trainer=user, is_active=True)\
-                .select_related('client', 'plan')
-            
-            current_month_revenue = ClientSubscription.objects.filter(
+            # A. Base Revenue (Subscriptions sold by me)
+            base_revenue = ClientSubscription.objects.filter(
                 trainer=user,
-                created_at__month=now.month,
-                created_at__year=now.year
+                created_at__month=month,
+                created_at__year=year
             ).aggregate(total=Sum('plan__price'))['total'] or 0
 
-            # ... (Rest of trainer logic remains the same) ...
-            # (Just ensure you serialize 'subs' efficiently)
+            # B. 1-on-1 Adjustments (Existing Logic)
+            # ... (Calculate 1-on-1 deductions/additions as before) ...
+            lost_sessions = TrainingSession.objects.filter(
+                subscription__trainer=user,
+                is_completed=True,
+                date_completed__month=month,
+                date_completed__year=year
+            ).exclude(completed_by=user).select_related('subscription__plan')
+
+            deduction_amount = Decimal(0)
+            for sess in lost_sessions:
+                plan = sess.subscription.plan
+                if plan and plan.units > 0:
+                    deduction_amount += (plan.price / plan.units)
+
+            gained_sessions = TrainingSession.objects.filter(
+                completed_by=user,
+                is_completed=True,
+                date_completed__month=month,
+                date_completed__year=year
+            ).exclude(subscription__trainer=user).select_related('subscription__plan')
+
+            addition_amount = Decimal(0)
+            for sess in gained_sessions:
+                plan = sess.subscription.plan
+                if plan and plan.units > 0:
+                    addition_amount += (plan.price / plan.units)
+
+            # C. Group Session Adjustments (NEW)
+            group_adj = get_group_adjustments()
+            my_group_adj = group_adj.get(user.id, Decimal(0))
+            
+            # If positive, it's an addition (I coached groups). If negative, it's a deduction (My clients went to groups).
+            if my_group_adj > 0:
+                addition_amount += my_group_adj
+            else:
+                deduction_amount += abs(my_group_adj)
+
+            net_revenue = Decimal(base_revenue) - deduction_amount + addition_amount
+
+            # Fetch active subs
+            subs = ClientSubscription.objects.filter(trainer=user, is_active=True).select_related('client', 'plan')
             client_list = [{
                 'id': sub.client.id,
                 'name': sub.client.name,
                 'plan': sub.plan.name if sub.plan else "No Plan",
-                # ...
+                'progress': sub.progress_percentage
             } for sub in subs]
 
             return Response({
                 'role': 'trainer',
-                'summary': {'active_clients': subs.count(), 'current_month_revenue': current_month_revenue},
+                'summary': {
+                    'active_clients': subs.count(),
+                    'base_revenue': base_revenue,
+                    'deductions': round(deduction_amount, 2),
+                    'additions': round(addition_amount, 2),
+                    'net_revenue': round(net_revenue, 2)
+                },
                 'clients': client_list
             })
 
-        # --- 2. ADMIN VIEW (HEAVILY OPTIMIZED) ---
+        # --- 2. ADMIN VIEW ---
         else:
-            month = int(request.query_params.get('month', now.month))
-            year = int(request.query_params.get('year', now.year))
-
-            # SINGLE QUERY TO GET ALL TRAINER STATS & REVENUE
+            # 1. Base Stats
             trainers = User.objects.filter(is_superuser=False).annotate(
                 active_packages=Count('clientsubscription', filter=Q(clientsubscription__is_active=True)),
                 inactive_packages=Count('clientsubscription', filter=Q(clientsubscription__is_active=False)),
                 total_assigned=Count('clientsubscription'),
-                # Calculate Monthly Revenue per trainer inside the DB
-                monthly_revenue=Sum(
+                base_monthly_revenue=Sum(
                     Case(
                         When(
                             clientsubscription__created_at__month=month,
@@ -185,23 +287,60 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
                 )
             )
 
+            # 2. 1-on-1 Adjustments
+            cross_sessions = TrainingSession.objects.filter(
+                date_completed__month=month,
+                date_completed__year=year,
+                is_completed=True
+            ).exclude(
+                completed_by=F('subscription__trainer')
+            ).select_related('subscription__plan', 'subscription__trainer', 'completed_by')
+
+            adjustments = {}
+
+            for session in cross_sessions:
+                plan = session.subscription.plan
+                if not plan or plan.units == 0: continue
+                session_value = Decimal(plan.price) / Decimal(plan.units)
+
+                owner = session.subscription.trainer
+                if owner:
+                    adjustments[owner.id] = adjustments.get(owner.id, Decimal(0)) - session_value
+
+                completer = session.completed_by
+                if completer:
+                    adjustments[completer.id] = adjustments.get(completer.id, Decimal(0)) + session_value
+
+            # 3. Group Session Adjustments (NEW)
+            group_adj = get_group_adjustments()
+            
+            # Merge Group adjustments into Main adjustments
+            for trainer_id, amount in group_adj.items():
+                adjustments[trainer_id] = adjustments.get(trainer_id, Decimal(0)) + amount
+
+            # 4. Merge Data
             trainers_stats = []
             for trainer in trainers:
+                base = trainer.base_monthly_revenue or Decimal(0)
+                adjustment = adjustments.get(trainer.id, Decimal(0))
+                net = base + adjustment
+                
                 trainers_stats.append({
                     'id': trainer.id,
                     'name': trainer.first_name or trainer.username,
                     'active_packages': trainer.active_packages,
                     'inactive_packages': trainer.inactive_packages,
                     'total_assigned': trainer.total_assigned,
-                    'monthly_revenue': trainer.monthly_revenue or 0 # Logic moved to DB
+                    'base_revenue': round(base, 2),
+                    'adjustments': round(adjustment, 2),
+                    'net_revenue': round(net, 2)
                 })
 
-            # Financials (Total)
+            # Financials
             current_month_qs = ClientSubscription.objects.filter(created_at__month=month, created_at__year=year)
             total_sales = current_month_qs.count()
-            total_revenue = current_month_qs.aggregate(total=Sum('plan__price'))['total'] or 0
+            total_revenue_sales = current_month_qs.aggregate(total=Sum('plan__price'))['total'] or 0
             
-            # Chart Data (Optimized)
             chart_data = (
                 ClientSubscription.objects.filter(created_at__year=year)
                 .annotate(month=TruncMonth('created_at'))
@@ -210,7 +349,6 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
                 .order_by('month')
             )
             
-            # Format Chart Data
             formatted_chart = []
             revenue_map = {item['month'].month: item['revenue'] for item in chart_data}
             for i in range(1, 13):
@@ -226,11 +364,13 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
                     'month': month,
                     'year': year,
                     'total_sales': total_sales,
-                    'total_revenue': total_revenue,
+                    'total_revenue': total_revenue_sales,
                     'chart_data': formatted_chart
                 }
             })
 
+
+# In views.py
 
 class ClientSubscriptionViewSet(viewsets.ModelViewSet):
     serializer_class = ClientSubscriptionSerializer
@@ -238,7 +378,7 @@ class ClientSubscriptionViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
-        # OPTIMIZATION: Fetch related Client, Plan, and Trainer data immediately
+        # 1. RESTORED: This allows everyone to see everything in the main "Clients" page
         queryset = ClientSubscription.objects.all().select_related('client', 'plan', 'trainer').order_by("-start_date")
         
         client_id = self.request.query_params.get("client_id")
@@ -246,7 +386,23 @@ class ClientSubscriptionViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(client=client_id)
         return queryset
 
-    # CONCURRENCY FIX: Use atomic transaction
+    # --- NEW: Dedicated endpoint for Trainer Profile ---
+    @action(detail=False, methods=['get'])
+    def profile_clients(self, request):
+        user = request.user
+        
+        # Filter 1: Direct Clients (trainer is Me)
+        # Filter 2: Covered Clients (Accepted Transfer Request to Me)
+        # Note: We use .distinct() to avoid duplicates
+        queryset = ClientSubscription.objects.filter(
+            Q(trainer=user) | 
+            Q(transfer_requests__to_trainer=user, transfer_requests__status='accepted')
+        ).filter(is_active=True).distinct()
+        
+        # Return FULL list (no pagination) so the profile is always complete
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     def perform_create(self, serializer):
         with transaction.atomic():
             if not self.request.user.is_superuser:
@@ -504,9 +660,9 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
             session.name = data.get("name", session.name)
 
             if complete_it:
-                session.is_completed = True
-                session.date_completed = timezone.now().date()
-                session.completed_by = request.user
+              session.is_completed = True
+              session.date_completed = timezone.now().date()
+              session.completed_by = request.user 
 
             session.save()
 
@@ -1035,3 +1191,41 @@ class GroupWorkoutTemplateViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+        
+        
+    
+    
+# In views.py
+
+# --- views.py ---
+
+class SessionTransferRequestViewSet(viewsets.ModelViewSet):
+    serializer_class = SessionTransferRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        # Show requests where I am the sender OR the receiver
+        return SessionTransferRequest.objects.filter(
+            Q(from_trainer=user) | Q(to_trainer=user)
+        ).order_by('-created_at')
+
+    def perform_create(self, serializer):
+        # Automatically set 'from_trainer' to the logged-in user
+        serializer.save(from_trainer=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def respond(self, request, pk=None):
+        transfer = self.get_object()
+        new_status = request.data.get('status')
+
+        # Security: Only the RECEIVER can accept/reject
+        if transfer.to_trainer != request.user:
+            return Response({"error": "Not authorized to respond to this request"}, status=403)
+
+        if new_status not in ['accepted', 'rejected']:
+            return Response({"error": "Invalid status"}, status=400)
+
+        transfer.status = new_status
+        transfer.save()
+        return Response({"status": "success", "new_status": new_status})

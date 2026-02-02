@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { 
     Users, Activity, DollarSign, TrendingUp, 
-    ChevronDown, Check, UserCheck, Hash, Calendar, CreditCard, ChevronRight
+    ChevronDown, Check, UserCheck, Hash, Calendar, CreditCard, ChevronRight,
+    ArrowUpRight, ArrowDownRight, Wallet
 } from 'lucide-react';
 import { 
     BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell 
@@ -133,7 +134,7 @@ const Dashboard = () => {
                     </div>
 
                     {/* Admin Controls */}
-                    {data?.role === 'admin' && (
+                    {(data?.role === 'admin' || data?.role === 'trainer') && (
                         <div className="flex items-center gap-3">
                             <CustomSelect 
                                 value={selectedMonth} 
@@ -248,15 +249,21 @@ const Dashboard = () => {
                                                 <div className="text-xl font-black text-white">{trainer.active_packages}</div>
                                             </div>
 
-                                            {/* Right: Monthly Revenue (NEW) */}
+                                            {/* Right: NET Revenue (Adjusted) */}
                                             <div className="bg-blue-500/5 border border-blue-500/10 p-3 rounded-xl flex flex-col justify-center">
                                                 <div className="flex justify-between items-start mb-1">
-                                                    <div className="text-[10px] text-blue-500 font-bold uppercase">Earnings</div>
-                                                    <DollarSign size={14} className="text-blue-500 opacity-50"/>
+                                                    <div className="text-[10px] text-blue-500 font-bold uppercase">Net Earn</div>
+                                                    <Wallet size={14} className="text-blue-500 opacity-50"/>
                                                 </div>
                                                 <div className="text-xl font-black text-white">
-                                                    ${Number(trainer.monthly_revenue || 0).toLocaleString()}
+                                                    ${Number(trainer.net_revenue || 0).toLocaleString()}
                                                 </div>
+                                                {/* Show adjustment indicator if exists */}
+                                                {Math.abs(trainer.adjustments) > 0 && (
+                                                    <div className={`text-[10px] font-bold mt-1 ${trainer.adjustments > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                        {trainer.adjustments > 0 ? '+' : ''}{Number(trainer.adjustments).toLocaleString()} adj.
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -266,25 +273,67 @@ const Dashboard = () => {
                     </div>
                 )}
 
-                {/* --- VIEW 2: TRAINER (MODERN REDESIGN) --- */}
+                {/* --- VIEW 2: TRAINER (MODERN REDESIGN + NEW ACCOUNTING) --- */}
                 {data?.role === 'trainer' && (
                     <div className="space-y-8 animate-in fade-in duration-500">
                         {/* Summary Cards */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="bg-[#121214] border border-zinc-800 p-6 rounded-3xl flex flex-col justify-center items-center gap-2 group hover:border-green-500/50 transition-colors relative overflow-hidden">
+                            {/* Active Clients Card */}
+                            <div className="bg-[#121214] border border-zinc-800 p-6 rounded-3xl flex flex-col justify-center items-center gap-2 group hover:border-green-500/50 transition-colors relative overflow-hidden h-[240px]">
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 rounded-full -mr-10 -mt-10 blur-2xl"></div>
                                 <div className="p-4 bg-green-500/10 text-green-500 rounded-2xl group-hover:scale-110 transition-transform"><UserCheck size={28} /></div>
                                 <div className="text-4xl font-black text-white mt-2 z-10">{data.summary.active_clients}</div>
                                 <div className="text-xs font-bold text-zinc-500 uppercase tracking-widest z-10">Active Clients</div>
                             </div>
                             
-                            <div className="bg-[#121214] border border-zinc-800 p-6 rounded-3xl flex flex-col justify-center items-center gap-2 group hover:border-orange-500/50 transition-colors relative overflow-hidden">
+                            {/* NEW: Financial Breakdown Card */}
+                            <div className="bg-[#121214] border border-zinc-800 p-6 rounded-3xl flex flex-col justify-between group hover:border-orange-500/50 transition-colors relative overflow-hidden h-[240px]">
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-full -mr-10 -mt-10 blur-2xl"></div>
-                                <div className="p-4 bg-zinc-800 text-orange-500 rounded-2xl group-hover:bg-orange-500/10 transition-all"><DollarSign size={28} /></div>
-                                <div className="text-4xl font-black text-white mt-2 z-10">
-                                    ${Number(data.summary.current_month_revenue || 0).toLocaleString()}
+                                
+                                {/* Header */}
+                                <div className="flex items-center justify-between z-10">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-3 bg-zinc-800 text-orange-500 rounded-2xl group-hover:bg-orange-500/10 transition-all">
+                                            <Wallet size={24} />
+                                        </div>
+                                        <div>
+                                            <div className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Net Revenue</div>
+                                            <div className="text-sm font-medium text-zinc-400">{monthOptions[selectedMonth-1].label} {selectedYear}</div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="text-xs font-bold text-zinc-500 uppercase tracking-widest z-10">Revenue (This Month)</div>
+
+                                {/* Big Number */}
+                                <div className="z-10 mt-2">
+                                    <div className="text-5xl font-black text-white tracking-tight">
+                                        ${Number(data.summary.net_revenue || 0).toLocaleString()}
+                                    </div>
+                                </div>
+
+                                {/* Breakdown Grid */}
+                                <div className="grid grid-cols-2 gap-2 mt-4 z-10">
+                                    {/* Covered For Others (Gains) */}
+                                    <div className="bg-zinc-900/50 rounded-xl p-2 border border-zinc-800">
+                                        <div className="flex items-center gap-1.5 mb-1">
+                                            <ArrowUpRight size={12} className="text-green-500"/>
+                                            <span className="text-[10px] font-bold text-zinc-500 uppercase">Covered</span>
+                                        </div>
+                                        <div className="text-green-500 font-bold">
+                                            +${Number(data.summary.additions || 0).toLocaleString()}
+                                        </div>
+                                    </div>
+
+                                    {/* Covered By Others (Losses) */}
+                                    <div className="bg-zinc-900/50 rounded-xl p-2 border border-zinc-800">
+                                        <div className="flex items-center gap-1.5 mb-1">
+                                            <ArrowDownRight size={12} className="text-red-500"/>
+                                            <span className="text-[10px] font-bold text-zinc-500 uppercase">Deducted</span>
+                                        </div>
+                                        <div className="text-red-500 font-bold">
+                                            -${Number(data.summary.deductions || 0).toLocaleString()}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -357,10 +406,10 @@ const Dashboard = () => {
                                                 </div>
                                                 <div className="text-right border-l border-zinc-800 pl-3">
                                                     <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mb-1 flex items-center justify-end gap-1">
-                                                        <Calendar size={10} /> Expires
+                                                        <Activity size={10} /> Progress
                                                     </div>
                                                     <div className="text-white text-xs font-bold">
-                                                        {client.end_date || '—'}
+                                                        {client.progress || 0}%
                                                     </div>
                                                 </div>
                                             </div>

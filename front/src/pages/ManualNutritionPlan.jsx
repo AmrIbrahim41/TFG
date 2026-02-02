@@ -6,9 +6,12 @@ import {
 } from 'lucide-react';
 import api from '../api'; 
 import { PDFDownloadLink } from '@react-pdf/renderer'; 
-import NutritionDocument from '../utils/NutritionPDF'; 
 
-// --- LOGIC ENGINE (Reused) ---
+// --- IMPORT SEPARATE PDF FILES ---
+import NutritionPDF_EN from '../utils/NutritionPDF_EN'; 
+import NutritionPDF_AR from '../utils/NutritionPDF_AR'; 
+
+// --- LOGIC ENGINE ---
 const calculateNutrition = (inputs) => {
     const {
         gender = 'male', age = 25, heightCm = 170, weightKg = 80, 
@@ -118,7 +121,6 @@ const ManualNutritionPlan = () => {
     const [results, setResults] = useState(null);
     const [planNotes, setPlanNotes] = useState('');
 
-    // Fetch food DB on mount to populate the exchange list
     useEffect(() => { 
         const fetchFoodDatabase = async () => {
             try {
@@ -129,7 +131,6 @@ const ManualNutritionPlan = () => {
         fetchFoodDatabase(); 
     }, []);
 
-    // Recalculate whenever inputs change
     useEffect(() => {
         const res = calculateNutrition(calcState);
         setResults(res);
@@ -139,7 +140,6 @@ const ManualNutritionPlan = () => {
         return ((parseFloat(calcState.weightKg) || 0) * 2.20462).toFixed(1);
     }, [calcState.weightKg]);
 
-    // Construct the Exchange List based on calculated targets + Food DB
     const exchangeList = useMemo(() => {
         if (!results || !foodDatabase.length) return null;
         const targets = results.perMeal; 
@@ -173,13 +173,19 @@ const ManualNutritionPlan = () => {
                     carbs: Math.round((food.carbs_per_100g * requiredWeight) / 100),
                     fats: Math.round((food.fats_per_100g * requiredWeight) / 100),
                 };
-                groups[targetGroup].items.push({ name: food.name, weight: Math.round(requiredWeight), unit: 'g', meta: meta });
+                
+                groups[targetGroup].items.push({ 
+                    name: food.name, 
+                    arabic_name: food.arabic_name,
+                    weight: Math.round(requiredWeight), 
+                    unit: 'g', 
+                    meta: meta 
+                });
             }
         });
         return groups;
     }, [results, foodDatabase, calcState.carbAdjustment]);
 
-    // Create a dummy "Plan" object for the PDF template to use (since we don't have a DB object)
     const dummyPlanObject = {
         name: calcState.planName,
         duration_weeks: 4,
@@ -192,7 +198,6 @@ const ManualNutritionPlan = () => {
     if (!results) return <div className="p-10 text-white">Loading Calculator...</div>;
 
     return (
-        // FIXED: Added 'pt-20' so header doesn't hide title, 'lg:pt-6' returns to normal on desktop
         <div className="animate-in slide-in-from-bottom-4 duration-500 pb-20 p-6 pt-20 lg:pt-6 max-w-7xl mx-auto">
             <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-4">
@@ -206,9 +211,10 @@ const ManualNutritionPlan = () => {
                 </div>
                 
                 <div className="flex items-center gap-3">
+                    {/* ENGLISH PDF BUTTON */}
                     <PDFDownloadLink
                         document={
-                            <NutritionDocument 
+                            <NutritionPDF_EN 
                                 plan={dummyPlanObject}
                                 clientName={calcState.manualClientName || "Guest Client"} 
                                 trainerName={calcState.manualTrainerName || "Coach"} 
@@ -219,7 +225,7 @@ const ManualNutritionPlan = () => {
                                 notes={planNotes}
                             />
                         }
-                        fileName={`${(calcState.manualClientName || 'Plan').replace(/\s+/g, '_')}_Strategy.pdf`}
+                        fileName={`${(calcState.manualClientName || 'Plan').replace(/\s+/g, '_')}_EN.pdf`}
                     >
                         {({ blob, url, loading: pdfLoading, error }) => (
                             <button 
@@ -227,17 +233,43 @@ const ManualNutritionPlan = () => {
                                 className="px-6 py-3 bg-white text-black hover:bg-zinc-200 font-bold rounded-xl shadow-lg active:scale-95 transition-all flex items-center gap-2"
                             >
                                 {pdfLoading ? <Loader2 size={18} className="animate-spin"/> : <Download size={18} />} 
-                                Download PDF
+                                EN PDF
+                            </button>
+                        )}
+                    </PDFDownloadLink>
+
+                    {/* ARABIC PDF BUTTON */}
+                    <PDFDownloadLink
+                        document={
+                            <NutritionPDF_AR 
+                                plan={dummyPlanObject}
+                                clientName={calcState.manualClientName || "Guest Client"} 
+                                trainerName={calcState.manualTrainerName || "Coach"} 
+                                brandText={calcState.brandText} 
+                                carbAdjustment={calcState.carbAdjustment} 
+                                results={results}
+                                exchangeList={exchangeList}
+                                notes={planNotes}
+                            />
+                        }
+                        fileName={`${(calcState.manualClientName || 'Plan').replace(/\s+/g, '_')}_AR.pdf`}
+                    >
+                        {({ blob, url, loading: pdfLoading, error }) => (
+                            <button 
+                                disabled={pdfLoading}
+                                className="px-6 py-3 bg-emerald-900/50 hover:bg-emerald-800 text-emerald-400 font-bold rounded-xl shadow-lg active:scale-95 transition-all flex items-center gap-2"
+                            >
+                                {pdfLoading ? <Loader2 size={18} className="animate-spin"/> : <Download size={18} />} 
+                                عربي PDF
                             </button>
                         )}
                     </PDFDownloadLink>
                 </div>
             </div>
 
-            {/* --- VERTICAL LAYOUT STACK --- */}
             <div className="space-y-6">
                 
-                {/* 0. MANUAL IDENTITY (NEW ROW) */}
+                {/* 0. MANUAL IDENTITY */}
                 <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-6">
                     <h3 className="font-bold text-white mb-4 flex items-center gap-2">
                         <ClipboardType size={18} className="text-purple-500"/> Plan Details
@@ -264,7 +296,7 @@ const ManualNutritionPlan = () => {
                     </div>
                 </div>
 
-                {/* 1. CLIENT DATA (ROW) */}
+                {/* 1. CLIENT DATA */}
                 <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-6">
                     <h3 className="font-bold text-white mb-4 flex items-center gap-2">
                         <User size={18} className="text-orange-500"/> Body Metrics
@@ -289,7 +321,7 @@ const ManualNutritionPlan = () => {
                     </div>
                 </div>
 
-                {/* 2. STRATEGY (ROW) */}
+                {/* 2. STRATEGY */}
                 <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-6">
                     <h3 className="font-bold text-white mb-4 flex items-center gap-2">
                         <Activity size={18} className="text-emerald-500"/> Strategy
@@ -319,7 +351,7 @@ const ManualNutritionPlan = () => {
                     </div>
                 </div>
 
-                {/* 3. DAILY TARGET (ROW) */}
+                {/* 3. DAILY TARGET */}
                 <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
                     <div className="text-center md:text-left min-w-[200px]">
                         <p className="text-xs font-bold text-zinc-500 uppercase">Daily Target</p>
@@ -346,7 +378,7 @@ const ManualNutritionPlan = () => {
                     </div>
                 </div>
 
-                {/* 4. ITEMS TABLE (ROW) */}
+                {/* 4. ITEMS TABLE */}
                 <div className="space-y-6">
                     {exchangeList && Object.entries(exchangeList).map(([groupName, data]) => (
                         <div key={groupName} className="bg-[#121214] border border-zinc-800 rounded-3xl overflow-hidden">
@@ -391,7 +423,7 @@ const ManualNutritionPlan = () => {
                     ))}
                 </div>
 
-                {/* 5. NOTES (ROW) */}
+                {/* 5. NOTES */}
                 <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-6">
                     <h3 className="font-bold text-white mb-4 flex items-center gap-2">
                         <FileText size={18} className="text-emerald-500"/> Coach Notes & Recommendations

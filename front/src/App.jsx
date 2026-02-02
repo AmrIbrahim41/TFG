@@ -5,7 +5,7 @@ import Sidebar from './components/Sidebar';
 import Login from './pages/Login';
 
 // Pages
-import Dashboard from './pages/Dashboard'; // <--- IMPORT DASHBOARD
+import Dashboard from './pages/Dashboard'; 
 import Clients from './pages/Clients';
 import ClientDetails from './pages/ClientDetails';
 import AdminTrainers from './pages/AdminTrainers';
@@ -17,7 +17,7 @@ import ManualTrainingPlan from './pages/ManualTrainingPlan';
 import Children from './pages/childrens/Children';
 import ChildDetails from './pages/childrens/ChildDetails';
 import SessionDetail from './pages/SessionDetail';
-
+import TrainerProfile from './pages/TrainerProfile'; // <--- IMPORT NEW PAGE
 
 // Component to protect routes
 const PrivateRoute = ({ children }) => {
@@ -34,8 +34,10 @@ function App() {
             <Route path="/login" element={<Login />} />
 
             {/* Protected Routes */}
-            {/* CHANGE: Point "/" to Dashboard instead of redirecting to clients */}
             <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+
+            {/* NEW PROFILE ROUTE */}
+            <Route path="/profile" element={<PrivateRoute><TrainerProfile /></PrivateRoute>} />
 
             <Route path="/clients" element={<PrivateRoute><Clients /></PrivateRoute>} />
             <Route path="/clients/:id" element={<PrivateRoute><ClientDetails /></PrivateRoute>} />

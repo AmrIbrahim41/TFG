@@ -5,11 +5,14 @@ import {
     Flame, Droplets, Wheat, Beef, AlertTriangle, 
     Leaf, FileText, Zap, Mars, Venus, Loader2, 
     ChevronLeft, ChevronRight, Download, Scale,
-    Check, ChevronDown // Added Check and ChevronDown
+    Check, ChevronDown 
 } from 'lucide-react';
 import api from '../../api';
 import { PDFDownloadLink } from '@react-pdf/renderer'; 
-import NutritionDocument from '../../utils/NutritionPDF'; 
+
+// --- IMPORT SEPARATE PDF FILES ---
+import NutritionPDF_EN from '../../utils/NutritionPDF_EN'; 
+import NutritionPDF_AR from '../../utils/NutritionPDF_AR'; 
 
 // --- PAGINATION ---
 const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => {
@@ -102,7 +105,6 @@ const CustomSelect = ({ label, value, options, onChange, disabled }) => {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef(null);
 
-    // Close dropdown when clicking outside
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (containerRef.current && !containerRef.current.contains(event.target)) {
@@ -117,7 +119,6 @@ const CustomSelect = ({ label, value, options, onChange, disabled }) => {
 
     return (
         <div ref={containerRef} className={`relative w-full ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
-            {/* Trigger Button */}
             <div 
                 onClick={() => !disabled && setIsOpen(!isOpen)}
                 className={`
@@ -139,7 +140,6 @@ const CustomSelect = ({ label, value, options, onChange, disabled }) => {
                 </div>
             </div>
 
-            {/* Dropdown Menu */}
             {isOpen && (
                 <div className="absolute top-full left-0 right-0 mt-2 bg-[#18181b] border border-zinc-800 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top">
                     <div className="max-h-[240px] overflow-y-auto custom-scrollbar">
@@ -165,8 +165,6 @@ const CustomSelect = ({ label, value, options, onChange, disabled }) => {
 
 // --- UPDATED INPUT COMPONENT ---
 const ModernInput = ({ label, value, onChange, type="text", suffix, options, disabled=false, className="", min }) => {
-    
-    // If options exist, render the new CustomSelect
     if (options) {
         return (
             <div className={className}>
@@ -181,7 +179,6 @@ const ModernInput = ({ label, value, onChange, type="text", suffix, options, dis
         );
     }
 
-    // Otherwise render the standard text/number input
     return (
         <div className={`bg-zinc-900 border border-zinc-800 p-3 rounded-2xl relative focus-within:ring-1 focus-within:ring-orange-500/50 focus-within:border-orange-500 transition-all ${disabled ? 'opacity-50' : ''} ${className}`}>
             <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block">{label}</label>
@@ -216,7 +213,6 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
     const [newPlanName, setNewPlanName] = useState('');
     const [newPlanWeeks, setNewPlanWeeks] = useState(4);
     
-    // STATE: Includes Carb Adjustment & Brand Text
     const [calcState, setCalcState] = useState({
         gender: 'male', age: 25, heightCm: 175, weightKg: 80,
         activityLevel: 'moderate', deficitSurplus: -500,
@@ -232,8 +228,15 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
     const clientId = clientData?.id || (subscriptions && subscriptions[0] ? subscriptions[0].client : null);
     const defaultSubId = subscriptions && subscriptions[0] ? subscriptions[0].id : null;
 
-    // --- FIX: Resolve Client Name properly ---
-    const pdfClientName = activePlan?.client_name || clientData?.name || (subscriptions && subscriptions[0]?.client_details?.name) || "Athlete";
+    // --- FIX: Resolve Names for PDF ---
+    // 1. Try activePlan.client_name (if backend sends it)
+    // 2. Try clientData.name (passed from parent)
+    // 3. Fallback to "Athlete"
+    const pdfClientName = activePlan?.client_name || clientData?.name || "Athlete";
+    
+    // 1. Try activePlan.created_by_name (if backend sends it)
+    // 2. Fallback to "Coach"
+    const trainerName = activePlan?.created_by_name || "Coach";
 
     useEffect(() => { if (clientId) fetchPlans(page); }, [clientId, page]);
     useEffect(() => { fetchFoodDatabase(); }, []);
@@ -258,8 +261,8 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                 proteinPerLb: activePlan.calc_protein_multiplier || 1.0,
                 mealsCount: activePlan.calc_meals || 4,
                 snacksCount: activePlan.calc_snacks || 0,
-                carbAdjustment: activePlan.calc_carb_adjustment || 0, // Load from DB
-                brandText: activePlan.pdf_brand_text || 'TFG'         // Load from DB
+                carbAdjustment: activePlan.calc_carb_adjustment || 0,
+                brandText: activePlan.pdf_brand_text || 'TFG'
             });
             setPlanNotes(activePlan.notes || '');
         }
@@ -319,7 +322,6 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                 calc_meals: parseInt(calcState.mealsCount),
                 calc_snacks: parseInt(calcState.snacksCount),
                 
-                // NEW FIELDS
                 calc_carb_adjustment: parseInt(calcState.carbAdjustment),
                 pdf_brand_text: calcState.brandText,
 
@@ -384,7 +386,14 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                     carbs: Math.round((food.carbs_per_100g * requiredWeight) / 100),
                     fats: Math.round((food.fats_per_100g * requiredWeight) / 100),
                 };
-                groups[targetGroup].items.push({ name: food.name, weight: Math.round(requiredWeight), unit: 'g', meta: meta });
+                
+                groups[targetGroup].items.push({ 
+                    name: food.name, 
+                    arabic_name: food.arabic_name, 
+                    weight: Math.round(requiredWeight), 
+                    unit: 'g', 
+                    meta: meta 
+                });
             }
         });
         return groups;
@@ -509,10 +518,6 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
     }
 
     if (view === 'detail' && results) {
-        
-        // Point 9: Get Trainer Name
-        const trainerName = activePlan.created_by_name || "Coach";
-
         return (
             <div className="animate-in slide-in-from-bottom-4 duration-500 pb-20">
                 <div className="flex items-center justify-between mb-8">
@@ -524,33 +529,63 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         </div>
                     </div>
                     
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                         {results && activePlan && (
-                            <PDFDownloadLink
-                                document={
-                                    <NutritionDocument 
-                                        plan={activePlan}
-                                        clientName={pdfClientName} // Point 10 Fixed
-                                        trainerName={trainerName} 
-                                        brandText={calcState.brandText} 
-                                        carbAdjustment={calcState.carbAdjustment} 
-                                        results={results}
-                                        exchangeList={exchangeList}
-                                        notes={planNotes}
-                                    />
-                                }
-                                fileName={`${activePlan.name.replace(/\s+/g, '_')}_Plan.pdf`}
-                            >
-                                {({ blob, url, loading: pdfLoading, error }) => (
-                                    <button 
-                                        disabled={pdfLoading}
-                                        className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold rounded-xl border border-zinc-700 text-sm flex items-center gap-2 transition-all disabled:opacity-50"
-                                    >
-                                        {pdfLoading ? <Loader2 size={16} className="animate-spin"/> : <Download size={16} />} 
-                                        PDF
-                                    </button>
-                                )}
-                            </PDFDownloadLink>
+                            <>
+                                {/* ENGLISH PDF BUTTON - Using NutritionPDF_EN */}
+                                <PDFDownloadLink
+                                    document={
+                                        <NutritionPDF_EN 
+                                            plan={activePlan}
+                                            clientName={pdfClientName}
+                                            trainerName={trainerName}
+                                            brandText={calcState.brandText}
+                                            carbAdjustment={calcState.carbAdjustment}
+                                            results={results}
+                                            exchangeList={exchangeList}
+                                            notes={planNotes}
+                                        />
+                                    }
+                                    fileName={`${activePlan.name}_EN.pdf`}
+                                >
+                                    {({ blob, url, loading: pdfLoading, error }) => (
+                                        <button 
+                                            disabled={pdfLoading}
+                                            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold rounded-xl border border-zinc-700 text-sm flex items-center gap-2 transition-all disabled:opacity-50"
+                                        >
+                                            {pdfLoading ? <Loader2 size={16} className="animate-spin"/> : <Download size={16} />} 
+                                            EN PDF
+                                        </button>
+                                    )}
+                                </PDFDownloadLink>
+
+                                {/* ARABIC PDF BUTTON - Using NutritionPDF_AR */}
+                                <PDFDownloadLink
+                                    document={
+                                        <NutritionPDF_AR 
+                                            plan={activePlan}
+                                            clientName={pdfClientName}
+                                            trainerName={trainerName}
+                                            brandText={calcState.brandText}
+                                            carbAdjustment={calcState.carbAdjustment}
+                                            results={results}
+                                            exchangeList={exchangeList}
+                                            notes={planNotes}
+                                        />
+                                    }
+                                    fileName={`${activePlan.name}_AR.pdf`}
+                                >
+                                    {({ blob, url, loading: pdfLoading, error }) => (
+                                        <button 
+                                            disabled={pdfLoading}
+                                            className="px-4 py-2 bg-emerald-900/50 hover:bg-emerald-800 text-emerald-400 font-bold rounded-xl border border-emerald-800 text-sm flex items-center gap-2 transition-all disabled:opacity-50"
+                                        >
+                                            {pdfLoading ? <Loader2 size={16} className="animate-spin"/> : <Download size={16} />} 
+                                            عربي PDF
+                                        </button>
+                                    )}
+                                </PDFDownloadLink>
+                            </>
                         )}
 
                         <button onClick={handleSavePlan} className="px-6 py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl shadow-lg shadow-orange-900/20 text-sm flex items-center gap-2">
@@ -559,10 +594,9 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                     </div>
                 </div>
 
-                {/* --- VERTICAL LAYOUT STACK --- */}
                 <div className="space-y-6 max-w-7xl mx-auto">
                     
-                    {/* 1. CLIENT DATA (ROW) */}
+                    {/* 1. CLIENT DATA */}
                     <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-6">
                         <h3 className="font-bold text-white mb-4 flex items-center gap-2">
                             <User size={18} className="text-orange-500"/> Client Data
@@ -587,7 +621,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         </div>
                     </div>
 
-                    {/* 2. STRATEGY (ROW) */}
+                    {/* 2. STRATEGY */}
                     <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-6">
                         <h3 className="font-bold text-white mb-4 flex items-center gap-2">
                             <Activity size={18} className="text-emerald-500"/> Strategy
@@ -602,7 +636,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         </div>
                     </div>
 
-                    {/* NEW: PDF BRAND CUSTOMIZATION */}
+                    {/* PDF BRAND CUSTOMIZATION */}
                     <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-6">
                         <h3 className="font-bold text-white mb-4 flex items-center gap-2">
                             <FileText size={18} className="text-purple-500"/> PDF Customization
@@ -624,7 +658,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         </div>
                     )}
 
-                    {/* 3. DAILY TARGET (ROW) */}
+                    {/* 3. DAILY TARGET */}
                     <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
                         <div className="text-center md:text-left min-w-[200px]">
                             <p className="text-xs font-bold text-zinc-500 uppercase">Daily Target</p>
@@ -655,7 +689,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         </div>
                     </div>
 
-                    {/* 4. ITEMS TABLE (ROW) */}
+                    {/* 4. ITEMS TABLE */}
                     <div className="space-y-6">
                         {exchangeList && Object.entries(exchangeList).map(([groupName, data]) => (
                             <div key={groupName} className="bg-[#121214] border border-zinc-800 rounded-3xl overflow-hidden">
@@ -700,7 +734,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         ))}
                     </div>
 
-                    {/* 5. NOTES (ROW) */}
+                    {/* 5. NOTES */}
                     <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-6">
                         <h3 className="font-bold text-white mb-4 flex items-center gap-2">
                             <FileText size={18} className="text-emerald-500"/> Coach Notes & Recommendations

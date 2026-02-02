@@ -480,6 +480,7 @@ class FoodDatabase(models.Model):
     (Optional - can be used to populate food items quickly)
     """
     name = models.CharField(max_length=200, unique=True)
+    arabic_name = models.CharField(max_length=200, blank=True, null=True, help_text="Name in Arabic")
     category = models.CharField(max_length=50)
     
     # Nutritional info per 100g
@@ -564,3 +565,40 @@ class GroupWorkoutTemplate(models.Model):
 
     def __str__(self):
         return self.name
+    
+    
+    
+    
+    
+    
+    
+# In models.py
+
+# --- models.py ---
+
+class SessionTransferRequest(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('rejected', 'Rejected'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    # The trainer sending the request (YOU)
+    from_trainer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_transfers')
+    
+    # The trainer receiving the request
+    to_trainer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_transfers')
+    
+    # The subscription being transferred
+    subscription = models.ForeignKey(ClientSubscription, on_delete=models.CASCADE, related_name='transfer_requests')
+    
+    sessions_count = models.IntegerField(help_text="How many sessions to transfer")
+    schedule_notes = models.TextField(help_text="Days and times (e.g., Mon 5PM, Wed 3PM)")
+    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.from_trainer} -> {self.to_trainer}: {self.subscription.client.name}"

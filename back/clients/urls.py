@@ -28,6 +28,8 @@ router.register(r'countries', CountryViewSet, basename='countries')
 router.register(r'coach-schedules', CoachScheduleViewSet, basename='coach-schedules')
 router.register(r'group-training', GroupTrainingViewSet, basename='group-training')
 router.register(r'group-templates', GroupWorkoutTemplateViewSet, basename='group-templates')
+router.register(r'transfers', SessionTransferRequestViewSet, basename='transfers')
+
 
 
 urlpatterns = [
