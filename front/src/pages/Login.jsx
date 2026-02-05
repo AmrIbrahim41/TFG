@@ -22,20 +22,21 @@ const Login = () => {
   };
 
   return (
-    // ADDED 'w-full' HERE to fix the alignment issue
-    <div className="w-full min-h-screen bg-zinc-950 flex items-center justify-center p-4 relative overflow-hidden">
+    // Main Bg: bg-zinc-100 (Grey) instead of zinc-950
+    <div className="w-full min-h-screen bg-zinc-100 dark:bg-zinc-950 flex items-center justify-center p-4 relative overflow-hidden transition-colors duration-300">
       
       {/* Abstract Background Glows */}
       <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-orange-500/10 rounded-full blur-3xl"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-blue-500/5 rounded-full blur-3xl"></div>
 
-      <div className="w-full max-w-md bg-zinc-900/40 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl relative z-10">
+      {/* Login Card: bg-zinc-50, border-zinc-300 */}
+      <div className="w-full max-w-md bg-zinc-50/80 dark:bg-zinc-900/40 backdrop-blur-xl border border-zinc-300 dark:border-white/10 rounded-3xl p-8 shadow-2xl relative z-10">
         
         <div className="flex flex-col items-center mb-8">
             <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-orange-700 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-orange-500/20 mb-6">
                 <Dumbbell size={32} />
             </div>
-            <h2 className="text-3xl font-bold text-white tracking-tight">Welcome Back</h2>
+            <h2 className="text-3xl font-bold text-zinc-900 dark:text-white tracking-tight">Welcome Back</h2>
             <p className="text-zinc-500 mt-2">Sign in to access your dashboard</p>
         </div>
 
@@ -45,10 +46,11 @@ const Login = () => {
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-zinc-500">
                     <User size={20} />
                 </div>
+                {/* Input: bg-zinc-200, border-zinc-300 */}
                 <input 
                   type="text" 
                   placeholder="Username" 
-                  className="w-full bg-black/40 border border-white/5 rounded-xl pl-12 pr-4 py-4 text-white placeholder-zinc-600 focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 outline-none transition-all"
+                  className="w-full bg-zinc-200 dark:bg-black/40 border border-zinc-300 dark:border-white/5 rounded-xl pl-12 pr-4 py-4 text-zinc-900 dark:text-white placeholder-zinc-500 dark:placeholder-zinc-600 focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 outline-none transition-all"
                   onChange={(e) => setUsername(e.target.value)}
                 />
             </div>
@@ -62,7 +64,7 @@ const Login = () => {
                 <input 
                   type="password" 
                   placeholder="Password" 
-                  className="w-full bg-black/40 border border-white/5 rounded-xl pl-12 pr-4 py-4 text-white placeholder-zinc-600 focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 outline-none transition-all"
+                  className="w-full bg-zinc-200 dark:bg-black/40 border border-zinc-300 dark:border-white/5 rounded-xl pl-12 pr-4 py-4 text-zinc-900 dark:text-white placeholder-zinc-500 dark:placeholder-zinc-600 focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 outline-none transition-all"
                   onChange={(e) => setPassword(e.target.value)}
                 />
             </div>

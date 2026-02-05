@@ -10,7 +10,7 @@ import api from '../../api';
 
 const InputGroup = ({ label, icon: Icon, children }) => (
     <div className="space-y-2 group w-full">
-        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-1.5 group-focus-within:text-orange-500 transition-colors">
+        <label className="text-[10px] font-bold text-zinc-600 dark:text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-1.5 group-focus-within:text-orange-500 transition-colors">
             {Icon && <Icon size={12} />} {label}
         </label>
         {children}
@@ -20,7 +20,7 @@ const InputGroup = ({ label, icon: Icon, children }) => (
 const ModernInput = (props) => (
     <input 
         {...props}
-        className={`w-full bg-zinc-950/50 border border-zinc-800 rounded-xl px-4 py-3.5 text-white transition-all outline-none focus:bg-zinc-950 focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 placeholder:text-zinc-700 ${props.className || ''}`} 
+        className={`w-full bg-zinc-200 dark:bg-zinc-950/50 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white transition-all outline-none focus:bg-zinc-100 dark:focus:bg-zinc-950 focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 ${props.className || ''}`} 
     />
 );
 
@@ -34,7 +34,7 @@ const CountrySelector = ({ value, onChange, countries, onAddClick }) => {
                         name="country"
                         value={value}
                         onChange={onChange}
-                        className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl px-4 py-3.5 text-white outline-none focus:border-orange-500 appearance-none cursor-pointer hover:bg-zinc-900 transition-colors"
+                        className="w-full bg-zinc-200 dark:bg-zinc-950/50 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white outline-none focus:border-orange-500 appearance-none cursor-pointer hover:bg-zinc-300 dark:hover:bg-zinc-900 transition-colors"
                     >
                         <option value="">Select Country...</option>
                         {countries.map(c => (
@@ -45,7 +45,7 @@ const CountrySelector = ({ value, onChange, countries, onAddClick }) => {
                 <button 
                     type="button"
                     onClick={onAddClick}
-                    className="bg-orange-500/10 border border-orange-500/20 text-orange-500 hover:bg-orange-500 hover:text-white rounded-xl px-3 transition-all flex items-center justify-center"
+                    className="bg-orange-500/10 border border-orange-500/20 text-orange-600 dark:text-orange-500 hover:bg-orange-500 hover:text-white rounded-xl px-3 transition-all flex items-center justify-center"
                     title="Add New Country"
                 >
                     <Plus size={20} />
@@ -90,7 +90,7 @@ const PhoneInputWithCountry = ({ label, value, name, onChange, defaultCountryNam
 
     return (
         <div className="space-y-2 w-full" ref={wrapperRef}>
-             <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-1.5">
+             <label className="text-[10px] font-bold text-zinc-600 dark:text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-1.5">
                 <Phone size={12} /> {label}
             </label>
             <div className="flex gap-2 relative">
@@ -98,15 +98,15 @@ const PhoneInputWithCountry = ({ label, value, name, onChange, defaultCountryNam
                 <button 
                     type="button"
                     onClick={() => setIsOpen(!isOpen)}
-                    className="flex-shrink-0 w-[4.5rem] bg-zinc-950/50 border border-zinc-800 rounded-xl flex flex-col items-center justify-center hover:bg-zinc-900 transition-colors"
+                    className="flex-shrink-0 w-[4.5rem] bg-zinc-200 dark:bg-zinc-950/50 border border-zinc-300 dark:border-zinc-800 rounded-xl flex flex-col items-center justify-center hover:bg-zinc-300 dark:hover:bg-zinc-900 transition-colors"
                 >
-                    <span className="text-sm font-black text-white leading-none mb-0.5">{currentCountry.code}</span>
-                    <span className="text-[10px] font-mono text-zinc-400 leading-none">{currentCountry.dial_code}</span>
+                    <span className="text-sm font-black text-zinc-900 dark:text-white leading-none mb-0.5">{currentCountry.code}</span>
+                    <span className="text-[10px] font-mono text-zinc-600 dark:text-zinc-400 leading-none">{currentCountry.dial_code}</span>
                 </button>
 
                 {/* DROPDOWN MENU - Z-INDEX FIXED */}
                 {isOpen && (
-                    <div className="absolute top-full left-0 mt-2 w-56 bg-[#18181b] border border-zinc-800 rounded-xl shadow-2xl z-[100] max-h-48 overflow-y-auto p-1">
+                    <div className="absolute top-full left-0 mt-2 w-56 bg-zinc-50 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-800 rounded-xl shadow-2xl z-[100] max-h-48 overflow-y-auto p-1">
                         {countries.map(c => (
                             <div 
                                 key={c.id}
@@ -115,10 +115,10 @@ const PhoneInputWithCountry = ({ label, value, name, onChange, defaultCountryNam
                                     setSelectedCountry(c); 
                                     setIsOpen(false); 
                                 }}
-                                className="flex items-center gap-3 px-3 py-2 hover:bg-zinc-800 rounded-lg cursor-pointer transition-colors"
+                                className="flex items-center gap-3 px-3 py-2 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg cursor-pointer transition-colors"
                             >
-                                <span className="text-xs font-black bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">{c.code}</span>
-                                <span className="text-sm text-zinc-300 flex-1 text-left">{c.name}</span>
+                                <span className="text-xs font-black bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-700 dark:text-zinc-300">{c.code}</span>
+                                <span className="text-sm text-zinc-800 dark:text-zinc-300 flex-1 text-left">{c.name}</span>
                                 <span className="text-xs text-zinc-500 font-mono">{c.dial_code}</span>
                             </div>
                         ))}
@@ -132,7 +132,7 @@ const PhoneInputWithCountry = ({ label, value, name, onChange, defaultCountryNam
                     value={value}
                     onChange={onChange}
                     placeholder="10xxxxxxx"
-                    className="flex-1 min-w-0 bg-zinc-950/50 border border-zinc-800 rounded-xl px-4 py-3.5 text-white outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 transition-all font-mono"
+                    className="flex-1 min-w-0 bg-zinc-200 dark:bg-zinc-950/50 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 transition-all font-mono"
                 />
 
                 {/* WhatsApp Button */}
@@ -142,8 +142,8 @@ const PhoneInputWithCountry = ({ label, value, name, onChange, defaultCountryNam
                     disabled={!value}
                     className={`px-3.5 rounded-xl border flex items-center justify-center transition-all duration-300
                         ${value 
-                            ? 'bg-green-500/10 border-green-500/20 text-green-500 hover:bg-green-500 hover:text-white cursor-pointer' 
-                            : 'bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed'
+                            ? 'bg-green-500/10 border-green-500/20 text-green-600 dark:text-green-500 hover:bg-green-500 hover:text-white cursor-pointer' 
+                            : 'bg-zinc-200 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed'
                         }
                     `}
                     title="Open in WhatsApp"
@@ -218,16 +218,16 @@ const ClientInfoTab = ({ formData, handleChange, clientAge, user }) => {
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
             
-            {/* 1. Identity Section - FIX: Removed overflow-hidden from main container */}
-            <div className="bg-[#121214] border border-zinc-800/60 rounded-3xl p-6 md:p-8 relative">
+            {/* 1. Identity Section */}
+            <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800/60 rounded-3xl p-6 md:p-8 relative">
                 
-                {/* Isolated Background Layer to handle overflow/blur safely */}
+                {/* Isolated Background Layer */}
                 <div className="absolute inset-0 overflow-hidden rounded-3xl pointer-events-none">
                      <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-[80px] rounded-full" />
                 </div>
                 
-                <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2 relative z-10">
-                    <span className="p-2 bg-orange-500/10 rounded-lg text-orange-500"><User size={18} /></span>
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-6 flex items-center gap-2 relative z-10">
+                    <span className="p-2 bg-orange-500/10 rounded-lg text-orange-600 dark:text-orange-500"><User size={18} /></span>
                     Identity
                 </h3>
 
@@ -261,7 +261,7 @@ const ClientInfoTab = ({ formData, handleChange, clientAge, user }) => {
                             value={formData.manual_id} 
                             onChange={handleChange} 
                             disabled={!user?.is_superuser}
-                            className="font-mono text-zinc-400"
+                            className="font-mono text-zinc-500 dark:text-zinc-400"
                         />
                     </InputGroup>
 
@@ -280,14 +280,10 @@ const ClientInfoTab = ({ formData, handleChange, clientAge, user }) => {
             </div>
 
             {/* 2. Personal & Bio Section */}
-            <div className="bg-[#121214] border border-zinc-800/60 rounded-3xl p-6 md:p-8 relative">
-                 {/* Isolated Background Layer */}
-                 <div className="absolute inset-0 overflow-hidden rounded-3xl pointer-events-none">
-                    {/* Optional: Add gentle glow here if needed */}
-                </div>
-
-                <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2 relative z-10">
-                    <span className="p-2 bg-blue-500/10 rounded-lg text-blue-500"><Briefcase size={18} /></span>
+            <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800/60 rounded-3xl p-6 md:p-8 relative">
+                
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-6 flex items-center gap-2 relative z-10">
+                    <span className="p-2 bg-blue-500/10 rounded-lg text-blue-600 dark:text-blue-500"><Briefcase size={18} /></span>
                     Personal Details
                 </h3>
 
@@ -295,22 +291,22 @@ const ClientInfoTab = ({ formData, handleChange, clientAge, user }) => {
                     
                     {/* --- FLIP CARD FOR AGE / DATE --- */}
                     <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-1.5">
+                        <label className="text-[10px] font-bold text-zinc-600 dark:text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-1.5">
                             <Calendar size={12} /> Age / Birth Date
                         </label>
                         
                         <div className="relative w-full h-[54px] perspective-1000 group">
                             <div className={`relative w-full h-full transition-all duration-700 [transform-style:preserve-3d] ${isFlipped ? '[transform:rotateY(180deg)]' : ''}`}>
                                 {/* FRONT: Display Age */}
-                                <div onClick={() => setIsFlipped(true)} className="absolute inset-0 w-full h-full bg-zinc-950/50 border border-zinc-800 rounded-xl px-4 flex items-center justify-between cursor-pointer hover:border-orange-500/50 [backface-visibility:hidden]">
-                                    <span className={formData.birth_date ? "text-white font-bold" : "text-zinc-600"}>
+                                <div onClick={() => setIsFlipped(true)} className="absolute inset-0 w-full h-full bg-zinc-200 dark:bg-zinc-950/50 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 flex items-center justify-between cursor-pointer hover:border-orange-500/50 [backface-visibility:hidden]">
+                                    <span className={formData.birth_date ? "text-zinc-900 dark:text-white font-bold" : "text-zinc-500 dark:text-zinc-600"}>
                                         {displayAge ? `${displayAge} Years Old` : "Set Birth Date"}
                                     </span>
                                     <Calendar size={16} className="text-zinc-500" />
                                 </div>
                                 {/* BACK: Date Input */}
-                                <div className="absolute inset-0 w-full h-full bg-zinc-950 border border-orange-500 rounded-xl px-2 flex items-center gap-2 [transform:rotateY(180deg)] [backface-visibility:hidden]">
-                                    <input type="date" name="birth_date" value={formData.birth_date || ''} onChange={handleChange} className="bg-transparent text-white w-full outline-none [color-scheme:dark] text-sm" />
+                                <div className="absolute inset-0 w-full h-full bg-zinc-200 dark:bg-zinc-950 border border-orange-500 rounded-xl px-2 flex items-center gap-2 [transform:rotateY(180deg)] [backface-visibility:hidden]">
+                                    <input type="date" name="birth_date" value={formData.birth_date || ''} onChange={handleChange} className="bg-transparent text-zinc-900 dark:text-white w-full outline-none [color-scheme:light] dark:[color-scheme:dark] text-sm" />
                                     <button type="button" onClick={(e) => { e.stopPropagation(); setIsFlipped(false); }} className="p-1.5 bg-orange-500 rounded-lg text-white hover:bg-orange-600">
                                         <Check size={14} />
                                     </button>
@@ -332,15 +328,15 @@ const ClientInfoTab = ({ formData, handleChange, clientAge, user }) => {
             </div>
 
             {/* 3. Lifestyle */}
-            <div className="bg-[#121214] border border-zinc-800/60 rounded-3xl p-6 md:p-8 relative">
-                <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
-                    <span className="p-2 bg-rose-500/10 rounded-lg text-rose-500"><Activity size={18} /></span>
+            <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800/60 rounded-3xl p-6 md:p-8 relative">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-6 flex items-center gap-2">
+                    <span className="p-2 bg-rose-500/10 rounded-lg text-rose-600 dark:text-rose-500"><Activity size={18} /></span>
                     Lifestyle
                 </h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-3">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Marital Status</label>
+                        <label className="text-[10px] font-bold text-zinc-600 dark:text-zinc-500 uppercase tracking-widest ml-1">Marital Status</label>
                         <div className="grid grid-cols-2 gap-2">
                             {statusOptions.map((option) => {
                                 const isSelected = formData.status === option.value;
@@ -348,7 +344,7 @@ const ClientInfoTab = ({ formData, handleChange, clientAge, user }) => {
                                     <button
                                         key={option.value}
                                         onClick={() => handleChange({ target: { name: 'status', value: option.value } })}
-                                        className={`relative flex items-center justify-center gap-2 py-3 rounded-xl border-2 transition-all duration-300 ${isSelected ? `${option.border} ${option.color}/10 text-white shadow-lg` : 'border-zinc-800 bg-zinc-900/30 text-zinc-500 hover:bg-zinc-900 hover:border-zinc-700'}`}
+                                        className={`relative flex items-center justify-center gap-2 py-3 rounded-xl border-2 transition-all duration-300 ${isSelected ? `${option.border} ${option.color}/10 text-zinc-900 dark:text-white shadow-lg` : 'border-zinc-300 dark:border-zinc-800 bg-zinc-200 dark:bg-zinc-900/30 text-zinc-500 hover:bg-zinc-300 dark:hover:bg-zinc-900 hover:border-zinc-400 dark:hover:border-zinc-700'}`}
                                     >
                                         <option.icon size={16} className={isSelected ? option.text : 'opacity-50'} />
                                         <span className="text-xs font-bold uppercase">{option.label}</span>
@@ -365,18 +361,18 @@ const ClientInfoTab = ({ formData, handleChange, clientAge, user }) => {
 
                         <div 
                             onClick={() => handleChange({ target: { name: 'smoking', type: 'checkbox', checked: !formData.smoking } })}
-                            className={`cursor-pointer group relative overflow-hidden rounded-2xl p-4 border transition-all duration-300 flex items-center justify-between ${formData.smoking ? 'bg-red-500/10 border-red-500/50' : 'bg-green-500/5 border-zinc-800 hover:border-green-500/30'}`}
+                            className={`cursor-pointer group relative overflow-hidden rounded-2xl p-4 border transition-all duration-300 flex items-center justify-between ${formData.smoking ? 'bg-red-500/10 border-red-500/50' : 'bg-green-500/5 border-zinc-300 dark:border-zinc-800 hover:border-green-500/30'}`}
                         >
                             <div className="flex items-center gap-3">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${formData.smoking ? 'bg-red-500 text-white' : 'bg-zinc-800 text-zinc-500 group-hover:bg-zinc-700'}`}>
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${formData.smoking ? 'bg-red-500 text-white' : 'bg-zinc-300 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-500 group-hover:bg-zinc-400 dark:group-hover:bg-zinc-700'}`}>
                                     <Cigarette size={20} />
                                 </div>
                                 <div>
-                                    <p className={`font-bold text-sm ${formData.smoking ? 'text-red-400' : 'text-zinc-300'}`}>Smoking Habits</p>
+                                    <p className={`font-bold text-sm ${formData.smoking ? 'text-red-500 dark:text-red-400' : 'text-zinc-700 dark:text-zinc-300'}`}>Smoking Habits</p>
                                     <p className="text-xs text-zinc-500">{formData.smoking ? 'Current Smoker' : 'Non-Smoker'}</p>
                                 </div>
                             </div>
-                            <div className={`w-12 h-6 rounded-full relative transition-colors ${formData.smoking ? 'bg-red-500' : 'bg-zinc-700'}`}>
+                            <div className={`w-12 h-6 rounded-full relative transition-colors ${formData.smoking ? 'bg-red-500' : 'bg-zinc-400 dark:bg-zinc-700'}`}>
                                 <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all duration-300 ${formData.smoking ? 'left-7' : 'left-1'}`} />
                             </div>
                         </div>
@@ -385,38 +381,38 @@ const ClientInfoTab = ({ formData, handleChange, clientAge, user }) => {
             </div>
 
              {/* Notes */}
-             <div className="bg-[#121214] border border-zinc-800/60 rounded-3xl p-6 md:p-8 relative">
+             <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800/60 rounded-3xl p-6 md:p-8 relative">
                 <InputGroup label="General Notes & Medical History" icon={FileText}>
-                    <textarea name="notes" value={formData.notes} onChange={handleChange} rows={4} className="w-full bg-zinc-950/50 border border-zinc-800 focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 rounded-xl p-4 text-white resize-none transition-all outline-none placeholder:text-zinc-700 leading-relaxed" placeholder="Write any important details about the client here..." />
+                    <textarea name="notes" value={formData.notes} onChange={handleChange} rows={4} className="w-full bg-zinc-200 dark:bg-zinc-950/50 border border-zinc-300 dark:border-zinc-800 focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 rounded-xl p-4 text-zinc-900 dark:text-white resize-none transition-all outline-none placeholder:text-zinc-500 dark:placeholder:text-zinc-700 leading-relaxed" placeholder="Write any important details about the client here..." />
                 </InputGroup>
             </div>
 
             {/* --- ADD COUNTRY MODAL --- */}
             {isAddModalOpen && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                    <div className="bg-[#18181b] border border-zinc-800 w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in zoom-in-95">
+                <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <div className="bg-zinc-50 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-800 w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in zoom-in-95">
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-lg font-black text-white flex items-center gap-2">
+                            <h3 className="text-lg font-black text-zinc-900 dark:text-white flex items-center gap-2">
                                 <Globe className="text-blue-500" size={20}/> Add Country
                             </h3>
-                            <button onClick={() => setIsAddModalOpen(false)} className="text-zinc-500 hover:text-white"><X size={20} /></button>
+                            <button onClick={() => setIsAddModalOpen(false)} className="text-zinc-500 hover:text-zinc-900 dark:hover:text-white"><X size={20} /></button>
                         </div>
 
                         <form onSubmit={handleSaveCountry} className="space-y-4">
                             <div>
-                                <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Country Name</label>
-                                <input required placeholder="e.g. Bahrain" className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white outline-none focus:border-blue-500 mt-1"
+                                <label className="text-xs font-bold text-zinc-600 dark:text-zinc-500 uppercase ml-1">Country Name</label>
+                                <input required placeholder="e.g. Bahrain" className="w-full bg-zinc-200 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3 text-zinc-900 dark:text-white outline-none focus:border-blue-500 mt-1"
                                     value={newCountry.name} onChange={e => setNewCountry({...newCountry, name: e.target.value})} />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-xs font-bold text-zinc-500 uppercase ml-1">ISO Code</label>
-                                    <input required placeholder="BH" maxLength={2} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white outline-none focus:border-blue-500 mt-1 uppercase"
+                                    <label className="text-xs font-bold text-zinc-600 dark:text-zinc-500 uppercase ml-1">ISO Code</label>
+                                    <input required placeholder="BH" maxLength={2} className="w-full bg-zinc-200 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3 text-zinc-900 dark:text-white outline-none focus:border-blue-500 mt-1 uppercase"
                                         value={newCountry.code} onChange={e => setNewCountry({...newCountry, code: e.target.value.toUpperCase()})} />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Dial Code</label>
-                                    <input required placeholder="+973" className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white outline-none focus:border-blue-500 mt-1"
+                                    <label className="text-xs font-bold text-zinc-600 dark:text-zinc-500 uppercase ml-1">Dial Code</label>
+                                    <input required placeholder="+973" className="w-full bg-zinc-200 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3 text-zinc-900 dark:text-white outline-none focus:border-blue-500 mt-1"
                                         value={newCountry.dial_code} onChange={e => setNewCountry({...newCountry, dial_code: e.target.value})} />
                                 </div>
                             </div>

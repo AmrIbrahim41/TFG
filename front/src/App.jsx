@@ -1,10 +1,11 @@
 import React, { useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import Sidebar from './components/Sidebar';
 import Login from './pages/Login';
 
-// Pages
+// Pages Imports...
 import Dashboard from './pages/Dashboard'; 
 import Clients from './pages/Clients';
 import ClientDetails from './pages/ClientDetails';
@@ -17,42 +18,43 @@ import ManualTrainingPlan from './pages/ManualTrainingPlan';
 import Children from './pages/childrens/Children';
 import ChildDetails from './pages/childrens/ChildDetails';
 import SessionDetail from './pages/SessionDetail';
-import TrainerProfile from './pages/TrainerProfile'; // <--- IMPORT NEW PAGE
+import TrainerProfile from './pages/TrainerProfile';
 
-// Component to protect routes
 const PrivateRoute = ({ children }) => {
   const { user } = useContext(AuthContext);
-  return user ? <><Sidebar /><main className="flex-1">{children}</main></> : <Navigate to="/login" />;
+  return user ? <><Sidebar /><main className="flex-1 transition-colors duration-300">{children}</main></> : <Navigate to="/login" />;
 };
 
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <div className="flex bg-[#09090b] min-h-screen">
-          <Routes>
-            <Route path="/login" element={<Login />} />
+        <ThemeProvider>
+          {/* bg-zinc-100: الآن أصبح رمادي صريح (#E4E4E7)
+             ده هيخلي الخلفية كلها رمادية واضحة وليست بيضاء
+          */}
+          <div className="flex bg-zinc-100 dark:bg-[#09090b] min-h-screen transition-colors duration-300">
+            <Routes>
+              <Route path="/login" element={<Login />} />
 
-            {/* Protected Routes */}
-            <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+              {/* Protected Routes */}
+              <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+              <Route path="/profile" element={<PrivateRoute><TrainerProfile /></PrivateRoute>} />
+              <Route path="/clients" element={<PrivateRoute><Clients /></PrivateRoute>} />
+              <Route path="/clients/:id" element={<PrivateRoute><ClientDetails /></PrivateRoute>} />
+              <Route path="/admin" element={<PrivateRoute><AdminTrainers /></PrivateRoute>} />
+              <Route path="/subscriptions" element={<PrivateRoute><Subscriptions /></PrivateRoute>} />
+              <Route path="/training-plan/:planId/day/:splitId" element={<PrivateRoute><WorkoutEditor /></PrivateRoute>} />
+              <Route path="/food-database" element={<PrivateRoute><FoodDatabase /></PrivateRoute>} />
+              <Route path="/quick-plan" element={<PrivateRoute><ManualNutritionPlan /></PrivateRoute>} />
+              <Route path="/quick-workout" element={<PrivateRoute><ManualTrainingPlan /></PrivateRoute>} />
+              <Route path="/children" element={<PrivateRoute><Children /></PrivateRoute>} />
+              <Route path="/children/:id" element={<PrivateRoute><ChildDetails /></PrivateRoute>} />
+              <Route path="/children/history/:id" element={<SessionDetail />} />
 
-            {/* NEW PROFILE ROUTE */}
-            <Route path="/profile" element={<PrivateRoute><TrainerProfile /></PrivateRoute>} />
-
-            <Route path="/clients" element={<PrivateRoute><Clients /></PrivateRoute>} />
-            <Route path="/clients/:id" element={<PrivateRoute><ClientDetails /></PrivateRoute>} />
-            <Route path="/admin" element={<PrivateRoute><AdminTrainers /></PrivateRoute>} />
-            <Route path="/subscriptions" element={<PrivateRoute><Subscriptions /></PrivateRoute>} />
-            <Route path="/training-plan/:planId/day/:splitId" element={<PrivateRoute><WorkoutEditor /></PrivateRoute>} />
-            <Route path="/food-database" element={<PrivateRoute><FoodDatabase /></PrivateRoute>} />
-            <Route path="/quick-plan" element={<PrivateRoute><ManualNutritionPlan /></PrivateRoute>} />
-            <Route path="/quick-workout" element={<PrivateRoute><ManualTrainingPlan /></PrivateRoute>} />
-            <Route path="/children" element={<PrivateRoute><Children /></PrivateRoute>} />
-            <Route path="/children/:id" element={<PrivateRoute><ChildDetails /></PrivateRoute>} />
-            <Route path="/children/history/:id" element={<SessionDetail />} />
-
-          </Routes>
-        </div>
+            </Routes>
+          </div>
+        </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>
   );

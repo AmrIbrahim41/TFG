@@ -3,10 +3,8 @@ import { ArrowLeft, Save, User, Trash2, Activity, Hash, Baby, ShieldCheck, Dumbb
 import { useParams, useNavigate } from 'react-router-dom';
 import api, { BASE_URL } from '../../api';
 import { AuthContext } from '../../context/AuthContext';
-// IMPORT THE NEW CHILD INFO TAB
 import ChildInfoTab from '../../components/children/ChildInfoTab';
 import ChildMembershipTab from '../../components/children/ChildMembershipTab';
-// NEW IMPORT
 import ChildHistoryTab from '../../components/children/ChildHistoryTab';
 
 const ChildDetails = () => {
@@ -200,20 +198,20 @@ const ChildDetails = () => {
         } catch (error) { alert("Error saving data"); }
     };
 
-    if (loading) return <div className="flex justify-center items-center h-screen bg-[#09090b] text-blue-500"><Activity className="animate-spin mr-2" /> Loading...</div>;
+    if (loading) return <div className="flex justify-center items-center h-screen bg-zinc-50 dark:bg-[#09090b] text-blue-500"><Activity className="animate-spin mr-2" /> Loading...</div>;
 
     const tabs = [
         { id: 'info', label: 'Personal Info', icon: User },
         { id: 'membership', label: 'Membership', icon: ShieldCheck },
-        { id: 'history', label: 'Training Log', icon: Dumbbell }, // <--- NEW TAB
+        { id: 'history', label: 'Training Log', icon: Dumbbell }, 
     ];
 
     return (
-        <div className="min-h-screen bg-[#09090b] text-white p-4 lg:p-6 lg:pl-80 pt-20 lg:pt-6 transition-all animate-in fade-in duration-500">
+        <div className="min-h-screen bg-zinc-50 dark:bg-[#09090b] text-zinc-900 dark:text-white p-4 lg:p-6 lg:pl-80 pt-20 lg:pt-6 transition-all animate-in fade-in duration-500">
             
             <div className="lg:hidden flex items-center justify-between mb-6">
-                <button onClick={() => navigate('/children')} className="p-2 bg-zinc-900 rounded-xl hover:bg-zinc-800 transition-colors"><ArrowLeft size={20} /></button>
-                <div className="text-sm font-bold text-zinc-400">Child Profile</div>
+                <button onClick={() => navigate('/children')} className="p-2 bg-zinc-200 dark:bg-zinc-900 rounded-xl hover:bg-zinc-300 dark:hover:bg-zinc-800 transition-colors"><ArrowLeft size={20} /></button>
+                <div className="text-sm font-bold text-zinc-500 dark:text-zinc-400">Child Profile</div>
                 <div className="w-9" />
             </div>
 
@@ -221,36 +219,36 @@ const ChildDetails = () => {
                 
                 {/* --- LEFT COLUMN: Profile Card --- */}
                 <div className="xl:col-span-4 xl:sticky xl:top-6 space-y-4">
-                    <div className="bg-[#121214] border border-zinc-800/60 rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
-                        <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-blue-900/20 to-transparent" />
+                    <div className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800/60 rounded-3xl p-6 shadow-xl dark:shadow-2xl relative overflow-hidden group">
+                        <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-blue-100/50 dark:from-blue-900/20 to-transparent" />
                         
                         <div className="relative flex justify-center mb-4 mt-2">
-                            <div className="w-32 h-32 rounded-full p-1.5 bg-gradient-to-br from-zinc-700 to-zinc-900 shadow-xl">
-                                <div className="w-full h-full rounded-full overflow-hidden bg-zinc-950 flex items-center justify-center border-4 border-[#121214]">
+                            <div className="w-32 h-32 rounded-full p-1.5 bg-gradient-to-br from-zinc-200 to-zinc-300 dark:from-zinc-700 dark:to-zinc-900 shadow-xl">
+                                <div className="w-full h-full rounded-full overflow-hidden bg-zinc-100 dark:bg-zinc-950 flex items-center justify-center border-4 border-white dark:border-[#121214]">
                                     {photoUrl ? (
                                         <img src={photoUrl} alt="Profile" className="w-full h-full object-cover" />
                                     ) : (
-                                        <Baby size={48} className="text-zinc-600" />
+                                        <Baby size={48} className="text-zinc-400 dark:text-zinc-600" />
                                     )}
                                 </div>
                             </div>
                         </div>
 
                         <div className="text-center space-y-3 mb-8">
-                            <h1 className="text-2xl font-black text-white tracking-tight">{formData.name}</h1>
+                            <h1 className="text-2xl font-black text-zinc-900 dark:text-white tracking-tight">{formData.name}</h1>
                             <div className="flex justify-center">
-                                <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5">
+                                <div className="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-1.5">
                                     <Hash size={14} className="text-zinc-500" />
-                                    <span className="font-mono text-zinc-300 font-bold tracking-wider">{formData.manual_id}</span>
+                                    <span className="font-mono text-zinc-600 dark:text-zinc-300 font-bold tracking-wider">{formData.manual_id}</span>
                                 </div>
                             </div>
                         </div>
 
                         <div className="space-y-3">
-                            <button onClick={handleSaveProfile} className="w-full bg-white text-black hover:bg-blue-500 hover:text-white transition-all duration-300 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-95">
+                            <button onClick={handleSaveProfile} className="w-full bg-zinc-900 dark:bg-white text-white dark:text-black hover:bg-blue-600 dark:hover:bg-blue-500 hover:text-white dark:hover:text-white transition-all duration-300 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-95">
                                 <Save size={18} strokeWidth={2.5} /> Save Changes
                             </button>
-                            <button onClick={handleDelete} className="w-full bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500 hover:text-white transition-all duration-300 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95">
+                            <button onClick={handleDelete} className="w-full bg-red-100 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-500 hover:bg-red-500 hover:text-white transition-all duration-300 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95">
                                 <Trash2 size={18} strokeWidth={2.5} /> Delete Account
                             </button>
                         </div>
@@ -260,14 +258,14 @@ const ChildDetails = () => {
                 {/* --- RIGHT COLUMN: Tabs Content --- */}
                 <div className="xl:col-span-8 space-y-6">
                     {/* Tabs Navigation */}
-                    <div className="bg-[#121214] p-1.5 rounded-2xl border border-zinc-800 inline-flex w-full overflow-x-auto no-scrollbar shadow-lg">
+                    <div className="bg-white dark:bg-[#121214] p-1.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 inline-flex w-full overflow-x-auto no-scrollbar shadow-lg">
                         {tabs.map((tab) => (
                             <button
                                 key={tab.id}
                                 onClick={() => { setActiveTab(tab.id); }}
                                 className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap ${activeTab === tab.id
-                                        ? 'bg-zinc-800 text-white shadow-md'
-                                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                                        ? 'bg-zinc-900 dark:bg-zinc-800 text-white shadow-md'
+                                        : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900'
                                     }`}
                             >
                                 <tab.icon size={16} /> {tab.label}
@@ -275,7 +273,7 @@ const ChildDetails = () => {
                         ))}
                     </div>
 
-                    <div className="bg-[#121214] border border-zinc-800/60 rounded-[2rem] p-6 md:p-8 min-h-[500px] shadow-2xl relative animate-in slide-in-from-bottom-4 duration-500">
+                    <div className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800/60 rounded-[2rem] p-6 md:p-8 min-h-[500px] shadow-lg dark:shadow-2xl relative animate-in slide-in-from-bottom-4 duration-500">
                         
                         {activeTab === 'info' && (
                             <ChildInfoTab 
@@ -306,20 +304,20 @@ const ChildDetails = () => {
                 </div>
             </div>
 
-            {/* --- ASSIGN CHILD PLAN MODAL (UNCHANGED) --- */}
+            {/* --- ASSIGN CHILD PLAN MODAL --- */}
             {isSubModalOpen && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-[#121214] border border-zinc-800 w-full max-w-md rounded-3xl p-6 relative shadow-2xl animate-in zoom-in-95 duration-200">
+                <div className="fixed inset-0 bg-black/60 dark:bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800 w-full max-w-md rounded-3xl p-6 relative shadow-2xl animate-in zoom-in-95 duration-200">
                         <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-black text-white flex items-center gap-2">
+                            <h2 className="text-xl font-black text-zinc-900 dark:text-white flex items-center gap-2">
                                 <Baby className="text-blue-500" /> Assign Child Plan
                             </h2>
-                            <button onClick={() => setIsSubModalOpen(false)} className="text-zinc-500 hover:text-white"><Activity size={20} /></button>
+                            <button onClick={() => setIsSubModalOpen(false)} className="text-zinc-500 hover:text-zinc-900 dark:hover:text-white"><Activity size={20} /></button>
                         </div>
                         <form onSubmit={handleCreateSub} className="space-y-5">
                             <div>
                                 <label className="text-xs font-bold text-zinc-500 uppercase ml-1 block mb-1.5">Select Child Package</label>
-                                <select required className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3.5 text-white outline-none focus:border-blue-500 transition-colors appearance-none" onChange={(e) => setNewSubData({ ...newSubData, plan: e.target.value })}>
+                                <select required className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white outline-none focus:border-blue-500 transition-colors appearance-none" onChange={(e) => setNewSubData({ ...newSubData, plan: e.target.value })}>
                                     <option value="">-- Choose Package --</option>
                                     {availablePlans.map(plan => (<option key={plan.id} value={plan.id}>{plan.name} ({plan.duration_days} days)</option>))}
                                 </select>
@@ -329,7 +327,7 @@ const ChildDetails = () => {
                                 <div>
                                     <label className="text-xs font-bold text-zinc-500 uppercase ml-1 block mb-1.5">Assign Trainer</label>
                                     <select 
-                                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3.5 text-white outline-none focus:border-blue-500 transition-colors appearance-none" 
+                                        className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white outline-none focus:border-blue-500 transition-colors appearance-none" 
                                         onChange={(e) => setNewSubData({ ...newSubData, trainer: e.target.value })}
                                         defaultValue=""
                                     >
@@ -341,7 +339,7 @@ const ChildDetails = () => {
 
                             <div>
                                 <label className="text-xs font-bold text-zinc-500 uppercase ml-1 block mb-1.5">Start Date</label>
-                                <input type="date" required value={newSubData.start_date} onChange={(e) => setNewSubData({ ...newSubData, start_date: e.target.value })} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3.5 text-white outline-none focus:border-blue-500 [color-scheme:dark]" />
+                                <input type="date" required value={newSubData.start_date} onChange={(e) => setNewSubData({ ...newSubData, start_date: e.target.value })} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white outline-none focus:border-blue-500 [color-scheme:light] dark:[color-scheme:dark]" />
                             </div>
                             
                             <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all mt-2">

@@ -8,14 +8,15 @@ import toast from 'react-hot-toast';
 
 // --- SHARED COMPONENT: MODERN INPUT ---
 const ModernInput = ({ label, value, onChange, type = "text", placeholder, suffix }) => (
-    <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-2xl relative focus-within:ring-2 focus-within:ring-orange-500/50 focus-within:border-orange-500 transition-all group">
+    // Input: bg-zinc-100 (light), border-zinc-300 (light)
+    <div className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 p-3 rounded-2xl relative focus-within:ring-2 focus-within:ring-orange-500/50 focus-within:border-orange-500 transition-all group">
         <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block tracking-wider group-focus-within:text-orange-500 transition-colors">{label}</label>
         <input
             type={type}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
-            className="w-full bg-transparent text-white font-bold text-sm outline-none placeholder-zinc-700"
+            className="w-full bg-transparent text-zinc-900 dark:text-white font-bold text-sm outline-none placeholder-zinc-400 dark:placeholder-zinc-700"
         />
         {suffix && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-600">{suffix}</span>}
     </div>
@@ -128,7 +129,7 @@ const FoodDatabase = () => {
     };
 
     return (
-        // FIXED: Added 'pt-20' on mobile to clear the fixed header. Reset to 'lg:pt-10' on desktop.
+        // Main Bg: pt-20 added
         <div className="p-4 pt-20 md:p-6 lg:p-10 space-y-6 md:space-y-8 animate-in fade-in duration-300 w-full max-w-7xl mx-auto min-h-screen pb-24 md:pb-10">
 
             {/* 1. Integrated Header (Stacked on Mobile) */}
@@ -138,7 +139,7 @@ const FoodDatabase = () => {
                         <Database size={24} md:size={28} />
                     </div>
                     <div>
-                        <h1 className="text-2xl md:text-3xl font-black text-white">Food Database</h1>
+                        <h1 className="text-2xl md:text-3xl font-black text-zinc-900 dark:text-white">Food Database</h1>
                         <p className="text-zinc-500 text-xs md:text-sm font-medium">Manage nutritional exchange list.</p>
                     </div>
                 </div>
@@ -153,15 +154,16 @@ const FoodDatabase = () => {
             </div>
 
             {/* 2. Controls & Search */}
-            {/* FIXED: 'top-20' on mobile so it sticks below the header. 'lg:top-2' on desktop. */}
-            <div className="bg-[#121214] border border-zinc-800 p-3 md:p-4 rounded-3xl flex flex-col md:flex-row gap-4 items-center sticky top-20 lg:top-2 z-10 shadow-xl shadow-black/50">
+            {/* Bar: bg-zinc-50, border-zinc-300 */}
+            <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 p-3 md:p-4 rounded-3xl flex flex-col md:flex-row gap-4 items-center sticky top-20 lg:top-2 z-10 shadow-xl shadow-zinc-200/50 dark:shadow-black/50">
                 <div className="relative flex-1 w-full">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
+                    {/* Search Input: bg-zinc-100, border-zinc-300 */}
                     <input
                         placeholder="Search ingredients..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-12 pr-4 py-3 text-white font-medium outline-none focus:border-orange-500 transition-colors text-sm"
+                        className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl pl-12 pr-4 py-3 text-zinc-900 dark:text-white font-medium outline-none focus:border-orange-500 transition-colors text-sm"
                     />
                 </div>
                 <div className="flex gap-2 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 hide-scrollbar snap-x">
@@ -169,7 +171,7 @@ const FoodDatabase = () => {
                         <button
                             key={cat}
                             onClick={() => setActiveCategory(cat)}
-                            className={`snap-start px-4 md:px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all border whitespace-nowrap shrink-0 ${activeCategory === cat ? 'bg-white text-black border-white' : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-white hover:bg-zinc-800'}`}
+                            className={`snap-start px-4 md:px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all border whitespace-nowrap shrink-0 ${activeCategory === cat ? 'bg-zinc-900 dark:bg-white text-white dark:text-black border-zinc-900 dark:border-white' : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-800 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-800'}`}
                         >
                             {cat}
                         </button>
@@ -180,21 +182,22 @@ const FoodDatabase = () => {
             {/* 3. Data Display - Responsive Switch */}
 
             {/* A) DESKTOP VIEW: Table */}
-            <div className="hidden md:block border border-zinc-800 rounded-3xl overflow-hidden bg-[#121214]">
+            {/* Table Container: bg-zinc-50, border-zinc-300 */}
+            <div className="hidden md:block border border-zinc-300 dark:border-zinc-800 rounded-3xl overflow-hidden bg-zinc-50 dark:bg-[#121214]">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="bg-zinc-900/50 border-b border-zinc-800 text-[10px] uppercase text-zinc-500 font-bold tracking-wider">
+                            <tr className="bg-zinc-100/50 dark:bg-zinc-900/50 border-b border-zinc-300 dark:border-zinc-800 text-[10px] uppercase text-zinc-500 font-bold tracking-wider">
                                 <th className="p-5">Food Name</th>
                                 <th className="p-5">Category</th>
                                 <th className="p-5 text-center">Calories <span className="text-zinc-600">/100g</span></th>
-                                <th className="p-5 text-center text-red-400">Protein</th>
-                                <th className="p-5 text-center text-blue-400">Carbs</th>
-                                <th className="p-5 text-center text-yellow-400">Fats</th>
+                                <th className="p-5 text-center text-red-500">Protein</th>
+                                <th className="p-5 text-center text-blue-500">Carbs</th>
+                                <th className="p-5 text-center text-yellow-500">Fats</th>
                                 <th className="p-5 text-right">Action</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-zinc-800/50">
+                        <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800/50">
                             {filteredFoods.length === 0 ? (
                                 <tr>
                                     <td colSpan="7" className="p-16 text-center text-zinc-500">
@@ -204,21 +207,21 @@ const FoodDatabase = () => {
                                 </tr>
                             ) : (
                                 filteredFoods.map(food => (
-                                    <tr key={food.id} className="hover:bg-zinc-900/40 transition-colors group">
-                                        <td className="p-5 font-bold text-white text-sm">{food.name}</td>
+                                    <tr key={food.id} className="hover:bg-zinc-100 dark:hover:bg-zinc-900/40 transition-colors group">
+                                        <td className="p-5 font-bold text-zinc-900 dark:text-white text-sm">{food.name}</td>
                                         <td className="p-5">
                                             <span className={`text-[10px] uppercase font-black px-3 py-1.5 rounded-lg border ${getCategoryColor(food.category)}`}>
                                                 {food.category}
                                             </span>
                                         </td>
-                                        <td className="p-5 text-center text-white font-black">{food.calories_per_100g}</td>
-                                        <td className="p-5 text-center text-zinc-400 font-medium">{food.protein_per_100g}g</td>
-                                        <td className="p-5 text-center text-zinc-400 font-medium">{food.carbs_per_100g}g</td>
-                                        <td className="p-5 text-center text-zinc-400 font-medium">{food.fats_per_100g}g</td>
+                                        <td className="p-5 text-center text-zinc-900 dark:text-white font-black">{food.calories_per_100g}</td>
+                                        <td className="p-5 text-center text-zinc-500 dark:text-zinc-400 font-medium">{food.protein_per_100g}g</td>
+                                        <td className="p-5 text-center text-zinc-500 dark:text-zinc-400 font-medium">{food.carbs_per_100g}g</td>
+                                        <td className="p-5 text-center text-zinc-500 dark:text-zinc-400 font-medium">{food.fats_per_100g}g</td>
                                         <td className="p-5 text-right">
                                             <div className="flex items-center justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
-                                                <button onClick={() => openEditModal(food)} className="p-2 bg-zinc-900 rounded-lg text-zinc-500 hover:text-blue-500 hover:bg-blue-500/10 transition-all"><Edit2 size={16} /></button>
-                                                <button onClick={() => handleDelete(food.id)} className="p-2 bg-zinc-900 rounded-lg text-zinc-500 hover:text-red-500 hover:bg-red-500/10 transition-all"><Trash2 size={16} /></button>
+                                                <button onClick={() => openEditModal(food)} className="p-2 bg-zinc-200 dark:bg-zinc-900 rounded-lg text-zinc-500 hover:text-blue-500 hover:bg-blue-500/10 transition-all"><Edit2 size={16} /></button>
+                                                <button onClick={() => handleDelete(food.id)} className="p-2 bg-zinc-200 dark:bg-zinc-900 rounded-lg text-zinc-500 hover:text-red-500 hover:bg-red-500/10 transition-all"><Trash2 size={16} /></button>
                                             </div>
                                         </td>
                                     </tr>
@@ -232,47 +235,48 @@ const FoodDatabase = () => {
             {/* B) MOBILE VIEW: Cards */}
             <div className="md:hidden grid grid-cols-1 gap-3">
                 {filteredFoods.length === 0 ? (
-                    <div className="p-10 text-center text-zinc-500 border border-dashed border-zinc-800 rounded-3xl">
+                    <div className="p-10 text-center text-zinc-500 border border-dashed border-zinc-300 dark:border-zinc-800 rounded-3xl">
                         <Database size={32} className="opacity-20 mb-2 mx-auto" />
                         <p>No items found.</p>
                     </div>
                 ) : (
                     filteredFoods.map(food => (
-                        <div key={food.id} className="bg-[#121214] border border-zinc-800 p-4 rounded-2xl space-y-3 shadow-sm">
+                        // Card: bg-zinc-50, border-zinc-300
+                        <div key={food.id} className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 p-4 rounded-2xl space-y-3 shadow-sm">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <h3 className="font-bold text-white text-lg leading-tight">{food.name}</h3>
+                                    <h3 className="font-bold text-zinc-900 dark:text-white text-lg leading-tight">{food.name}</h3>
                                     <span className={`inline-block mt-1 text-[10px] uppercase font-black px-2 py-0.5 rounded border ${getCategoryColor(food.category)}`}>
                                         {food.category}
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-1">
-                                    <button onClick={() => openEditModal(food)} className="p-2 bg-zinc-900 rounded-lg text-zinc-400 hover:text-blue-400"><Edit2 size={18} /></button>
-                                    <button onClick={() => handleDelete(food.id)} className="p-2 bg-zinc-900 rounded-lg text-zinc-400 hover:text-red-400"><Trash2 size={18} /></button>
+                                    <button onClick={() => openEditModal(food)} className="p-2 bg-zinc-200 dark:bg-zinc-900 rounded-lg text-zinc-400 hover:text-blue-400"><Edit2 size={18} /></button>
+                                    <button onClick={() => handleDelete(food.id)} className="p-2 bg-zinc-200 dark:bg-zinc-900 rounded-lg text-zinc-400 hover:text-red-400"><Trash2 size={18} /></button>
                                 </div>
                             </div>
 
-                            {/* Mobile Macro Grid */}
-                            <div className="grid grid-cols-4 gap-2 bg-black/20 rounded-xl p-2 border border-zinc-800/50">
+                            {/* Mobile Macro Grid - bg-zinc-100 */}
+                            <div className="grid grid-cols-4 gap-2 bg-zinc-100 dark:bg-black/20 rounded-xl p-2 border border-zinc-300 dark:border-zinc-800/50">
                                 <div className="text-center">
                                     <div className="text-[9px] text-zinc-500 font-bold uppercase">Cal</div>
-                                    <div className="text-white font-black text-sm">{food.calories_per_100g}</div>
+                                    <div className="text-zinc-900 dark:text-white font-black text-sm">{food.calories_per_100g}</div>
                                 </div>
                                 <div className="text-center relative">
                                     <div className="text-[9px] text-red-500/70 font-bold uppercase">Pro</div>
-                                    <div className="text-zinc-300 font-bold text-sm">{food.protein_per_100g}</div>
+                                    <div className="text-zinc-500 dark:text-zinc-300 font-bold text-sm">{food.protein_per_100g}</div>
                                     {/* Vertical Divider */}
-                                    <div className="absolute left-0 top-2 bottom-2 w-px bg-zinc-800"></div>
+                                    <div className="absolute left-0 top-2 bottom-2 w-px bg-zinc-300 dark:bg-zinc-800"></div>
                                 </div>
                                 <div className="text-center relative">
                                     <div className="text-[9px] text-blue-500/70 font-bold uppercase">Carb</div>
-                                    <div className="text-zinc-300 font-bold text-sm">{food.carbs_per_100g}</div>
-                                    <div className="absolute left-0 top-2 bottom-2 w-px bg-zinc-800"></div>
+                                    <div className="text-zinc-500 dark:text-zinc-300 font-bold text-sm">{food.carbs_per_100g}</div>
+                                    <div className="absolute left-0 top-2 bottom-2 w-px bg-zinc-300 dark:bg-zinc-800"></div>
                                 </div>
                                 <div className="text-center relative">
                                     <div className="text-[9px] text-yellow-500/70 font-bold uppercase">Fat</div>
-                                    <div className="text-zinc-300 font-bold text-sm">{food.fats_per_100g}</div>
-                                    <div className="absolute left-0 top-2 bottom-2 w-px bg-zinc-800"></div>
+                                    <div className="text-zinc-500 dark:text-zinc-300 font-bold text-sm">{food.fats_per_100g}</div>
+                                    <div className="absolute left-0 top-2 bottom-2 w-px bg-zinc-300 dark:bg-zinc-800"></div>
                                 </div>
                             </div>
                         </div>
@@ -283,15 +287,16 @@ const FoodDatabase = () => {
             {/* 4. Styled Modal (Responsive Width) */}
             {isModalOpen && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-                    <div className="bg-[#18181b] border border-zinc-800 rounded-3xl w-[95%] md:w-full max-w-lg shadow-2xl shadow-black/50 overflow-hidden animate-in zoom-in-95 duration-300">
+                    {/* Modal: bg-zinc-50, border-zinc-300 */}
+                    <div className="bg-zinc-50 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-800 rounded-3xl w-[95%] md:w-full max-w-lg shadow-2xl shadow-black/50 overflow-hidden animate-in zoom-in-95 duration-300">
 
                         {/* Modal Header */}
-                        <div className="p-5 md:p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
-                            <h3 className="font-bold text-lg md:text-xl text-white flex items-center gap-2">
+                        <div className="p-5 md:p-6 border-b border-zinc-300 dark:border-zinc-800 flex justify-between items-center bg-zinc-100/50 dark:bg-zinc-900/50">
+                            <h3 className="font-bold text-lg md:text-xl text-zinc-900 dark:text-white flex items-center gap-2">
                                 {editingId ? <Edit2 size={20} className="text-blue-500" /> : <Plus size={20} className="text-orange-500" />}
                                 {editingId ? 'Edit Food Item' : 'New Food Item'}
                             </h3>
-                            <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white transition-colors">
+                            <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors">
                                 <X size={20} />
                             </button>
                         </div>
@@ -321,7 +326,7 @@ const FoodDatabase = () => {
                                         <button
                                             key={cat}
                                             onClick={() => setFormData({ ...formData, category: cat })}
-                                            className={`py-3 rounded-xl text-xs font-bold border transition-all ${formData.category === cat ? 'bg-white text-black border-white' : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:bg-zinc-800'}`}
+                                            className={`py-3 rounded-xl text-xs font-bold border transition-all ${formData.category === cat ? 'bg-zinc-900 dark:bg-white text-white dark:text-black border-zinc-900 dark:border-white' : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-800'}`}
                                         >
                                             {cat}
                                         </button>

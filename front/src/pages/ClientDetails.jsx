@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { 
-    ArrowLeft, Save, User, Trash2, Calendar, 
-    Activity, ShieldCheck, MapPin, Hash, Utensils  
+    ArrowLeft, Save, User, Trash2, Activity, ShieldCheck, MapPin, Hash, Utensils  
 } from 'lucide-react';
-
 
 import api, { BASE_URL } from '../api';
 import { AuthContext } from '../context/AuthContext';
@@ -45,7 +43,6 @@ const ClientDetails = () => {
         plan: '', trainer: '', start_date: new Date().toISOString().split('T')[0]
     });
 
-    // --- INSTANT AGE CALCULATION ---
     const calculatedAge = useMemo(() => {
         if (formData.birth_date) {
             const today = new Date();
@@ -60,7 +57,6 @@ const ClientDetails = () => {
         return dbAge || '--';
     }, [formData.birth_date, dbAge]);
 
-    // FIXED: Ensure subscriptions is an array before calling .some()
     const hasActiveSub = Array.isArray(subscriptions) ? subscriptions.some(sub => sub.is_active) : false;
 
     useEffect(() => {
@@ -80,17 +76,14 @@ const ClientDetails = () => {
                 if (data.photo_url) setPhotoUrl(data.photo_url.startsWith('http') ? data.photo_url : `${BASE_URL}${data.photo_url}`);
 
                 const subRes = await api.get(`/client-subscriptions/?client_id=${id}`);
-                // FIXED: Handle Pagination Result
                 if (subRes.data.results) {
                     setSubscriptions(subRes.data.results);
                 } else {
                     setSubscriptions(subRes.data);
                 }
 
-                // --- KEY CHANGE HERE: FETCH ONLY ADULT PLANS ---
                 const plansRes = await api.get('/subscriptions/?target=adult');
                 setAvailablePlans(plansRes.data);
-                // ----------------------------------------------
 
                 if (user?.is_superuser) {
                     const trainersRes = await api.get('/manage-trainers/');
@@ -102,7 +95,6 @@ const ClientDetails = () => {
         fetchData();
     }, [id, user]);
 
-    // --- Actions ---
     const handleSaveProfile = async () => {
         try {
             const payload = { ...formData };
@@ -128,7 +120,6 @@ const ClientDetails = () => {
         setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
     };
 
-    // --- Subscription Logic ---
     const handleCreateSub = async (e) => {
         e.preventDefault();
         try {
@@ -136,9 +127,7 @@ const ClientDetails = () => {
             if (user?.is_superuser && newSubData.trainer) payload.trainer = newSubData.trainer;
             await api.post('/client-subscriptions/', payload);
             
-            // Refresh List
             const subRes = await api.get(`/client-subscriptions/?client_id=${id}`);
-            // FIXED: Handle Pagination
             const newSubs = subRes.data.results || subRes.data;
             setSubscriptions(newSubs);
             
@@ -156,9 +145,7 @@ const ClientDetails = () => {
         try {
             await api.patch(`/client-subscriptions/${sub.id}/`, { is_active: !sub.is_active });
             
-            // Refresh List
             const subRes = await api.get(`/client-subscriptions/?client_id=${id}`);
-            // FIXED: Handle Pagination
             const newSubs = subRes.data.results || subRes.data;
             setSubscriptions(newSubs);
             
@@ -180,7 +167,7 @@ const ClientDetails = () => {
         } catch (error) { alert("Error saving data"); }
     };
 
-    if (loading) return <div className="flex justify-center items-center h-screen bg-[#09090b] text-orange-500"><Activity className="animate-spin mr-2" /> Loading Profile...</div>;
+    if (loading) return <div className="flex justify-center items-center h-screen bg-zinc-100 dark:bg-[#09090b] text-orange-500"><Activity className="animate-spin mr-2" /> Loading Profile...</div>;
 
     const tabs = [
         { id: 'info', label: 'Personal Info', icon: User },
@@ -190,11 +177,11 @@ const ClientDetails = () => {
     ];
 
     return (
-        <div className="min-h-screen bg-[#09090b] text-white p-4 lg:p-6 lg:pl-80 pt-20 lg:pt-6 transition-all animate-in fade-in duration-500">
+        <div className="min-h-screen bg-zinc-100 dark:bg-[#09090b] text-zinc-900 dark:text-white p-4 lg:p-6 lg:pl-80 pt-20 lg:pt-6 transition-colors animate-in fade-in duration-500">
 
             <div className="lg:hidden flex items-center justify-between mb-6">
-                <button onClick={() => navigate('/clients')} className="p-2 bg-zinc-900 rounded-xl hover:bg-zinc-800 transition-colors"><ArrowLeft size={20} /></button>
-                <div className="text-sm font-bold text-zinc-400">Athlete Profile</div>
+                <button onClick={() => navigate('/clients')} className="p-2 bg-zinc-50 dark:bg-zinc-900 rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-zinc-300 dark:border-zinc-800"><ArrowLeft size={20} className="text-zinc-600 dark:text-white" /></button>
+                <div className="text-sm font-bold text-zinc-500 dark:text-zinc-400">Athlete Profile</div>
                 <div className="w-9" />
             </div>
 
@@ -202,46 +189,49 @@ const ClientDetails = () => {
 
                 {/* --- LEFT COLUMN: Sticky Profile Card --- */}
                 <div className="xl:col-span-4 xl:sticky xl:top-6 space-y-4">
-                    <div className="bg-[#121214] border border-zinc-800/60 rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
+                    {/* Card: bg-zinc-50, border-zinc-300 */}
+                    <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800/60 rounded-3xl p-6 shadow-xl dark:shadow-2xl relative overflow-hidden group transition-colors duration-300">
 
-                        <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-zinc-800 to-transparent opacity-20" />
+                        {/* Gradient modified to be gray */}
+                        <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-zinc-200 to-transparent dark:from-zinc-800 dark:to-transparent opacity-50 dark:opacity-20" />
 
                         <div className="relative flex justify-center mb-4 mt-2">
-                            <div className="w-32 h-32 rounded-full p-1.5 bg-gradient-to-br from-zinc-700 to-zinc-900 shadow-xl">
-                                <div className="w-full h-full rounded-full overflow-hidden bg-zinc-950 flex items-center justify-center border-4 border-[#121214]">
+                            <div className="w-32 h-32 rounded-full p-1.5 bg-gradient-to-br from-zinc-200 to-zinc-300 dark:from-zinc-700 dark:to-zinc-900 shadow-xl">
+                                <div className="w-full h-full rounded-full overflow-hidden bg-zinc-100 dark:bg-zinc-950 flex items-center justify-center border-4 border-zinc-50 dark:border-[#121214]">
                                     {photoUrl ? (
                                         <img src={photoUrl} alt="Profile" className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-500" />
                                     ) : (
-                                        <User size={48} className="text-zinc-600" />
+                                        <User size={48} className="text-zinc-400 dark:text-zinc-600" />
                                     )}
                                 </div>
                             </div>
-                            <div className={`absolute bottom-0 bg-[#121214] px-3 py-1 rounded-full border ${isSubscribed ? 'border-green-500/30 text-green-500 shadow-green-900/20' : 'border-red-500/30 text-red-500 shadow-red-900/20'} shadow-lg flex items-center gap-1.5`}>
+                            <div className={`absolute bottom-0 bg-zinc-50 dark:bg-[#121214] px-3 py-1 rounded-full border ${isSubscribed ? 'border-green-500/30 text-green-600 dark:text-green-500 shadow-green-900/20' : 'border-red-500/30 text-red-600 dark:text-red-500 shadow-red-900/20'} shadow-lg flex items-center gap-1.5`}>
                                 <div className={`w-2 h-2 rounded-full ${isSubscribed ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
                                 <span className="text-xs font-bold uppercase tracking-wider">{isSubscribed ? 'Active' : 'Inactive'}</span>
                             </div>
                         </div>
 
                         <div className="text-center space-y-3 mb-8">
-                            <h1 className="text-2xl font-black text-white tracking-tight">{formData.name}</h1>
+                            <h1 className="text-2xl font-black text-zinc-900 dark:text-white tracking-tight">{formData.name}</h1>
 
                             <div className="flex justify-center">
-                                <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5">
+                                {/* Badge bg-zinc-200 */}
+                                <div className="flex items-center gap-2 bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-lg px-3 py-1.5">
                                     <Hash size={14} className="text-zinc-500" />
-                                    <span className="font-mono text-zinc-300 font-bold tracking-wider">{formData.manual_id}</span>
+                                    <span className="font-mono text-zinc-600 dark:text-zinc-300 font-bold tracking-wider">{formData.manual_id}</span>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Quick Stats Grid */}
+                        {/* Quick Stats Grid - bg-zinc-100 */}
                         <div className="grid grid-cols-2 gap-3 mb-8">
-                            <div className="bg-zinc-900/50 p-3 rounded-2xl border border-zinc-800/50 flex flex-col items-center">
+                            <div className="bg-zinc-100 dark:bg-zinc-900/50 p-3 rounded-2xl border border-zinc-300 dark:border-zinc-800/50 flex flex-col items-center">
                                 <span className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider">Age</span>
-                                <span className="text-lg font-bold text-white">{calculatedAge}</span>
+                                <span className="text-lg font-bold text-zinc-900 dark:text-white">{calculatedAge}</span>
                             </div>
-                            <div className="bg-zinc-900/50 p-3 rounded-2xl border border-zinc-800/50 flex flex-col items-center">
+                            <div className="bg-zinc-100 dark:bg-zinc-900/50 p-3 rounded-2xl border border-zinc-300 dark:border-zinc-800/50 flex flex-col items-center">
                                 <span className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider">Since</span>
-                                <span className="text-lg font-bold text-white">
+                                <span className="text-lg font-bold text-zinc-900 dark:text-white">
                                     {formData.created_at ? new Date(formData.created_at).getFullYear() : new Date().getFullYear()}
                                 </span>
                             </div>
@@ -250,7 +240,7 @@ const ClientDetails = () => {
                         <div className="space-y-3">
                             <button
                                 onClick={handleSaveProfile}
-                                className="w-full bg-white text-black hover:bg-orange-500 hover:text-white transition-all duration-300 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-white/5 active:scale-95"
+                                className="w-full bg-zinc-900 dark:bg-white text-white dark:text-black hover:bg-orange-600 dark:hover:bg-orange-500 hover:text-white dark:hover:text-white transition-all duration-300 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-black/5 dark:shadow-white/5 active:scale-95"
                             >
                                 <Save size={18} strokeWidth={2.5} /> Save Changes
                             </button>
@@ -258,7 +248,7 @@ const ClientDetails = () => {
                             {(user?.is_superuser || !isSubscribed) && (
                                 <button
                                     onClick={handleDeleteClient}
-                                    className="w-full group bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500 hover:text-white transition-all duration-300 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95"
+                                    className="w-full group bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-500 hover:bg-red-500 hover:text-white dark:hover:bg-red-500 dark:hover:text-white transition-all duration-300 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95"
                                 >
                                     <Trash2 size={18} strokeWidth={2.5} className="group-hover:animate-bounce" /> Clear Customer
                                 </button>
@@ -266,11 +256,11 @@ const ClientDetails = () => {
                         </div>
                     </div>
 
-                    {/* Simplified Address Only Box */}
+                    {/* Address Box */}
                     {formData.address && (
-                        <div className="bg-[#121214] border border-zinc-800/60 rounded-3xl p-5 shadow-lg">
-                            <div className="flex items-center gap-3 text-zinc-400">
-                                <div className="p-2 bg-zinc-900 rounded-lg"><MapPin size={16} /></div>
+                        <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800/60 rounded-3xl p-5 shadow-lg transition-colors">
+                            <div className="flex items-center gap-3 text-zinc-500 dark:text-zinc-400">
+                                <div className="p-2 bg-zinc-200 dark:bg-zinc-900 rounded-lg"><MapPin size={16} /></div>
                                 <span className="text-sm font-medium truncate">{formData.address}</span>
                             </div>
                         </div>
@@ -280,14 +270,15 @@ const ClientDetails = () => {
 
                 {/* --- RIGHT COLUMN: Tabs & Main Content --- */}
                 <div className="xl:col-span-8 space-y-6">
-                    <div className="bg-[#121214] p-1.5 rounded-2xl border border-zinc-800 inline-flex w-full overflow-x-auto no-scrollbar shadow-lg">
+                    {/* Tabs Container */}
+                    <div className="bg-zinc-50 dark:bg-[#121214] p-1.5 rounded-2xl border border-zinc-300 dark:border-zinc-800 inline-flex w-full overflow-x-auto no-scrollbar shadow-lg transition-colors">
                         {tabs.map((tab) => (
                             <button
                                 key={tab.id}
                                 onClick={() => { setActiveTab(tab.id); setSelectedSub(null); }}
                                 className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap ${activeTab === tab.id
-                                        ? 'bg-zinc-800 text-white shadow-md'
-                                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                                        ? 'bg-zinc-900 dark:bg-zinc-800 text-white shadow-md'
+                                        : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-900'
                                     }`}
                             >
                                 <tab.icon size={16} /> {tab.label}
@@ -295,7 +286,8 @@ const ClientDetails = () => {
                         ))}
                     </div>
 
-                    <div className="bg-[#121214] border border-zinc-800/60 rounded-[2rem] p-6 md:p-8 min-h-[500px] shadow-2xl relative animate-in slide-in-from-bottom-4 duration-500">
+                    {/* Content Area */}
+                    <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800/60 rounded-[2rem] p-6 md:p-8 min-h-[500px] shadow-2xl relative animate-in slide-in-from-bottom-4 duration-500 transition-colors">
                         {activeTab === 'info' && (
                             <div className="animate-in fade-in duration-300">
                                 <ClientInfoTab
@@ -333,18 +325,18 @@ const ClientDetails = () => {
                 </div>
             </div>
 
-            {/* Sub Modal (Unchanged) */}
+            {/* Sub Modal */}
             {isSubModalOpen && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-[#121214] border border-zinc-800 w-full max-w-md rounded-3xl p-6 relative shadow-2xl animate-in zoom-in-95 duration-200">
+                <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 w-full max-w-md rounded-3xl p-6 relative shadow-2xl animate-in zoom-in-95 duration-200 transition-colors">
                         <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-black text-white">Assign Plan</h2>
-                            <button onClick={() => setIsSubModalOpen(false)} className="text-zinc-500 hover:text-white"><Activity size={20} /></button>
+                            <h2 className="text-xl font-black text-zinc-900 dark:text-white">Assign Plan</h2>
+                            <button onClick={() => setIsSubModalOpen(false)} className="text-zinc-500 hover:text-zinc-900 dark:hover:text-white"><Activity size={20} /></button>
                         </div>
                         <form onSubmit={handleCreateSub} className="space-y-5">
                             <div>
                                 <label className="text-xs font-bold text-zinc-500 uppercase ml-1 block mb-1.5">Select Plan</label>
-                                <select required className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3.5 text-white outline-none focus:border-orange-500 transition-colors appearance-none" onChange={(e) => setNewSubData({ ...newSubData, plan: e.target.value })}>
+                                <select required className="w-full bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white outline-none focus:border-orange-500 transition-colors appearance-none" onChange={(e) => setNewSubData({ ...newSubData, plan: e.target.value })}>
                                     <option value="">-- Choose Plan --</option>
                                     {availablePlans.map(plan => (<option key={plan.id} value={plan.id}>{plan.name} ({plan.duration_days} days)</option>))}
                                 </select>
@@ -352,7 +344,7 @@ const ClientDetails = () => {
                             {user?.is_superuser && (
                                 <div>
                                     <label className="text-xs font-bold text-zinc-500 uppercase ml-1 block mb-1.5">Assign Trainer</label>
-                                    <select className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3.5 text-white outline-none focus:border-orange-500 transition-colors appearance-none" onChange={(e) => setNewSubData({ ...newSubData, trainer: e.target.value })}>
+                                    <select className="w-full bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white outline-none focus:border-orange-500 transition-colors appearance-none" onChange={(e) => setNewSubData({ ...newSubData, trainer: e.target.value })}>
                                         <option value="">-- Auto (Me) --</option>
                                         {trainers.map(t => (<option key={t.id} value={t.id}>{t.username}</option>))}
                                     </select>
@@ -360,9 +352,9 @@ const ClientDetails = () => {
                             )}
                             <div>
                                 <label className="text-xs font-bold text-zinc-500 uppercase ml-1 block mb-1.5">Start Date</label>
-                                <input type="date" required value={newSubData.start_date} onChange={(e) => setNewSubData({ ...newSubData, start_date: e.target.value })} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3.5 text-white outline-none focus:border-orange-500 [color-scheme:dark]" />
+                                <input type="date" required value={newSubData.start_date} onChange={(e) => setNewSubData({ ...newSubData, start_date: e.target.value })} className="w-full bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white outline-none focus:border-orange-500 [color-scheme:light] dark:[color-scheme:dark]" />
                             </div>
-                            <button type="submit" className="w-full bg-orange-600 hover:bg-orange-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-orange-900/20 active:scale-95 transition-all mt-2">
+                            <button type="submit" className="w-full bg-orange-600 hover:bg-orange-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-orange-500/20 dark:shadow-orange-900/20 active:scale-95 transition-all mt-2">
                                 Confirm Assignment
                             </button>
                         </form>

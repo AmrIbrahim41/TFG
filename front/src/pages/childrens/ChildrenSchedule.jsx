@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, User, Play, Loader2, X } from 'lucide-react';
-import { useLocation } from 'react-router-dom'; // Import useLocation
+import { Plus, Trash2, Play, Loader2 } from 'lucide-react';
+import { useLocation } from 'react-router-dom'; 
 import api, { BASE_URL } from '../../api';
 import ActiveGroupSession from './ActiveGroupSession'; 
 
@@ -18,9 +18,9 @@ const ChildrenSchedule = () => {
 
     // Workout Mode
     const [activeWorkoutDay, setActiveWorkoutDay] = useState(null); 
-    const [initialExercises, setInitialExercises] = useState([]); // Store exercises for repeat mode
+    const [initialExercises, setInitialExercises] = useState([]); 
 
-    const location = useLocation(); // Hook to get navigation state
+    const location = useLocation(); 
     const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
     useEffect(() => {
@@ -32,15 +32,11 @@ const ChildrenSchedule = () => {
         if (selectedCoach) fetchSchedule();
     }, [selectedCoach]);
 
-    // NEW: Check for "Repeat Session" action on mount
     useEffect(() => {
         if (location.state && location.state.action === 'repeat_session') {
-            // Wait slightly for data to load if needed, or set immediately
             setSelectedDay(location.state.day); 
             setInitialExercises(location.state.exercises); 
             setActiveWorkoutDay(location.state.day); 
-            
-            // Clean up state
             window.history.replaceState({}, document.title);
         }
     }, [location]);
@@ -95,10 +91,10 @@ const ChildrenSchedule = () => {
         return <ActiveGroupSession 
             day={activeWorkoutDay} 
             children={getChildrenForDay(activeWorkoutDay)} 
-            initialExercises={initialExercises} // Pass prop here
+            initialExercises={initialExercises} 
             onClose={() => { 
                 setActiveWorkoutDay(null); 
-                setInitialExercises([]); // Reset on close
+                setInitialExercises([]); 
                 fetchSchedule(); 
             }} 
         />
@@ -115,7 +111,7 @@ const ChildrenSchedule = () => {
                         className={`px-5 py-3 rounded-xl font-bold whitespace-nowrap transition-all border ${
                             selectedCoach === t.id 
                             ? 'bg-blue-600 border-blue-500 text-white shadow-lg' 
-                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+                            : 'bg-zinc-200 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
                         }`}
                     >
                         {t.first_name || t.username}
@@ -128,11 +124,11 @@ const ChildrenSchedule = () => {
                     {daysOfWeek.map(day => {
                         const kids = getChildrenForDay(day);
                         return (
-                            <div key={day} className="bg-[#121214] border border-zinc-800 rounded-2xl overflow-hidden flex flex-col h-[500px]">
-                                <div className="p-3 bg-zinc-900/90 border-b border-zinc-800 flex justify-between items-center sticky top-0 backdrop-blur-md z-10">
-                                    <span className="font-bold text-zinc-200">{day}</span>
+                            <div key={day} className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 rounded-2xl overflow-hidden flex flex-col h-[500px]">
+                                <div className="p-3 bg-zinc-200/90 dark:bg-zinc-900/90 border-b border-zinc-300 dark:border-zinc-800 flex justify-between items-center sticky top-0 backdrop-blur-md z-10">
+                                    <span className="font-bold text-zinc-800 dark:text-zinc-200">{day}</span>
                                     <div className="flex gap-1">
-                                        <button onClick={() => { setSelectedDay(day); setIsAddModalOpen(true); }} className="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 transition-colors">
+                                        <button onClick={() => { setSelectedDay(day); setIsAddModalOpen(true); }} className="w-8 h-8 rounded-lg bg-zinc-300 dark:bg-zinc-800 hover:bg-zinc-400 dark:hover:bg-zinc-700 flex items-center justify-center text-zinc-600 dark:text-zinc-400 transition-colors">
                                             <Plus size={16} />
                                         </button>
                                         <button 
@@ -146,10 +142,10 @@ const ChildrenSchedule = () => {
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-2 space-y-2">
                                     {kids.map(k => (
-                                        <div key={k.id} className="flex items-center gap-3 p-2 rounded-xl bg-zinc-900/50 border border-zinc-800/50 group">
-                                            <img src={getImageUrl(k.client_photo)} className="w-8 h-8 rounded-full bg-zinc-800 object-cover" />
-                                            <span className="text-sm font-medium text-zinc-300 truncate flex-1">{k.client_name}</span>
-                                            <button onClick={() => handleRemove(k.id)} className="text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14} /></button>
+                                        <div key={k.id} className="flex items-center gap-3 p-2 rounded-xl bg-zinc-200/50 dark:bg-zinc-900/50 border border-zinc-300/50 dark:border-zinc-800/50 group">
+                                            <img src={getImageUrl(k.client_photo)} className="w-8 h-8 rounded-full bg-zinc-300 dark:bg-zinc-800 object-cover" />
+                                            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300 truncate flex-1">{k.client_name}</span>
+                                            <button onClick={() => handleRemove(k.id)} className="text-zinc-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14} /></button>
                                         </div>
                                     ))}
                                 </div>
@@ -161,19 +157,19 @@ const ChildrenSchedule = () => {
 
             {/* Add Modal */}
             {isAddModalOpen && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-[#18181b] border border-zinc-700 w-full max-w-sm rounded-2xl p-6 shadow-2xl">
-                        <h3 className="text-lg font-bold text-white mb-4">Add to {selectedDay}</h3>
+                <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-zinc-50 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-700 w-full max-w-sm rounded-2xl p-6 shadow-2xl">
+                        <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-4">Add to {selectedDay}</h3>
                         <select 
-                            className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-white mb-4"
+                            className="w-full bg-zinc-200 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 text-zinc-900 dark:text-white mb-4"
                             onChange={(e) => setChildToAdd(e.target.value)}
                         >
                             <option value="">Select Child</option>
                             {activeChildren.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                         <div className="flex gap-2">
-                            <button onClick={() => setIsAddModalOpen(false)} className="flex-1 py-3 rounded-xl bg-zinc-800 text-zinc-400 font-bold">Cancel</button>
-                            <button onClick={handleAdd} className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold">Add</button>
+                            <button onClick={() => setIsAddModalOpen(false)} className="flex-1 py-3 rounded-xl bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-bold hover:bg-zinc-300 dark:hover:bg-zinc-700">Cancel</button>
+                            <button onClick={handleAdd} className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-500">Add</button>
                         </div>
                     </div>
                 </div>
