@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <style>
+    text { font-family: sans-serif; font-weight: 900; }
+  </style>
+  <rect width="100" height="100" rx="20" fill="#18181b" />
+  <text x="50" y="62" font-size="45" text-anchor="middle" fill="#f97316">TFG</text>
+</svg>
