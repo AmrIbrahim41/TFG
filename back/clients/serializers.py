@@ -288,31 +288,21 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         meal_plans_data = validated_data.pop('meal_plans', [])
-        
         # Set defaults if missing
         validated_data.setdefault('target_calories', 2000)
         validated_data.setdefault('target_protein', 150)
         validated_data.setdefault('target_carbs', 200)
         validated_data.setdefault('target_fats', 60)
 
-        # 1. Create Plan
         nutrition_plan = NutritionPlan.objects.create(**validated_data)
         
-        # 2. Process Meals & Foods (Optimized)
         food_items_to_create = []
-
         for meal_data in meal_plans_data:
             foods_data = meal_data.pop('foods', [])
-            # We save MealPlan individually to get the ID required for FoodItems
             meal_plan = MealPlan.objects.create(nutrition_plan=nutrition_plan, **meal_data)
-            
-            # Prepare Foods for Bulk Create
             for food_data in foods_data:
-                food_items_to_create.append(
-                    FoodItem(meal_plan=meal_plan, **food_data)
-                )
+                food_items_to_create.append(FoodItem(meal_plan=meal_plan, **food_data))
 
-        # 3. Bulk Create Foods (1 Query instead of N)
         if food_items_to_create:
             FoodItem.objects.bulk_create(food_items_to_create)
         
@@ -325,28 +315,40 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
                 setattr(instance, attr, value)
         instance.save()
 
-        # Handle Nested Meal Plans
+        # FIX: Smart Update for Nested Meal Plans
         if 'meal_plans' in validated_data:
             meal_plans_data = validated_data.pop('meal_plans')
             
-            # Atomic transaction to ensure we don't delete without replacing if error occurs
             with transaction.atomic():
-                # Clear old meals (This addresses the logic error)
-                instance.meal_plans.all().delete()
+                # 1. Get existing IDs
+                existing_ids = [m.id for m in instance.meal_plans.all()]
+                incoming_ids = [item.get('id') for item in meal_plans_data if item.get('id')]
                 
-                food_items_to_create = []
+                # 2. Delete removed meals
+                for existing_id in existing_ids:
+                    if existing_id not in incoming_ids:
+                        MealPlan.objects.filter(id=existing_id).delete()
+                
+                # 3. Update or Create
                 for meal_data in meal_plans_data:
+                    meal_id = meal_data.get('id')
                     foods_data = meal_data.pop('foods', [])
-                    meal_plan = MealPlan.objects.create(nutrition_plan=instance, **meal_data)
                     
-                    for food_data in foods_data:
-                        food_items_to_create.append(
-                            FoodItem(meal_plan=meal_plan, **food_data)
-                        )
-                
-                # Bulk create foods
-                if food_items_to_create:
-                    FoodItem.objects.bulk_create(food_items_to_create)
+                    if meal_id and meal_id in existing_ids:
+                        # Update Existing Meal
+                        meal_obj = MealPlan.objects.get(id=meal_id)
+                        for k, v in meal_data.items():
+                            setattr(meal_obj, k, v)
+                        meal_obj.save()
+                        
+                        # Handle Foods for this meal (Simple Replace Strategy for foods is usually safer unless fine-grained needed)
+                        meal_obj.foods.all().delete()
+                        FoodItem.objects.bulk_create([FoodItem(meal_plan=meal_obj, **f) for f in foods_data])
+                        
+                    else:
+                        # Create New Meal
+                        meal_obj = MealPlan.objects.create(nutrition_plan=instance, **meal_data)
+                        FoodItem.objects.bulk_create([FoodItem(meal_plan=meal_obj, **f) for f in foods_data])
                     
         return instance
     
@@ -463,3 +465,20 @@ class SessionTransferRequestSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"sessions_count": "You must transfer at least 1 session."})
 
         return data
+    
+    
+    
+    
+# serializers.py
+
+class ManualNutritionSaveSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ManualNutritionSave
+        fields = ['id', 'client_name', 'phone', 'plan_name', 'data', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+class ManualWorkoutSaveSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ManualWorkoutSave
+        fields = ['id', 'client_name', 'phone', 'session_name', 'data', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']

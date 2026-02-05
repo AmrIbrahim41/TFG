@@ -602,3 +602,47 @@ class SessionTransferRequest(models.Model):
 
     def __str__(self):
         return f"{self.from_trainer} -> {self.to_trainer}: {self.subscription.client.name}"
+    
+    
+    
+    
+# models.py
+
+# ... (Existing imports)
+
+class ManualNutritionSave(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='manual_nutrition_saves')
+    client_name = models.CharField(max_length=200)
+    phone = models.CharField(max_length=50, blank=True, null=True, help_text="Internal ID, not printed")
+    plan_name = models.CharField(max_length=200, default="My Plan")
+    
+    # This field will store the entire frontend state (calcState, results, notes)
+    data = models.JSONField(default=dict)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"{self.client_name} - {self.plan_name}"
+
+
+class ManualWorkoutSave(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='manual_workout_saves')
+    client_name = models.CharField(max_length=200)
+    phone = models.CharField(max_length=50, blank=True, null=True, help_text="Internal ID, not printed")
+    session_name = models.CharField(max_length=200, default="Workout")
+    
+    # This field stores the exercises array
+    data = models.JSONField(default=dict)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"{self.client_name} - {self.session_name}"

@@ -4,7 +4,7 @@ import {
     Settings2, ArrowLeft, Trash2, Timer, 
     LayoutTemplate, ChevronDown, Loader2, 
     History, User, Activity, FileText, MessageSquare, 
-    Calendar // <--- ADDED THIS BACK
+    Calendar 
 } from 'lucide-react';
 import api, { BASE_URL } from '../../api';
 
@@ -97,7 +97,6 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
             target: ex.target,
             results: children.filter(c => attendance[c.client_id]).map(c => ({
                 client: c.client_name,
-                // Include the NOTE from performance state here
                 ...performance[c.client_id]?.[ex.id] 
             }))
         }));
@@ -127,39 +126,45 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
         setExpandedNotes(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
+    const getUnits = (type) => {
+        if (type === 'cardio') return { u1: 'km', u2: 'min' };
+        if (type === 'time') return { u1: 'min', u2: 'kg' };
+        return { u1: 'kg', u2: '#' }; // strength default
+    };
+
     // --- RENDER: SETUP MODE (PLANNER) ---
     if (mode === 'SETUP') return (
         <div className="fixed inset-0 z-[200] bg-[#09090b] flex flex-col animate-in fade-in duration-300">
             {/* Header */}
-            <div className="h-24 bg-[#121214] border-b border-zinc-800 flex items-center justify-between px-8">
+            <div className="h-auto min-h-[5rem] py-4 bg-[#121214] border-b border-zinc-800 flex flex-col md:flex-row items-start md:items-center justify-between px-4 md:px-8 gap-4">
                 <div>
-                    <h1 className="text-3xl font-black text-white flex items-center gap-3">
-                        <span className="bg-blue-600/20 text-blue-500 p-2 rounded-xl"><Settings2 size={24} /></span>
+                    <h1 className="text-2xl md:text-3xl font-black text-white flex items-center gap-3">
+                        <span className="bg-blue-600/20 text-blue-500 p-2 rounded-xl"><Settings2 size={20} md:size={24} /></span>
                         Session Planner
                     </h1>
-                    <p className="text-zinc-500 font-medium mt-1 ml-1">{day} Group • {children.length} Athletes</p>
+                    <p className="text-zinc-500 font-medium mt-1 ml-1 text-xs md:text-sm">{day} Group • {children.length} Athletes</p>
                 </div>
-                <div className="flex gap-4">
+                <div className="flex gap-3 w-full md:w-auto">
                     <button 
                         onClick={() => setShowTemplates(!showTemplates)}
-                        className={`px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center gap-2 ${showTemplates ? 'bg-zinc-800 text-white' : 'bg-zinc-900 border border-zinc-700 text-zinc-400 hover:text-white'}`}
+                        className={`flex-1 md:flex-none px-4 py-3 rounded-xl font-bold text-xs md:text-sm transition-all flex items-center justify-center gap-2 ${showTemplates ? 'bg-zinc-800 text-white' : 'bg-zinc-900 border border-zinc-700 text-zinc-400 hover:text-white'}`}
                     >
-                        <LayoutTemplate size={18}/> Templates
+                        <LayoutTemplate size={16}/> Templates
                     </button>
-                    <button onClick={onClose} className="p-3 bg-zinc-900 rounded-full text-zinc-400 hover:bg-red-500/20 hover:text-red-500 transition-colors"><X size={24}/></button>
+                    <button onClick={onClose} className="p-3 bg-zinc-900 rounded-full text-zinc-400 hover:bg-red-500/20 hover:text-red-500 transition-colors"><X size={20}/></button>
                 </div>
             </div>
 
             <div className="flex-1 flex overflow-hidden">
                 {/* Main Planner Area */}
-                <div className="flex-1 overflow-y-auto p-8">
+                <div className="flex-1 overflow-y-auto p-4 md:p-8">
                     <div className="max-w-4xl mx-auto space-y-6">
                         {exercises.map((ex, idx) => (
-                            <div key={ex.id} className="bg-[#18181b] p-6 rounded-[2rem] border border-zinc-800 flex flex-col md:flex-row gap-6 items-start md:items-center shadow-2xl shadow-black/50 group hover:border-zinc-700 transition-all">
-                                <span className="w-12 h-12 flex items-center justify-center rounded-2xl bg-zinc-900 text-zinc-500 font-black text-xl border border-zinc-800 group-hover:text-blue-500 group-hover:border-blue-500/30 transition-all">
+                            <div key={ex.id} className="bg-[#18181b] p-4 md:p-6 rounded-[2rem] border border-zinc-800 flex flex-col md:flex-row gap-4 md:gap-6 items-start md:items-center shadow-2xl shadow-black/50 group hover:border-zinc-700 transition-all">
+                                <span className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center rounded-2xl bg-zinc-900 text-zinc-500 font-black text-lg md:text-xl border border-zinc-800 group-hover:text-blue-500 group-hover:border-blue-500/30 transition-all">
                                     {idx + 1}
                                 </span>
-                                <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-12 gap-4">
+                                <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4">
                                     <div className="md:col-span-6">
                                         <label className="text-[10px] font-bold text-zinc-500 uppercase ml-2 mb-1 block">Exercise Name</label>
                                         <input 
@@ -170,7 +175,7 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                                                 setExercises(newEx);
                                             }}
                                             placeholder="e.g. Barbell Squat" 
-                                            className="w-full h-14 bg-black border border-zinc-800 rounded-2xl px-5 text-xl font-bold text-white placeholder-zinc-700 focus:border-blue-500 outline-none transition-all"
+                                            className="w-full h-12 md:h-14 bg-black border border-zinc-800 rounded-2xl px-4 text-lg md:text-xl font-bold text-white placeholder-zinc-700 focus:border-blue-500 outline-none transition-all"
                                         />
                                     </div>
                                     <div className="md:col-span-3">
@@ -183,7 +188,7 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                                                     newEx[idx].type = e.target.value;
                                                     setExercises(newEx);
                                                 }}
-                                                className="w-full h-14 bg-zinc-900 border border-zinc-800 rounded-2xl px-5 text-white font-bold appearance-none outline-none focus:border-blue-500 cursor-pointer"
+                                                className="w-full h-12 md:h-14 bg-zinc-900 border border-zinc-800 rounded-2xl px-4 text-white font-bold appearance-none outline-none focus:border-blue-500 cursor-pointer text-sm md:text-base"
                                             >
                                                 <option value="strength">Strength</option>
                                                 <option value="cardio">Cardio</option>
@@ -202,24 +207,24 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                                                 setExercises(newEx);
                                             }}
                                             placeholder="e.g. 4x10" 
-                                            className="w-full h-14 bg-zinc-900 border border-zinc-800 rounded-2xl px-5 text-blue-400 font-mono font-bold placeholder-zinc-700 outline-none focus:border-blue-500"
+                                            className="w-full h-12 md:h-14 bg-zinc-900 border border-zinc-800 rounded-2xl px-4 text-blue-400 font-mono font-bold placeholder-zinc-700 outline-none focus:border-blue-500 text-sm md:text-base"
                                         />
                                     </div>
                                 </div>
                                 <button 
                                     onClick={() => setExercises(exercises.filter(e => e.id !== ex.id))}
-                                    className="p-4 rounded-2xl bg-zinc-900 text-zinc-600 hover:bg-red-500/10 hover:text-red-500 transition-all self-end md:self-center"
+                                    className="p-3 md:p-4 rounded-2xl bg-zinc-900 text-zinc-600 hover:bg-red-500/10 hover:text-red-500 transition-all self-end md:self-center"
                                 >
-                                    <Trash2 size={20}/>
+                                    <Trash2 size={18}/>
                                 </button>
                             </div>
                         ))}
                         
                         <button 
                             onClick={() => setExercises([...exercises, { id: Date.now(), name: '', type: 'strength', target: '' }])}
-                            className="w-full h-20 border-2 border-dashed border-zinc-800 rounded-[2rem] text-zinc-500 font-bold text-lg flex items-center justify-center gap-3 hover:bg-zinc-900/50 hover:border-zinc-700 hover:text-zinc-300 transition-all"
+                            className="w-full h-16 md:h-20 border-2 border-dashed border-zinc-800 rounded-[2rem] text-zinc-500 font-bold text-base md:text-lg flex items-center justify-center gap-3 hover:bg-zinc-900/50 hover:border-zinc-700 hover:text-zinc-300 transition-all"
                         >
-                            <span className="bg-zinc-800 p-2 rounded-full"><Dumbbell size={20}/></span> 
+                            <span className="bg-zinc-800 p-2 rounded-full"><Dumbbell size={18}/></span> 
                             Add New Exercise
                         </button>
                     </div>
@@ -227,8 +232,13 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
 
                 {/* Templates Sidebar */}
                 {showTemplates && (
-                    <div className="w-96 border-l border-zinc-800 bg-[#121214] p-6 flex flex-col animate-in slide-in-from-right">
-                        <h3 className="text-xl font-black text-white mb-6">Template Library</h3>
+                    <div className="absolute md:relative inset-0 md:inset-auto z-10 md:z-auto w-full md:w-96 border-l border-zinc-800 bg-[#121214] p-6 flex flex-col animate-in slide-in-from-right">
+                         <div className="flex justify-between items-center mb-6 md:hidden">
+                            <h3 className="text-xl font-black text-white">Templates</h3>
+                            <button onClick={() => setShowTemplates(false)}><X size={24} className="text-zinc-500"/></button>
+                        </div>
+                        <h3 className="hidden md:block text-xl font-black text-white mb-6">Template Library</h3>
+                        
                         <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 mb-6">
                             <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Save Current Setup</label>
                             <div className="flex gap-2">
@@ -269,13 +279,13 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
             </div>
 
             {/* Footer */}
-            <div className="h-24 bg-[#121214] border-t border-zinc-800 flex items-center justify-end px-8">
+            <div className="h-20 md:h-24 bg-[#121214] border-t border-zinc-800 flex items-center justify-end px-4 md:px-8">
                 <button 
                     onClick={() => {
                         if (exercises.filter(e => e.name).length === 0) return alert("Add at least one exercise");
                         setMode('LIVE');
                     }} 
-                    className="bg-blue-600 hover:bg-blue-500 text-white px-10 py-4 rounded-2xl font-bold text-lg shadow-xl shadow-blue-900/20 flex items-center gap-3 active:scale-95 transition-all"
+                    className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white px-6 md:px-10 py-3 md:py-4 rounded-2xl font-bold text-base md:text-lg shadow-xl shadow-blue-900/20 flex items-center justify-center gap-3 active:scale-95 transition-all"
                 >
                     Start Session <ArrowLeft className="rotate-180" size={20}/>
                 </button>
@@ -286,41 +296,68 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
     // --- RENDER: LIVE MODE ---
     return (
         <div className="fixed inset-0 z-[200] bg-[#09090b] flex flex-col text-white animate-in slide-in-from-right duration-500">
-            {/* Live Header */}
-            <div className="h-20 bg-[#121214] border-b border-zinc-800 flex items-center justify-between px-6 shadow-2xl z-20">
-                <div className="flex items-center gap-6">
-                    <button onClick={() => setMode('SETUP')} className="text-zinc-500 hover:text-white flex items-center gap-2 text-sm font-bold uppercase tracking-wide bg-zinc-900 px-4 py-2 rounded-xl border border-zinc-800 transition-colors">
-                        <Settings2 size={16}/> Edit Plan
+            {/* Live Header - RESPONSIVE DESIGN UPDATE */}
+            <div className="h-16 md:h-20 bg-[#121214] border-b border-zinc-800 flex items-center justify-between px-3 md:px-6 shadow-2xl z-20 shrink-0">
+                
+                {/* Left Side: Edit & Timer */}
+                <div className="flex items-center gap-3 md:gap-6">
+                    {/* Compact Edit Button on Mobile */}
+                    <button 
+                        onClick={() => setMode('SETUP')} 
+                        className="bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white p-2.5 md:px-4 md:py-2 rounded-xl flex items-center gap-2 transition-colors"
+                        title="Edit Plan"
+                    >
+                        <Settings2 size={18} className="md:w-4 md:h-4"/>
+                        <span className="hidden md:inline text-sm font-bold uppercase tracking-wide">Edit Plan</span>
                     </button>
-                    <div className="w-px h-8 bg-zinc-800"></div>
-                    <div onClick={() => setIsTimerRunning(!isTimerRunning)} className={`flex items-center gap-3 px-5 py-2.5 rounded-xl border cursor-pointer select-none transition-all ${isTimerRunning ? 'bg-green-500/10 border-green-500/50 text-green-500 shadow-[0_0_20px_rgba(34,197,94,0.2)]' : 'bg-zinc-900 border-zinc-800 text-zinc-400'}`}>
-                        <Timer size={20} className={isTimerRunning ? "animate-pulse" : ""} />
-                        <span className="font-mono font-black text-2xl tracking-widest">{formatTime(timer)}</span>
+
+                    <div className="w-px h-6 md:h-8 bg-zinc-800"></div>
+                    
+                    {/* Compact Timer on Mobile */}
+                    <div 
+                        onClick={() => setIsTimerRunning(!isTimerRunning)} 
+                        className={`flex items-center gap-2 md:gap-3 px-3 py-1.5 md:px-5 md:py-2.5 rounded-xl border cursor-pointer select-none transition-all ${isTimerRunning ? 'bg-green-500/10 border-green-500/50 text-green-500 shadow-[0_0_20px_rgba(34,197,94,0.2)]' : 'bg-zinc-900 border-zinc-800 text-zinc-400'}`}
+                    >
+                        <Timer size={16} className={`md:w-5 md:h-5 ${isTimerRunning ? "animate-pulse" : ""}`} />
+                        <span className="font-mono font-black text-lg md:text-2xl tracking-widest leading-none pt-0.5">{formatTime(timer)}</span>
                     </div>
                 </div>
-                <div className="flex items-center gap-4">
-                    <button onClick={handleComplete} disabled={isSubmitting} className="bg-green-600 hover:bg-green-500 text-white px-6 py-3 rounded-xl font-bold text-base shadow-lg shadow-green-900/20 flex items-center gap-2 transition-all active:scale-95">
-                        {isSubmitting ? <Loader2 className="animate-spin" size={20}/> : <CheckCircle2 size={20}/>}
-                        Finish Session
+
+                {/* Right Side: Finish & Close */}
+                <div className="flex items-center gap-2 md:gap-4">
+                    <button 
+                        onClick={handleComplete} 
+                        disabled={isSubmitting} 
+                        className="bg-green-600 hover:bg-green-500 text-white px-3 py-2 md:px-6 md:py-3 rounded-xl font-bold shadow-lg shadow-green-900/20 flex items-center gap-2 transition-all active:scale-95"
+                    >
+                        {isSubmitting ? <Loader2 className="animate-spin" size={18}/> : <CheckCircle2 size={18} className="md:w-5 md:h-5"/>}
+                        <span className="hidden md:inline text-base">Finish Session</span>
+                        <span className="md:hidden text-xs">Finish</span>
                     </button>
-                    <button onClick={onClose} className="p-3 bg-zinc-800 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"><X size={20}/></button>
+                    
+                    <button 
+                        onClick={onClose} 
+                        className="p-2.5 md:p-3 bg-zinc-800 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+                    >
+                        <X size={18} className="md:w-5 md:h-5"/>
+                    </button>
                 </div>
             </div>
 
             {/* Live Content */}
-            <div className="flex-1 overflow-y-auto p-6 bg-[#09090b]">
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-[#09090b]">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 md:gap-6 pb-20">
                     {children.map(child => {
                         const isPresent = attendance[child.client_id];
                         return (
                             <div key={child.client_id} className={`flex flex-col rounded-[1.5rem] border transition-all duration-300 overflow-hidden ${isPresent ? 'bg-[#121214] border-zinc-800 shadow-xl' : 'bg-zinc-950 border-zinc-900 opacity-50'}`}>
                                 {/* Child Card Header */}
-                                <div className="p-5 flex items-center gap-4 border-b border-zinc-800/50 bg-zinc-900/30">
-                                    <div onClick={() => setAttendance(prev => ({...prev, [child.client_id]: !prev[child.client_id]}))} className={`w-14 h-14 rounded-2xl flex items-center justify-center cursor-pointer transition-all shadow-lg ${isPresent ? 'bg-blue-600 text-white shadow-blue-900/20' : 'bg-zinc-800 text-zinc-500'}`}>
-                                        {isPresent ? <CheckCircle2 size={24}/> : <UserCheck size={24}/>}
+                                <div className="p-4 md:p-5 flex items-center gap-3 md:gap-4 border-b border-zinc-800/50 bg-zinc-900/30">
+                                    <div onClick={() => setAttendance(prev => ({...prev, [child.client_id]: !prev[child.client_id]}))} className={`w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center cursor-pointer transition-all shadow-lg ${isPresent ? 'bg-blue-600 text-white shadow-blue-900/20' : 'bg-zinc-800 text-zinc-500'}`}>
+                                        {isPresent ? <CheckCircle2 size={22} className="md:w-6 md:h-6"/> : <UserCheck size={22} className="md:w-6 md:h-6"/>}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <h3 className="font-black text-lg text-white truncate">{child.client_name}</h3>
+                                        <h3 className="font-black text-base md:text-lg text-white truncate">{child.client_name}</h3>
                                         <div className="flex items-center gap-2 mt-1">
                                             <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md ${isPresent ? 'bg-green-500/10 text-green-500' : 'bg-zinc-800 text-zinc-500'}`}>
                                                 {isPresent ? 'Present' : 'Absent'}
@@ -351,6 +388,14 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                                             const noteKey = `${child.client_id}_${ex.id}`;
                                             const isNoteOpen = expandedNotes[noteKey] || (p.note && p.note.length > 0);
 
+                                            // Dynamic Config Based on Type
+                                            let inputConfig = { label1: 'Weight', unit1: 'kg', label2: 'Reps', unit2: '#' }; 
+                                            if (ex.type === 'cardio') {
+                                                inputConfig = { label1: 'Dist', unit1: 'km', label2: 'Time', unit2: 'min' };
+                                            } else if (ex.type === 'time') {
+                                                inputConfig = { label1: 'Time', unit1: 'min', label2: 'Weight', unit2: 'kg' };
+                                            }
+
                                             return (
                                                 <div key={ex.id} className="p-3 rounded-2xl bg-black border border-zinc-800/50 hover:border-zinc-700 transition-colors">
                                                     <div className="flex justify-between items-center mb-2">
@@ -361,23 +406,23 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                                                     <div className="flex gap-2">
                                                         <div className="flex-1 relative">
                                                             <input 
-                                                                placeholder={ex.type === 'cardio' ? "Dist" : "Weight"}
+                                                                placeholder={inputConfig.label1}
                                                                 value={p.val1 || ''}
                                                                 onChange={e => handleChange('val1', e.target.value)}
                                                                 className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2 pl-3 pr-8 text-center text-sm font-bold text-white focus:border-blue-500 outline-none"
                                                             />
-                                                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-600 font-bold uppercase">{ex.type === 'cardio' ? 'km' : 'kg'}</span>
+                                                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-600 font-bold uppercase">{inputConfig.unit1}</span>
                                                         </div>
                                                         <div className="flex-1 relative">
                                                             <input 
-                                                                placeholder={ex.type === 'cardio' ? "Time" : "Reps"}
+                                                                placeholder={inputConfig.label2}
                                                                 value={p.val2 || ''}
                                                                 onChange={e => handleChange('val2', e.target.value)}
                                                                 className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2 pl-3 pr-8 text-center text-sm font-bold text-white focus:border-blue-500 outline-none"
                                                             />
-                                                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-600 font-bold uppercase">#</span>
+                                                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-600 font-bold uppercase">{inputConfig.unit2}</span>
                                                         </div>
-                                                        {/* NEW: Note Button */}
+                                                        {/* Note Button */}
                                                         <button 
                                                             onClick={() => toggleNote(child.client_id, ex.id)}
                                                             className={`w-10 rounded-lg border flex items-center justify-center transition-all ${isNoteOpen || p.note ? 'bg-blue-600 border-blue-500 text-white' : 'bg-zinc-900 border-zinc-800 text-zinc-600 hover:text-white'}`}
@@ -386,11 +431,11 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                                                         </button>
                                                     </div>
 
-                                                    {/* NEW: Exercise Note Input (Conditional) */}
+                                                    {/* Exercise Note Input */}
                                                     {isNoteOpen && (
                                                         <div className="mt-2 animate-in fade-in slide-in-from-top-1">
                                                             <input 
-                                                                placeholder="Notes (e.g. Form correction)..."
+                                                                placeholder="Notes..."
                                                                 value={p.note || ''}
                                                                 onChange={e => handleChange('note', e.target.value)}
                                                                 className="w-full bg-zinc-900/50 border border-zinc-800 rounded-lg py-2 px-3 text-xs text-white focus:border-blue-500 outline-none"
@@ -426,25 +471,25 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                 <div className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200">
                     <div className="w-full max-w-md bg-[#121214] border-l border-zinc-800 h-full flex flex-col shadow-2xl animate-in slide-in-from-right duration-300">
                         {/* Modal Header */}
-                        <div className="p-6 border-b border-zinc-800 bg-[#18181b] flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-full bg-zinc-800 overflow-hidden border border-zinc-700">
+                        <div className="p-4 md:p-6 border-b border-zinc-800 bg-[#18181b] flex items-center justify-between">
+                            <div className="flex items-center gap-3 md:gap-4">
+                                <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-zinc-800 overflow-hidden border border-zinc-700">
                                     {historyChild.client_photo ? (
                                         <img src={getImageUrl(historyChild.client_photo)} className="w-full h-full object-cover"/>
                                     ) : (
-                                        <User className="w-full h-full p-3 text-zinc-500"/>
+                                        <User className="w-full h-full p-2 md:p-3 text-zinc-500"/>
                                     )}
                                 </div>
                                 <div>
-                                    <h2 className="text-xl font-black text-white">{historyChild.client_name}</h2>
-                                    <p className="text-zinc-500 text-xs uppercase font-bold">Performance History</p>
+                                    <h2 className="text-lg md:text-xl font-black text-white">{historyChild.client_name}</h2>
+                                    <p className="text-zinc-500 text-[10px] md:text-xs uppercase font-bold">Performance History</p>
                                 </div>
                             </div>
                             <button onClick={() => setHistoryChild(null)} className="p-2 bg-zinc-800 rounded-full text-zinc-400 hover:text-white"><X size={20}/></button>
                         </div>
 
                         {/* Modal Content */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
                             {loadingHistory ? (
                                 <div className="flex flex-col items-center justify-center h-40 text-zinc-500 gap-2">
                                     <Loader2 className="animate-spin" size={32}/>
@@ -470,34 +515,35 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                                                 <p className="text-xs text-zinc-600 p-2 italic">Attended, but no data recorded.</p>
                                             ) : (
                                                 <div className="space-y-1">
-                                                    {session.performance.map((p, idx) => (
-                                                        <div key={idx} className="bg-zinc-900/30 mb-2 last:mb-0 rounded-lg p-2 hover:bg-zinc-900 transition-colors">
-                                                            <div className="flex justify-between items-center mb-1">
-                                                                <span className="text-sm font-medium text-zinc-400">{p.exercise}</span>
-                                                                <div className="flex gap-2">
-                                                                    {(p.val1 && p.val1 !== '-') && (
-                                                                        <span className="text-xs font-bold text-white bg-zinc-800 px-2 py-1 rounded border border-zinc-700">
-                                                                            {p.val1} {p.type === 'cardio' ? 'km' : 'kg'}
-                                                                        </span>
-                                                                    )}
-                                                                    {(p.val2 && p.val2 !== '-') && (
-                                                                        <span className="text-xs font-bold text-blue-400 bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20">
-                                                                            {p.val2} {p.type === 'cardio' ? 'min' : 'reps'}
-                                                                        </span>
-                                                                    )}
+                                                    {session.performance.map((p, idx) => {
+                                                        const units = getUnits(p.type || 'strength');
+                                                        return (
+                                                            <div key={idx} className="bg-zinc-900/30 mb-2 last:mb-0 rounded-lg p-2 hover:bg-zinc-900 transition-colors">
+                                                                <div className="flex justify-between items-center mb-1">
+                                                                    <span className="text-sm font-medium text-zinc-400">{p.exercise}</span>
+                                                                    <div className="flex gap-2">
+                                                                        {(p.val1 && p.val1 !== '-') && (
+                                                                            <span className="text-xs font-bold text-white bg-zinc-800 px-2 py-1 rounded border border-zinc-700">
+                                                                                {p.val1} {units.u1}
+                                                                            </span>
+                                                                        )}
+                                                                        {(p.val2 && p.val2 !== '-') && (
+                                                                            <span className="text-xs font-bold text-blue-400 bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20">
+                                                                                {p.val2} {units.u2}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
+                                                                {p.note && (
+                                                                    <div className="text-[10px] text-zinc-500 italic border-t border-zinc-800/50 pt-1 mt-1">
+                                                                        {p.note}
+                                                                    </div>
+                                                                )}
                                                             </div>
-                                                            {/* Exercise Note Display in History */}
-                                                            {p.note && (
-                                                                <div className="text-[10px] text-zinc-500 italic border-t border-zinc-800/50 pt-1 mt-1">
-                                                                    {p.note}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </div>
                                             )}
-                                            {/* Session Note Display */}
                                             {session.session_note && (
                                                 <div className="mt-2 p-2 bg-blue-900/10 border border-blue-500/10 rounded-lg">
                                                     <p className="text-[10px] text-blue-300 italic">"{session.session_note}"</p>

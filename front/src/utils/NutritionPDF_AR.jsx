@@ -88,7 +88,7 @@ const NutritionPDF_AR = ({ plan, clientName, trainerName, brandText, results, ex
                         <Text style={styles.brandSubtitle}>خطة التغذية الاستراتيجية</Text>
                     </View>
                     <View style={styles.metaColumn}>
-                        <Text style={styles.metaLabel}>اللاعب</Text>
+                        <Text style={styles.metaLabel}>العميل</Text>
                         <Text style={styles.metaValue}>{clientName || "غير محدد"}</Text>
                         <Text style={styles.metaLabel}>المدرب</Text>
                         <Text style={styles.metaValue}>{trainerName || "الكابتن"}</Text>

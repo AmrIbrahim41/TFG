@@ -20,21 +20,21 @@ const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => 
     if (totalPages <= 1) return null;
 
     return (
-        <div className="flex items-center justify-center gap-2 mt-8">
+        <div className="flex items-center justify-center gap-2 mt-8 pb-8">
             <button
                 onClick={() => onPageChange(currentPage - 1)}
                 disabled={currentPage === 1}
-                className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white disabled:opacity-30 disabled:hover:text-zinc-500 transition-all"
+                className="w-10 h-10 flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white disabled:opacity-30 disabled:hover:text-zinc-500 transition-all"
             >
-                <ChevronLeft size={16} />
+                <ChevronLeft size={18} />
             </button>
-            <span className="text-xs font-bold text-zinc-500 px-2">Page {currentPage} of {totalPages}</span>
+            <span className="text-xs font-bold text-zinc-500 px-4">Page {currentPage} of {totalPages}</span>
             <button
                 onClick={() => onPageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}
-                className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white disabled:opacity-30 disabled:hover:text-zinc-500 transition-all"
+                className="w-10 h-10 flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white disabled:opacity-30 disabled:hover:text-zinc-500 transition-all"
             >
-                <ChevronRight size={16} />
+                <ChevronRight size={18} />
             </button>
         </div>
     );
@@ -74,7 +74,7 @@ const calculateNutrition = (inputs) => {
     let warning = null;
 
     if (remainingCals < 0) {
-        warning = "Macros exceed Target Calories! Increase Calories or lower Fats/Protein.";
+        warning = "Check Macros! (Over Limit)";
         remainingCals = 0; 
     }
 
@@ -122,15 +122,15 @@ const CustomSelect = ({ label, value, options, onChange, disabled }) => {
             <div 
                 onClick={() => !disabled && setIsOpen(!isOpen)}
                 className={`
-                    bg-zinc-900 border p-3 rounded-2xl cursor-pointer transition-all duration-200 group relative
-                    ${isOpen ? 'border-orange-500 ring-1 ring-orange-500/20' : 'border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50'}
+                    bg-zinc-900/50 border p-3.5 rounded-2xl cursor-pointer transition-all duration-200 group relative
+                    ${isOpen ? 'border-orange-500 ring-1 ring-orange-500/20 bg-zinc-900' : 'border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900'}
                 `}
             >
                 <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block group-hover:text-zinc-400 transition-colors">
                     {label}
                 </label>
                 <div className="flex justify-between items-center">
-                    <span className="text-white font-bold text-lg truncate pr-2">
+                    <span className="text-white font-bold text-sm md:text-base truncate pr-2">
                         {selectedLabel}
                     </span>
                     <ChevronDown 
@@ -180,7 +180,7 @@ const ModernInput = ({ label, value, onChange, type="text", suffix, options, dis
     }
 
     return (
-        <div className={`bg-zinc-900 border border-zinc-800 p-3 rounded-2xl relative focus-within:ring-1 focus-within:ring-orange-500/50 focus-within:border-orange-500 transition-all ${disabled ? 'opacity-50' : ''} ${className}`}>
+        <div className={`bg-zinc-900/50 border border-zinc-800 p-3.5 rounded-2xl relative focus-within:ring-1 focus-within:ring-orange-500/50 focus-within:border-orange-500 focus-within:bg-zinc-900 transition-all ${disabled ? 'opacity-50' : ''} ${className}`}>
             <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block">{label}</label>
             <input 
                 disabled={disabled} 
@@ -194,7 +194,7 @@ const ModernInput = ({ label, value, onChange, type="text", suffix, options, dis
                     }
                     onChange(e.target.value)
                 }} 
-                className="w-full bg-transparent text-white font-bold text-lg outline-none placeholder-zinc-700" 
+                className="w-full bg-transparent text-white font-bold text-sm md:text-base outline-none placeholder-zinc-700" 
             />
             {suffix && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-600">{suffix}</span>}
         </div>
@@ -228,14 +228,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
     const clientId = clientData?.id || (subscriptions && subscriptions[0] ? subscriptions[0].client : null);
     const defaultSubId = subscriptions && subscriptions[0] ? subscriptions[0].id : null;
 
-    // --- FIX: Resolve Names for PDF ---
-    // 1. Try activePlan.client_name (if backend sends it)
-    // 2. Try clientData.name (passed from parent)
-    // 3. Fallback to "Athlete"
     const pdfClientName = activePlan?.client_name || clientData?.name || "Athlete";
-    
-    // 1. Try activePlan.created_by_name (if backend sends it)
-    // 2. Fallback to "Coach"
     const trainerName = activePlan?.created_by_name || "Coach";
 
     useEffect(() => { if (clientId) fetchPlans(page); }, [clientId, page]);
@@ -401,36 +394,39 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
 
     if (view === 'list') {
         return (
-            <div className="space-y-8 animate-in fade-in duration-500 min-h-[500px] p-2">
-                <div className="flex items-center justify-between mb-4">
+            <div className="space-y-6 animate-in fade-in duration-500 p-2 md:p-4">
+                
+                {/* LIST HEADER */}
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-orange-500 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/20">
-                            <Utensils className="text-white" size={24} />
+                        <div className="w-10 h-10 md:w-12 md:h-12 bg-orange-500 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/20 shrink-0">
+                            <Utensils className="text-white" size={20} />
                         </div>
                         <div>
-                            <h2 className="text-3xl font-black text-white">Nutrition Plans</h2>
-                            <p className="text-zinc-500 font-medium text-sm">Manage client macros & diet sheets</p>
+                            <h2 className="text-2xl md:text-3xl font-black text-white">Nutrition</h2>
+                            <p className="text-zinc-500 font-medium text-xs md:text-sm">Manage diet plans</p>
                         </div>
                     </div>
                 </div>
 
-                <div className="bg-zinc-900/30 border border-zinc-800 p-6 rounded-[24px] relative overflow-hidden group hover:border-zinc-700 transition-all">
-                    <div className="flex flex-col md:flex-row items-end gap-4 relative z-10">
-                        <div className="flex-1 w-full space-y-2">
-                            <label className="text-xs font-bold text-zinc-500 uppercase ml-1">New Plan Name</label>
+                {/* CREATE NEW PLAN CARD */}
+                <div className="bg-[#121214] border border-zinc-800 p-4 md:p-6 rounded-3xl relative overflow-hidden">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end relative z-10">
+                        <div className="md:col-span-2 space-y-2">
+                            <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Plan Name</label>
                             <input 
                                 placeholder="e.g. Cutting Phase 1" 
-                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-orange-500 transition-all"
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-orange-500 transition-all text-sm"
                                 value={newPlanName} 
                                 onChange={e => setNewPlanName(e.target.value)} 
                             />
                         </div>
-                        <div className="w-full md:w-32 space-y-2">
+                        <div className="md:col-span-1 space-y-2">
                             <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Weeks</label>
                             <input 
                                 type="number" 
                                 placeholder="4" 
-                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-orange-500 transition-all" 
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-orange-500 transition-all text-sm" 
                                 value={newPlanWeeks} 
                                 onChange={e => setNewPlanWeeks(e.target.value)} 
                             />
@@ -438,9 +434,9 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         <button 
                             onClick={handleCreatePlan} 
                             disabled={!newPlanName} 
-                            className="w-full md:w-auto px-8 py-3 bg-white text-black hover:bg-orange-500 hover:text-white disabled:opacity-50 font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
+                            className="w-full py-3 bg-white text-black hover:bg-orange-500 hover:text-white disabled:opacity-50 font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all text-sm"
                         >
-                            <Plus size={18} /> Create Strategy
+                            <Plus size={16} /> Create
                         </button>
                     </div>
                 </div>
@@ -449,7 +445,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                     <div className="py-20 flex justify-center text-orange-500"><Loader2 className="animate-spin w-10 h-10" /></div>
                 ) : (
                     <div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                             {plans.map(plan => {
                                 const isMale = (plan.calc_gender || 'male') === 'male';
                                 const activity = formatActivity(plan.calc_activity_level);
@@ -458,42 +454,42 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                                     <div 
                                         key={plan.id} 
                                         onClick={() => { setActivePlan(plan); setView('detail'); }} 
-                                        className="group relative bg-zinc-900 border border-zinc-800 rounded-[24px] p-6 hover:border-orange-500/50 hover:bg-zinc-900/80 hover:shadow-2xl hover:shadow-orange-900/10 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col justify-between h-[220px]"
+                                        className="group relative bg-[#121214] border border-zinc-800 rounded-3xl p-5 hover:border-orange-500/50 hover:bg-zinc-900 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col justify-between min-h-[180px]"
                                     >
                                         <div className="absolute -right-6 -bottom-6 text-zinc-800/50 group-hover:text-orange-500/5 group-hover:scale-110 group-hover:-rotate-12 transition-all duration-500">
-                                            <Target size={140} strokeWidth={1} />
+                                            <Target size={120} strokeWidth={1} />
                                         </div>
 
-                                        <div className="relative z-10 flex flex-col h-full gap-4">
+                                        <div className="relative z-10 flex flex-col h-full gap-3">
                                             <div className="flex justify-between items-start">
                                                 <div className="flex gap-2">
-                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-800/50 border border-zinc-700/50 text-[10px] font-bold text-zinc-400 uppercase tracking-wider backdrop-blur-sm">
+                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-800/50 border border-zinc-700/50 text-[10px] font-bold text-zinc-400 uppercase tracking-wider backdrop-blur-sm">
                                                         <Calendar size={10} /> {plan.duration_weeks}W
                                                     </span>
-                                                    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full border text-xs backdrop-blur-sm ${isMale ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-pink-500/10 border-pink-500/20 text-pink-400'}`}>
+                                                    <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full border text-[10px] backdrop-blur-sm ${isMale ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-pink-500/10 border-pink-500/20 text-pink-400'}`}>
                                                         {isMale ? <Mars size={12}/> : <Venus size={12}/>}
                                                     </span>
                                                 </div>
 
                                                 <button onClick={(e) => handleDeletePlan(plan.id, e)} className="w-8 h-8 flex items-center justify-center rounded-full text-zinc-600 hover:bg-red-500/10 hover:text-red-500 transition-all z-20">
-                                                    <Trash2 size={16} />
+                                                    <Trash2 size={14} />
                                                 </button>
                                             </div>
                                             
                                             <div>
-                                                <h3 className="text-xl font-black text-white leading-tight mb-1 group-hover:text-orange-500 transition-colors line-clamp-2">{plan.name}</h3>
-                                                <p className="text-xs text-zinc-500">Created {new Date(plan.created_at).toLocaleDateString()}</p>
+                                                <h3 className="text-lg font-black text-white leading-tight mb-1 group-hover:text-orange-500 transition-colors line-clamp-2">{plan.name}</h3>
+                                                <p className="text-[10px] text-zinc-500">Created {new Date(plan.created_at).toLocaleDateString()}</p>
                                             </div>
 
                                             <div className="flex items-center justify-between gap-2 mt-auto">
-                                                <div className="flex items-center gap-1.5 px-3 py-2 bg-zinc-950 rounded-xl border border-zinc-800/50 text-zinc-400">
-                                                    <Zap size={14} className="text-emerald-500 fill-emerald-500/20" />
-                                                    <span className="text-[10px] font-bold uppercase tracking-wide">{activity}</span>
+                                                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 rounded-lg border border-zinc-800/50 text-zinc-400">
+                                                    <Zap size={12} className="text-emerald-500 fill-emerald-500/20" />
+                                                    <span className="text-[10px] font-bold uppercase">{activity}</span>
                                                 </div>
 
-                                                <div className="flex items-center gap-2 px-3 py-2 bg-zinc-950 rounded-xl border border-zinc-800/50 group-hover:border-orange-500/20 transition-colors ml-auto">
-                                                    <Flame size={14} className="text-orange-500 fill-orange-500/20" />
-                                                    <span className="text-white font-bold text-sm">{plan.target_calories || 0}</span>
+                                                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 rounded-lg border border-zinc-800/50 group-hover:border-orange-500/20 transition-colors ml-auto">
+                                                    <Flame size={12} className="text-orange-500 fill-orange-500/20" />
+                                                    <span className="text-white font-bold text-xs">{plan.target_calories || 0}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -502,10 +498,9 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                             })}
                             
                             {plans.length === 0 && (
-                                <div className="col-span-full py-16 text-center border-2 border-dashed border-zinc-800 rounded-3xl text-zinc-500">
-                                    <Utensils size={48} className="mx-auto mb-4 opacity-20" />
-                                    <p className="font-bold">No Nutrition Plans Found</p>
-                                    <p className="text-sm">Create a new strategy above to get started.</p>
+                                <div className="col-span-full py-10 text-center border-2 border-dashed border-zinc-800 rounded-3xl text-zinc-500">
+                                    <Utensils size={32} className="mx-auto mb-2 opacity-20" />
+                                    <p className="font-bold text-sm">No Nutrition Plans Found</p>
                                 </div>
                             )}
                         </div>
@@ -519,213 +514,176 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
 
     if (view === 'detail' && results) {
         return (
-            <div className="animate-in slide-in-from-bottom-4 duration-500 pb-20">
-                <div className="flex items-center justify-between mb-8">
+            <div className="animate-in slide-in-from-bottom-4 duration-500 pb-20 p-1 md:p-2">
+                {/* DETAIL HEADER */}
+                <div className="flex flex-col gap-4 mb-6">
                     <div className="flex items-center gap-4">
-                        <button onClick={() => setView('list')} className="w-10 h-10 flex items-center justify-center bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white"><ArrowLeft size={18} /></button>
-                        <div>
-                            <h2 className="text-xl font-black text-white">{activePlan.name}</h2>
-                            <p className="text-xs text-zinc-500">Auto-generated Options</p>
+                        <button onClick={() => setView('list')} className="w-10 h-10 flex items-center justify-center bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white shrink-0"><ArrowLeft size={18} /></button>
+                        <div className="min-w-0">
+                            <h2 className="text-xl font-black text-white truncate">{activePlan.name}</h2>
+                            <p className="text-xs text-zinc-500">Editing Mode</p>
                         </div>
                     </div>
                     
-                    <div className="flex items-center gap-2">
+                    {/* ACTION BUTTONS (Scrollable on mobile) */}
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
                         {results && activePlan && (
                             <>
-                                {/* ENGLISH PDF BUTTON - Using NutritionPDF_EN */}
                                 <PDFDownloadLink
-                                    document={
-                                        <NutritionPDF_EN 
-                                            plan={activePlan}
-                                            clientName={pdfClientName}
-                                            trainerName={trainerName}
-                                            brandText={calcState.brandText}
-                                            carbAdjustment={calcState.carbAdjustment}
-                                            results={results}
-                                            exchangeList={exchangeList}
-                                            notes={planNotes}
-                                        />
-                                    }
+                                    document={<NutritionPDF_EN plan={activePlan} clientName={pdfClientName} trainerName={trainerName} brandText={calcState.brandText} carbAdjustment={calcState.carbAdjustment} results={results} exchangeList={exchangeList} notes={planNotes} />}
                                     fileName={`${activePlan.name}_EN.pdf`}
                                 >
-                                    {({ blob, url, loading: pdfLoading, error }) => (
-                                        <button 
-                                            disabled={pdfLoading}
-                                            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold rounded-xl border border-zinc-700 text-sm flex items-center gap-2 transition-all disabled:opacity-50"
-                                        >
-                                            {pdfLoading ? <Loader2 size={16} className="animate-spin"/> : <Download size={16} />} 
-                                            EN PDF
+                                    {({ loading: pdfLoading }) => (
+                                        <button disabled={pdfLoading} className="whitespace-nowrap px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold rounded-xl border border-zinc-700 text-xs flex items-center gap-2 transition-all disabled:opacity-50">
+                                            {pdfLoading ? <Loader2 size={14} className="animate-spin"/> : <Download size={14} />} EN PDF
                                         </button>
                                     )}
                                 </PDFDownloadLink>
 
-                                {/* ARABIC PDF BUTTON - Using NutritionPDF_AR */}
                                 <PDFDownloadLink
-                                    document={
-                                        <NutritionPDF_AR 
-                                            plan={activePlan}
-                                            clientName={pdfClientName}
-                                            trainerName={trainerName}
-                                            brandText={calcState.brandText}
-                                            carbAdjustment={calcState.carbAdjustment}
-                                            results={results}
-                                            exchangeList={exchangeList}
-                                            notes={planNotes}
-                                        />
-                                    }
+                                    document={<NutritionPDF_AR plan={activePlan} clientName={pdfClientName} trainerName={trainerName} brandText={calcState.brandText} carbAdjustment={calcState.carbAdjustment} results={results} exchangeList={exchangeList} notes={planNotes} />}
                                     fileName={`${activePlan.name}_AR.pdf`}
                                 >
-                                    {({ blob, url, loading: pdfLoading, error }) => (
-                                        <button 
-                                            disabled={pdfLoading}
-                                            className="px-4 py-2 bg-emerald-900/50 hover:bg-emerald-800 text-emerald-400 font-bold rounded-xl border border-emerald-800 text-sm flex items-center gap-2 transition-all disabled:opacity-50"
-                                        >
-                                            {pdfLoading ? <Loader2 size={16} className="animate-spin"/> : <Download size={16} />} 
-                                            عربي PDF
+                                    {({ loading: pdfLoading }) => (
+                                        <button disabled={pdfLoading} className="whitespace-nowrap px-4 py-2.5 bg-emerald-900/50 hover:bg-emerald-800 text-emerald-400 font-bold rounded-xl border border-emerald-800 text-xs flex items-center gap-2 transition-all disabled:opacity-50">
+                                            {pdfLoading ? <Loader2 size={14} className="animate-spin"/> : <Download size={14} />} عربي PDF
                                         </button>
                                     )}
                                 </PDFDownloadLink>
                             </>
                         )}
 
-                        <button onClick={handleSavePlan} className="px-6 py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl shadow-lg shadow-orange-900/20 text-sm flex items-center gap-2">
-                            <Save size={16} /> Save Targets
+                        <button onClick={handleSavePlan} className="whitespace-nowrap px-6 py-2.5 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl shadow-lg shadow-orange-900/20 text-xs flex items-center gap-2 ml-auto">
+                            <Save size={14} /> Save
                         </button>
                     </div>
                 </div>
 
-                <div className="space-y-6 max-w-7xl mx-auto">
+                <div className="space-y-4 md:space-y-6 max-w-7xl mx-auto">
                     
-                    {/* 1. CLIENT DATA */}
-                    <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-6">
-                        <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-                            <User size={18} className="text-orange-500"/> Client Data
+                    {/* 1. CLIENT METRICS */}
+                    <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-4 md:p-6">
+                        <h3 className="font-bold text-white mb-4 flex items-center gap-2 text-sm md:text-base">
+                            <User size={16} className="text-orange-500"/> Body Metrics
                         </h3>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                        {/* GRID: 1 col on mobile, 2 on tablet, 6 on desktop */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 md:gap-4">
                             <ModernInput label="Gender" value={calcState.gender} onChange={(v) => setCalcState({...calcState, gender: v})} options={[{val:'male', lbl:'Male'}, {val:'female', lbl:'Female'}]} />
-                            
                             <ModernInput label="Age" value={calcState.age} onChange={(v) => setCalcState({...calcState, age: v})} type="number" min="0" />
                             <ModernInput label="Height" value={calcState.heightCm} onChange={(v) => setCalcState({...calcState, heightCm: v})} type="number" suffix="cm" min="0" />
+                            <ModernInput label="Weight" value={calcState.weightKg} onChange={(v) => setCalcState({...calcState, weightKg: v})} type="number" suffix="kg" min="0" />
                             
-                            <div className="col-span-1">
-                                <ModernInput label="Weight" value={calcState.weightKg} onChange={(v) => setCalcState({...calcState, weightKg: v})} type="number" suffix="kg" min="0" />
-                            </div>
-                            <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-2xl flex flex-col justify-center">
-                                <label className="text-[10px] uppercase font-bold text-zinc-500 flex items-center gap-1"><Scale size={10} /> In Lbs</label>
-                                <span className="text-white font-bold text-lg">{weightLbs}</span>
+                            {/* Read-only LBS Display */}
+                            <div className="bg-zinc-900/50 border border-zinc-800 p-3.5 rounded-2xl flex flex-col justify-center">
+                                <label className="text-[10px] uppercase font-bold text-zinc-500 flex items-center gap-1"><Scale size={10} /> LBS</label>
+                                <span className="text-white font-bold text-sm md:text-base">{weightLbs}</span>
                             </div>
 
-                            <ModernInput label="Activity" value={calcState.activityLevel} onChange={(v) => setCalcState({...calcState, activityLevel: v})} options={[
-                                {val:'sedentary', lbl:'Sedentary'}, {val:'light', lbl:'Light'}, {val:'moderate', lbl:'Moderate'}, {val:'active', lbl:'Active'}
-                            ]} />
+                            <div className="sm:col-span-2 lg:col-span-1">
+                                <ModernInput label="Activity" value={calcState.activityLevel} onChange={(v) => setCalcState({...calcState, activityLevel: v})} options={[
+                                    {val:'sedentary', lbl:'Sedentary'}, {val:'light', lbl:'Light'}, {val:'moderate', lbl:'Moderate'}, {val:'active', lbl:'Active'}
+                                ]} />
+                            </div>
                         </div>
                     </div>
 
-                    {/* 2. STRATEGY */}
-                    <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-6">
-                        <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-                            <Activity size={18} className="text-emerald-500"/> Strategy
+                    {/* 2. STRATEGY INPUTS */}
+                    <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-4 md:p-6">
+                        <h3 className="font-bold text-white mb-4 flex items-center gap-2 text-sm md:text-base">
+                            <Activity size={16} className="text-emerald-500"/> Strategy
                         </h3>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                            <ModernInput label="Deficit/Surplus" value={calcState.deficitSurplus} onChange={(v) => setCalcState({...calcState, deficitSurplus: v})} type="number" suffix="kcal" />
-                            <ModernInput label="Pro Ratio" value={calcState.proteinPerLb} onChange={(v) => setCalcState({...calcState, proteinPerLb: v})} type="number" suffix="g/lb" min="0" />
-                            <ModernInput label="Fat Ratio" value={calcState.fatPercentage} onChange={(v) => setCalcState({...calcState, fatPercentage: v})} type="number" suffix="%" min="0" />
-                            <ModernInput label="Carb Manip %" value={calcState.carbAdjustment} onChange={(v) => setCalcState({...calcState, carbAdjustment: v})} type="number" suffix="+/-" className="border-blue-500/30" />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 md:gap-4">
+                            <ModernInput label="Calorie Goal (+/-)" value={calcState.deficitSurplus} onChange={(v) => setCalcState({...calcState, deficitSurplus: v})} type="number" suffix="kcal" />
+                            <ModernInput label="Protein Ratio" value={calcState.proteinPerLb} onChange={(v) => setCalcState({...calcState, proteinPerLb: v})} type="number" suffix="g/lb" min="0" />
+                            <ModernInput label="Fat Percentage" value={calcState.fatPercentage} onChange={(v) => setCalcState({...calcState, fatPercentage: v})} type="number" suffix="%" min="0" />
+                            <ModernInput label="Carb Mod" value={calcState.carbAdjustment} onChange={(v) => setCalcState({...calcState, carbAdjustment: v})} type="number" suffix="+/-" />
                             <ModernInput label="Main Meals" value={calcState.mealsCount} onChange={(v) => setCalcState({...calcState, mealsCount: v})} type="number" min="1" />
                             <ModernInput label="Snacks" value={calcState.snacksCount} onChange={(v) => setCalcState({...calcState, snacksCount: v})} type="number" suffix="#" min="0" />
                         </div>
                     </div>
 
-                    {/* PDF BRAND CUSTOMIZATION */}
-                    <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-6">
-                        <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-                            <FileText size={18} className="text-purple-500"/> PDF Customization
+                    {/* BRANDING */}
+                    <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-4 md:p-6">
+                        <h3 className="font-bold text-white mb-4 flex items-center gap-2 text-sm md:text-base">
+                            <FileText size={16} className="text-purple-500"/> PDF Branding
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <ModernInput 
-                                label="Brand / Logo Text" 
-                                value={calcState.brandText} 
-                                onChange={(v) => setCalcState({...calcState, brandText: v})} 
-                                placeholder="e.g. IRON GYM"
-                            />
+                            <ModernInput label="Logo Text" value={calcState.brandText} onChange={(v) => setCalcState({...calcState, brandText: v})} placeholder="e.g. IRON GYM" />
                         </div>
                     </div>
 
                     {results.warning && (
                         <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-2xl flex items-start gap-3">
-                            <AlertTriangle className="text-red-500 shrink-0" size={20} />
+                            <AlertTriangle className="text-red-500 shrink-0" size={18} />
                             <p className="text-xs font-bold text-red-400">{results.warning}</p>
                         </div>
                     )}
 
-                    {/* 3. DAILY TARGET */}
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-                        <div className="text-center md:text-left min-w-[200px]">
-                            <p className="text-xs font-bold text-zinc-500 uppercase">Daily Target</p>
-                            <p className="text-5xl font-black text-white">{results.targetCalories} <span className="text-lg text-zinc-500 font-bold">kcal</span></p>
+                    {/* 3. DAILY TARGET DASHBOARD */}
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 md:p-6 flex flex-col lg:flex-row items-center gap-6 md:gap-8">
+                        {/* Total Calories */}
+                        <div className="text-center lg:text-left min-w-[150px]">
+                            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Daily Target</p>
+                            <p className="text-4xl md:text-5xl font-black text-white leading-none">{results.targetCalories}</p>
+                            <span className="text-sm text-zinc-500 font-bold">kcal</span>
                         </div>
                         
-                        <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-6 w-full">
-                            <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800/50">
-                                <span className="text-zinc-400 flex items-center gap-2 text-xs uppercase font-bold mb-1"><Beef size={14} className="text-red-500"/> Protein</span>
-                                <span className="text-white font-black text-2xl">{results.macros.protein.grams}g</span>
-                                <div className="text-zinc-600 text-xs font-medium mt-1">{results.perMeal.proteinGrams}g / meal</div>
-                            </div>
-                            <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800/50">
-                                <span className="text-zinc-400 flex items-center gap-2 text-xs uppercase font-bold mb-1"><Wheat size={14} className="text-blue-500"/> Carbs</span>
-                                <span className="text-white font-black text-2xl">{results.macros.carbs.grams}g</span>
-                                <div className="text-zinc-600 text-xs font-medium mt-1">{results.perMeal.carbsGrams}g / meal</div>
-                            </div>
-                            <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800/50">
-                                <span className="text-zinc-400 flex items-center gap-2 text-xs uppercase font-bold mb-1"><Droplets size={14} className="text-yellow-500"/> Fats</span>
-                                <span className="text-white font-black text-2xl">{results.macros.fats.grams}g</span>
-                                <div className="text-zinc-600 text-xs font-medium mt-1">{results.perMeal.fatsGrams}g / meal</div>
-                            </div>
-                             <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800/50">
-                                <span className="text-zinc-400 flex items-center gap-2 text-xs uppercase font-bold mb-1"><Leaf size={14} className="text-emerald-500"/> Fiber</span>
-                                <span className="text-white font-black text-2xl">{results.macros.fiber.grams}g</span>
-                                <div className="text-zinc-600 text-xs font-medium mt-1">Minimum</div>
-                            </div>
+                        {/* Macro Cards (Grid 2x2 on Mobile) */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 w-full">
+                            {[
+                                { label: 'Protein', val: results.macros.protein.grams, sub: results.perMeal.proteinGrams, icon: Beef, color: 'text-red-500' },
+                                { label: 'Carbs', val: results.macros.carbs.grams, sub: results.perMeal.carbsGrams, icon: Wheat, color: 'text-blue-500' },
+                                { label: 'Fats', val: results.macros.fats.grams, sub: results.perMeal.fatsGrams, icon: Droplets, color: 'text-yellow-500' },
+                                { label: 'Fiber', val: results.macros.fiber.grams, sub: 'Min', icon: Leaf, color: 'text-emerald-500' },
+                            ].map((m, i) => (
+                                <div key={i} className="bg-zinc-950 p-3 md:p-4 rounded-2xl border border-zinc-800/50 flex flex-col items-center md:items-start text-center md:text-left">
+                                    <span className="text-zinc-500 flex items-center gap-1.5 text-[10px] uppercase font-bold mb-1">
+                                        <m.icon size={12} className={m.color}/> {m.label}
+                                    </span>
+                                    <span className="text-white font-black text-xl md:text-2xl">{m.val}g</span>
+                                    <div className="text-zinc-600 text-[10px] font-bold mt-1">{m.sub === 'Min' ? 'Minimum' : `${m.sub}g / meal`}</div>
+                                </div>
+                            ))}
                         </div>
                     </div>
 
-                    {/* 4. ITEMS TABLE */}
-                    <div className="space-y-6">
+                    {/* 4. EXCHANGE LIST */}
+                    <div className="space-y-4 md:space-y-6">
                         {exchangeList && Object.entries(exchangeList).map(([groupName, data]) => (
                             <div key={groupName} className="bg-[#121214] border border-zinc-800 rounded-3xl overflow-hidden">
-                                <div className={`p-4 border-b border-zinc-800 flex justify-between items-center ${data.bg}`}>
-                                    <h3 className={`font-black uppercase tracking-wider text-sm ${data.color}`}>{groupName}</h3>
-                                    <div className="flex items-center gap-2">
+                                <div className={`p-4 border-b border-zinc-800 flex flex-col sm:flex-row justify-between items-center gap-2 ${data.bg}`}>
+                                    <h3 className={`font-black uppercase tracking-wider text-xs md:text-sm ${data.color}`}>{groupName}</h3>
+                                    <div className="flex flex-wrap justify-center items-center gap-2">
                                         {groupName === 'Carbohydrates' && calcState.carbAdjustment !== 0 && (
-                                            <span className="text-[10px] font-bold text-white bg-blue-500 px-2 py-1 rounded-md">
-                                                {calcState.carbAdjustment > 0 ? '+' : ''}{calcState.carbAdjustment}% Modified
+                                            <span className="text-[10px] font-bold text-white bg-blue-500 px-2 py-0.5 rounded-md">
+                                                {calcState.carbAdjustment > 0 ? '+' : ''}{calcState.carbAdjustment}%
                                             </span>
                                         )}
-                                        <div className="text-xs font-bold text-white bg-black/20 px-3 py-1 rounded-lg">
-                                            Target: {Math.round(data.targetCals)} kcal / meal
+                                        <div className="text-[10px] md:text-xs font-bold text-white bg-black/20 px-2 py-1 rounded-lg">
+                                            {Math.round(data.targetCals)} kcal / meal
                                         </div>
                                     </div>
                                 </div>
-                                <div className="p-0">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 divide-y md:divide-y-0 md:gap-px bg-zinc-800/50">
+                                <div>
+                                    <div className="grid grid-cols-1 divide-y divide-zinc-800/50 bg-zinc-800/20">
                                         {data.items.length > 0 ? (
                                             data.items.map((item, idx) => (
-                                                <div key={idx} className="bg-[#121214] p-4 hover:bg-zinc-900 transition-colors flex justify-between items-center">
-                                                    <span className="font-bold text-zinc-300">{item.name}</span>
-                                                    <div className="text-right">
-                                                        <div>
-                                                            <span className={`font-black text-lg ${groupName === 'Carbohydrates' && calcState.carbAdjustment !== 0 ? 'text-blue-400' : 'text-white'}`}>
-                                                                {item.weight}
-                                                            </span>
-                                                            <span className="text-zinc-500 text-xs font-bold ml-1">{item.unit}</span>
-                                                        </div>
-                                                        <div className="text-[10px] text-zinc-500 font-medium">~ {item.meta.cals} kcal</div>
+                                                <div key={idx} className="bg-[#121214] p-3 md:p-4 hover:bg-zinc-900 transition-colors flex justify-between items-center">
+                                                    <div className="min-w-0 pr-2">
+                                                        <p className="font-bold text-zinc-200 text-sm truncate">{item.name}</p>
+                                                        <p className="text-[10px] text-zinc-500">{Math.round(item.meta.cals)} kcal</p>
+                                                    </div>
+                                                    <div className="text-right shrink-0">
+                                                        <span className={`font-black text-base md:text-lg ${groupName === 'Carbohydrates' && calcState.carbAdjustment !== 0 ? 'text-blue-400' : 'text-white'}`}>
+                                                            {item.weight}
+                                                        </span>
+                                                        <span className="text-zinc-500 text-[10px] font-bold ml-1">{item.unit}</span>
                                                     </div>
                                                 </div>
                                             ))
                                         ) : (
-                                            <div className="col-span-full p-8 text-center text-zinc-500 text-sm bg-[#121214]">
-                                                No items found for this category in database.
+                                            <div className="p-6 text-center text-zinc-500 text-xs">
+                                                No items found for this category.
                                             </div>
                                         )}
                                     </div>
@@ -735,19 +693,16 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                     </div>
 
                     {/* 5. NOTES */}
-                    <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-6">
-                        <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-                            <FileText size={18} className="text-emerald-500"/> Coach Notes & Recommendations
+                    <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-4 md:p-6">
+                        <h3 className="font-bold text-white mb-4 flex items-center gap-2 text-sm md:text-base">
+                            <FileText size={16} className="text-emerald-500"/> Notes & Instructions
                         </h3>
                         <textarea
                             value={planNotes}
                             onChange={(e) => setPlanNotes(e.target.value)}
-                            placeholder="Write your grocery list, supplement recommendations, or snack ideas here..."
-                            className="w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 text-zinc-300 font-medium outline-none focus:border-emerald-500/50 transition-colors resize-none text-sm leading-relaxed min-h-[150px]"
+                            placeholder="Supplements, grocery list, etc..."
+                            className="w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 text-zinc-300 font-medium outline-none focus:border-emerald-500/50 transition-colors resize-none text-sm min-h-[120px]"
                         ></textarea>
-                        <p className="text-[10px] text-zinc-500 mt-2 font-bold uppercase tracking-wider text-right">
-                            Use this area for fruits, veggies & snacks
-                        </p>
                     </div>
 
                 </div>

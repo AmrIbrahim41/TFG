@@ -31,6 +31,9 @@ router.register(r'group-templates', GroupWorkoutTemplateViewSet, basename='group
 router.register(r'transfers', SessionTransferRequestViewSet, basename='transfers')
 
 
+router.register(r'manual-nutrition', ManualNutritionSaveViewSet, basename='manual-nutrition')
+router.register(r'manual-workouts', ManualWorkoutSaveViewSet, basename='manual-workouts')
+
 
 urlpatterns = [
     path('', include(router.urls)),

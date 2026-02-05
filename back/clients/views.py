@@ -125,13 +125,7 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-
-# In views.py
-
-# In views.py
-
-
-# In views.py
+# في ملف views.py
 
 class DashboardAnalyticsViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
@@ -141,18 +135,18 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
         user = request.user
         now = timezone.now()
         
+        # 1. Safe Date Parsing
         try:
             month = int(request.query_params.get('month', now.month))
             year = int(request.query_params.get('year', now.year))
-        except ValueError:
+        except (ValueError, TypeError):
             month, year = now.month, now.year
 
-        # --- HELPER: Calculate Group Session Adjustments ---
-        # This function finds money that should move due to Group Classes
+        # --- HELPER: Calculate Group Session Adjustments (Safe Version) ---
         def get_group_adjustments():
             group_adjustments = {} # { trainer_id: amount }
 
-            # Find group sessions in this month
+            # Fetch logs with necessary relations
             group_logs = GroupSessionLog.objects.filter(
                 date__month=month,
                 date__year=year
@@ -160,35 +154,38 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
 
             for log in group_logs:
                 coach = log.coach
-                if not coach: continue # No coach to pay
+                if not coach: continue
 
-                # Check every participant
                 for participant in log.participants.all():
-                    # Only count if a session was actually deducted
+                    # Check logic safety
                     if not participant.deducted or not participant.client:
                         continue
 
-                    # Find the client's subscription to determine Price & Owner
-                    # We look for the active subscription or the most recent one
+                    # Safe Subscription Fetching
                     client_sub = ClientSubscription.objects.filter(
                         client=participant.client, 
                         is_active=True
                     ).select_related('plan', 'trainer').first()
 
+                    # Fallback to last sub if active not found
                     if not client_sub:
-                        # Fallback: Try most recent if expired
                         client_sub = ClientSubscription.objects.filter(
                             client=participant.client
                         ).select_related('plan', 'trainer').order_by('-created_at').first()
 
-                    # Logic: If Sub Owner != Group Coach, move money
-                    if client_sub and client_sub.plan and client_sub.plan.units > 0:
+                    # MATH SAFETY: Ensure plan exists and units > 0
+                    if client_sub and client_sub.plan and client_sub.plan.units and client_sub.plan.units > 0:
                         owner = client_sub.trainer
                         
-                        # Use Decimal for precision
-                        session_value = Decimal(client_sub.plan.price) / Decimal(client_sub.plan.units)
+                        try:
+                            price = client_sub.plan.price or 0
+                            units = client_sub.plan.units
+                            # Calculate value per session safely
+                            session_value = Decimal(str(price)) / Decimal(str(units))
+                        except:
+                            session_value = Decimal(0)
 
-                        # If there is an owner and they are NOT the group coach
+                        # Logic: If Owner != Group Coach, move money
                         if owner and owner.id != coach.id:
                             # Deduct from Owner
                             group_adjustments[owner.id] = group_adjustments.get(owner.id, Decimal(0)) - session_value
@@ -199,15 +196,14 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
 
         # --- 1. TRAINER VIEW ---
         if not user.is_superuser:
-            # A. Base Revenue (Subscriptions sold by me)
+            # A. Base Revenue
             base_revenue = ClientSubscription.objects.filter(
                 trainer=user,
                 created_at__month=month,
                 created_at__year=year
-            ).aggregate(total=Sum('plan__price'))['total'] or 0
+            ).aggregate(total=Sum('plan__price'))['total'] or Decimal(0)
 
-            # B. 1-on-1 Adjustments (Existing Logic)
-            # ... (Calculate 1-on-1 deductions/additions as before) ...
+            # B. 1-on-1 Adjustments
             lost_sessions = TrainingSession.objects.filter(
                 subscription__trainer=user,
                 is_completed=True,
@@ -218,8 +214,10 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
             deduction_amount = Decimal(0)
             for sess in lost_sessions:
                 plan = sess.subscription.plan
-                if plan and plan.units > 0:
-                    deduction_amount += (plan.price / plan.units)
+                if plan and plan.units and plan.units > 0:
+                    try:
+                        deduction_amount += (Decimal(str(plan.price or 0)) / Decimal(str(plan.units)))
+                    except: pass
 
             gained_sessions = TrainingSession.objects.filter(
                 completed_by=user,
@@ -231,29 +229,44 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
             addition_amount = Decimal(0)
             for sess in gained_sessions:
                 plan = sess.subscription.plan
-                if plan and plan.units > 0:
-                    addition_amount += (plan.price / plan.units)
+                if plan and plan.units and plan.units > 0:
+                    try:
+                        addition_amount += (Decimal(str(plan.price or 0)) / Decimal(str(plan.units)))
+                    except: pass
 
-            # C. Group Session Adjustments (NEW)
+            # C. Group Session Adjustments
             group_adj = get_group_adjustments()
             my_group_adj = group_adj.get(user.id, Decimal(0))
             
-            # If positive, it's an addition (I coached groups). If negative, it's a deduction (My clients went to groups).
             if my_group_adj > 0:
                 addition_amount += my_group_adj
             else:
                 deduction_amount += abs(my_group_adj)
 
-            net_revenue = Decimal(base_revenue) - deduction_amount + addition_amount
+            # Final Math Safety
+            base_revenue = Decimal(str(base_revenue))
+            net_revenue = base_revenue - deduction_amount + addition_amount
 
-            # Fetch active subs
             subs = ClientSubscription.objects.filter(trainer=user, is_active=True).select_related('client', 'plan')
-            client_list = [{
-                'id': sub.client.id,
-                'name': sub.client.name,
-                'plan': sub.plan.name if sub.plan else "No Plan",
-                'progress': sub.progress_percentage
-            } for sub in subs]
+            
+            # --- FIX: Build Absolute Photo URL ---
+            client_list = []
+            for sub in subs:
+                photo_full_url = None
+                if sub.client.photo:
+                    try:
+                        photo_full_url = request.build_absolute_uri(sub.client.photo.url)
+                    except:
+                        photo_full_url = None
+
+                client_list.append({
+                    'id': sub.client.id,
+                    'name': sub.client.name,
+                    'plan': sub.plan.name if sub.plan else "No Plan",
+                    'progress': sub.progress_percentage,
+                    'photo': photo_full_url, 
+                    'manual_id': sub.client.manual_id
+                })
 
             return Response({
                 'role': 'trainer',
@@ -296,12 +309,16 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
                 completed_by=F('subscription__trainer')
             ).select_related('subscription__plan', 'subscription__trainer', 'completed_by')
 
-            adjustments = {}
+            adjustments = {} # { trainer_id: Decimal(amount) }
 
             for session in cross_sessions:
                 plan = session.subscription.plan
-                if not plan or plan.units == 0: continue
-                session_value = Decimal(plan.price) / Decimal(plan.units)
+                if not plan or not plan.units or plan.units == 0: continue
+                
+                try:
+                    session_value = Decimal(str(plan.price or 0)) / Decimal(str(plan.units))
+                except:
+                    session_value = Decimal(0)
 
                 owner = session.subscription.trainer
                 if owner:
@@ -311,16 +328,16 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
                 if completer:
                     adjustments[completer.id] = adjustments.get(completer.id, Decimal(0)) + session_value
 
-            # 3. Group Session Adjustments (NEW)
+            # 3. Group Session Adjustments
             group_adj = get_group_adjustments()
             
-            # Merge Group adjustments into Main adjustments
             for trainer_id, amount in group_adj.items():
                 adjustments[trainer_id] = adjustments.get(trainer_id, Decimal(0)) + amount
 
             # 4. Merge Data
             trainers_stats = []
             for trainer in trainers:
+                # Ensure base is Decimal even if None
                 base = trainer.base_monthly_revenue or Decimal(0)
                 adjustment = adjustments.get(trainer.id, Decimal(0))
                 net = base + adjustment
@@ -1229,3 +1246,30 @@ class SessionTransferRequestViewSet(viewsets.ModelViewSet):
         transfer.status = new_status
         transfer.save()
         return Response({"status": "success", "new_status": new_status})
+    
+    
+    
+    
+# views.py
+
+class ManualNutritionSaveViewSet(viewsets.ModelViewSet):
+    serializer_class = ManualNutritionSaveSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Requirement #4: Each account sees only their own records
+        return ManualNutritionSave.objects.filter(user=self.request.user).order_by('-updated_at')
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+class ManualWorkoutSaveViewSet(viewsets.ModelViewSet):
+    serializer_class = ManualWorkoutSaveSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Requirement #4: Each account sees only their own records
+        return ManualWorkoutSave.objects.filter(user=self.request.user).order_by('-updated_at')
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

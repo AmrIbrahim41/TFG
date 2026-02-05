@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.3.2",
+    "arabic-persian-reshaper": "^1.0.1",
     "arabic-reshaper": "^1.1.0",
     "axios": "^1.13.3",
     "bidi-js": "^1.0.3",
