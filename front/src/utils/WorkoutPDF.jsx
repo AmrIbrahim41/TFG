@@ -32,8 +32,8 @@ const styles = StyleSheet.create({
     // --- HEADER ---
     headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
     logoSection: { flexDirection: 'column', alignItems: 'flex-start' },
-    logoRow: { flexDirection: 'row', alignItems: 'center' }, // New helper style
-    logoBar: { width: 3, height: 30, backgroundColor: theme.primary, marginRight: 10 }, // Extracted style
+    logoRow: { flexDirection: 'row', alignItems: 'center' }, 
+    logoBar: { width: 3, height: 30, backgroundColor: theme.primary, marginRight: 10 }, 
     logoText: { fontSize: 36, fontWeight: 'bold', color: theme.primary, marginBottom: 0, lineHeight: 1 },
     logoSubText: { fontSize: 9, color: theme.textMuted, letterSpacing: 1.5, textTransform: 'uppercase' },
     badgesColumn: { flexDirection: 'column', gap: 5, alignItems: 'flex-end' },
@@ -63,8 +63,8 @@ const styles = StyleSheet.create({
     // Columns
     colIndex: { width: '8%',  alignItems: 'flex-start' },
     colReps:  { width: '12%', alignItems: 'center' },
-    colWeight:{ width: '15%', alignItems: 'center' }, // Cleaned up layout
-    colWeightContent: { flexDirection: 'row', justifyContent: 'center', alignItems: 'baseline' }, // Nested helper
+    colWeight:{ width: '15%', alignItems: 'center' }, 
+    colWeightContent: { flexDirection: 'row', justifyContent: 'center', alignItems: 'baseline' }, 
     colTech:  { width: '30%', alignItems: 'center' },
     colEquip: { width: '35%', alignItems: 'center' },
 
@@ -94,7 +94,8 @@ const getTechStyle = (text) => {
     return badgeStyles[key] || badgeStyles['Regular'];
 };
 
-const WorkoutPDF = ({ sessionNumber, clientName, trainerName, date, exercises = [], sessionName }) => {
+// التعديل تم هنا: استقبال brandName
+const WorkoutPDF = ({ sessionNumber, clientName, trainerName, date, exercises = [], sessionName, brandName }) => {
     return (
         <Document>
             <Page size="A4" style={styles.page}>
@@ -104,7 +105,8 @@ const WorkoutPDF = ({ sessionNumber, clientName, trainerName, date, exercises = 
                     <View style={styles.logoSection}>
                         <View style={styles.logoRow}>
                             <View style={styles.logoBar} />
-                            <Text style={styles.logoText}>TFG</Text>
+                            {/* التعديل تم هنا: استخدام brandName بدلاً من النص الثابت */}
+                            <Text style={styles.logoText}>{brandName || 'TFG'}</Text>
                         </View>
                         <Text style={styles.logoSubText}>Personal Training Program</Text>
                     </View>
@@ -174,7 +176,6 @@ const WorkoutPDF = ({ sessionNumber, clientName, trainerName, date, exercises = 
                                         <Text style={styles.cellText}>{safeText(set.reps)}</Text>
                                     </View>
 
-                                    {/* Fix: Nested Text in One Line to avoid invalid string children in row view */}
                                     <View style={styles.colWeight}>
                                         <View style={styles.colWeightContent}>
                                             <Text style={styles.cellText}>{safeText(set.weight)}</Text>

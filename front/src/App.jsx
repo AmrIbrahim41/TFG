@@ -22,7 +22,21 @@ import TrainerProfile from './pages/TrainerProfile';
 
 const PrivateRoute = ({ children }) => {
   const { user } = useContext(AuthContext);
-  return user ? <><Sidebar /><main className="flex-1 transition-colors duration-300">{children}</main></> : <Navigate to="/login" />;
+  return user ? (
+    <>
+      <Sidebar />
+      {/* التعديلات المهمة هنا لحل مشكلة تغطية المحتوى:
+         1. pt-24: (Mobile) ضفنا مسافة من فوق 96px عشان الـ Header بتاع الموبايل اللي ارتفاعه h-24 مايغطيش المحتوى.
+         2. lg:pt-0: (Desktop) لغينا المسافة اللي فوق في الكمبيوتر لأن الـ Header مش موجود.
+         3. lg:pl-72: (Desktop) ضفنا مسافة من الشمال 288px عشان الـ Sidebar اللي عرضه w-72 مايغطيش المحتوى.
+      */}
+      <main className="flex-1 transition-colors duration-300 pt-24 lg:pt-0 lg:pl-72">
+        {children}
+      </main>
+    </>
+  ) : (
+    <Navigate to="/login" />
+  );
 };
 
 function App() {
@@ -30,8 +44,7 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <ThemeProvider>
-          {/* bg-zinc-100: الآن أصبح رمادي صريح (#E4E4E7)
-             ده هيخلي الخلفية كلها رمادية واضحة وليست بيضاء
+          {/* تم استخدام min-h-screen للتأكد أن الخلفية تغطي الشاشة بالكامل
           */}
           <div className="flex bg-zinc-100 dark:bg-[#09090b] min-h-screen transition-colors duration-300">
             <Routes>

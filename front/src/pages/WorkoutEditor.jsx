@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
     ArrowLeft, Save, Plus, Trash2, CheckCircle, Dumbbell, Activity, Settings, Zap, 
-    Layers, TrendingUp, ArrowDown, Grip, History, X, Minus, FileText, MoreVertical, ChevronRight, Calendar, User
+    Layers, TrendingUp, ArrowDown, Grip, History, X, Minus, FileText, MoreVertical, ChevronRight, Calendar, User, Download, Type
 } from 'lucide-react';
 import api from '../api'; 
 import toast, { Toaster } from 'react-hot-toast';
@@ -46,6 +46,10 @@ const WorkoutEditor = () => {
     const [isSessionCompleted, setIsSessionCompleted] = useState(false);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef(null);
+
+    // --- NEW STATES FOR PDF MODAL ---
+    const [showPdfModal, setShowPdfModal] = useState(false);
+    const [pdfManualClientName, setPdfManualClientName] = useState('');
 
     useEffect(() => { setIsClient(true); }, []);
 
@@ -167,6 +171,13 @@ const WorkoutEditor = () => {
         toast.success("Workout loaded from history");
     };
 
+    // --- PDF BUTTON HANDLER ---
+    const handleOpenPdfModal = () => {
+        setIsMenuOpen(false);
+        setPdfManualClientName(''); // Reset or set default
+        setShowPdfModal(true);
+    }
+
     if (loading) return <div className="h-screen bg-zinc-50 dark:bg-black flex items-center justify-center text-orange-500"><Activity className="animate-spin" /></div>;
 
     return (
@@ -178,11 +189,9 @@ const WorkoutEditor = () => {
                 <div className="max-w-4xl mx-auto px-3 h-20 grid grid-cols-[44px_1fr_auto] items-center gap-2">
                     <button onClick={handleBack} className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors"><ArrowLeft size={20} className="text-zinc-600 dark:text-white" /></button>
                     
-                    {/* Header Info - Modified as requested */}
                     <div className="flex flex-col items-center justify-center min-w-0 px-2 pt-1">
                         <input value={sessionName || ''} onChange={(e) => setSessionName(e.target.value)} placeholder="Workout Name" className="bg-transparent text-center text-lg md:text-xl font-black text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-700 outline-none w-full border-b border-transparent focus:border-zinc-300 dark:focus:border-zinc-700 transition-all pb-0.5 truncate" />
                         
-                        {/* 1. تحت اسم اليوم تعرضلي اسم العميل ويبقي مكتوب seassio : رقم السيشن */}
                         <div className="flex items-center gap-2 text-[11px] font-medium text-zinc-500 dark:text-zinc-400 mt-1">
                             <span className="flex items-center gap-1 text-zinc-800 dark:text-zinc-300"><User size={10} className="text-orange-500"/> {clientName}</span>
                             <span className="text-zinc-300 dark:text-zinc-700">•</span>
@@ -205,25 +214,14 @@ const WorkoutEditor = () => {
                             <div className="absolute top-12 right-0 w-64 bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-2 animate-in fade-in zoom-in-95 duration-200 z-50">
                                 <div className="space-y-2">
                                     {isClient && (
-                                        <PDFDownloadLink
-                                            document={
-                                                <WorkoutPDF_EN 
-                                                    sessionName={debouncedSessionName || `Session ${sessionNum}`}
-                                                    sessionNumber={parseInt(sessionNum) || 1}
-                                                    clientName={clientName || 'Client'} 
-                                                    trainerName={trainerName || 'Trainer'}
-                                                    brandName="TFG"
-                                                    date={new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
-                                                    exercises={debouncedExercises}
-                                                />
-                                            }
-                                            fileName={`${(debouncedSessionName || 'Session').replace(/\s/g, '_')}_EN.pdf`}
-                                            className="w-full px-4 py-3 rounded-xl bg-gradient-to-r from-zinc-100 to-zinc-200 dark:from-zinc-800 dark:to-zinc-700 hover:from-zinc-200 hover:to-zinc-300 dark:hover:from-zinc-700 dark:hover:to-zinc-600 text-zinc-900 dark:text-white font-bold text-sm flex items-center justify-between gap-3 transition-all shadow-sm hover:shadow-md active:scale-98"
+                                        // تم تغيير هذا الجزء لفتح النافذة بدلاً من التحميل المباشر
+                                        <button 
+                                            onClick={handleOpenPdfModal}
+                                            className="w-full px-4 py-3 rounded-xl bg-zinc-50 hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white font-medium text-sm flex items-center justify-between gap-3 transition-all"
                                         >
-                                            {({ loading }) => (
-                                                <><div className="flex items-center gap-3">{loading ? <Activity size={18} className="animate-spin"/> : <FileText size={18} className="text-orange-500"/>}<span>Download PDF (EN)</span></div><ChevronRight size={16} className="text-zinc-400"/></>
-                                            )}
-                                        </PDFDownloadLink>
+                                            <div className="flex items-center gap-3"><FileText size={18} className="text-orange-500"/><span>Export PDF</span></div>
+                                            <ChevronRight size={16} className="text-zinc-400"/>
+                                        </button>
                                     )}
                                 </div>
                             </div>
@@ -273,10 +271,8 @@ const WorkoutEditor = () => {
                                      const TechIcon = tech.icon; const EquipIcon = equip.icon;
                                     return (
                                         <div key={setIndex} className="relative bg-white dark:bg-zinc-900/60 rounded-xl p-3 md:p-0 md:bg-transparent md:hover:bg-zinc-200 dark:md:hover:bg-zinc-900/30 transition-colors grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3 md:items-center border border-zinc-200 dark:border-transparent md:border-0 shadow-sm md:shadow-none">
-                                            {/* 2. تصميم الموبايل المحسن للسيتس */}
                                             <div className="flex md:contents flex-wrap gap-2">
                                                 
-                                                {/* Top Row on Mobile: Number, Reps, Weight, Delete */}
                                                 <div className="flex items-center gap-2 w-full md:w-auto md:contents">
                                                      <div className="md:col-span-1 flex items-center justify-center min-w-[24px]">
                                                         <span className="text-xs font-bold text-zinc-400 dark:text-zinc-600">{setIndex + 1}</span>
@@ -301,7 +297,6 @@ const WorkoutEditor = () => {
                                                     )}
                                                 </div>
 
-                                                {/* Bottom Row on Mobile: Dropdowns */}
                                                 <div className="w-full flex gap-2 md:contents mt-1 md:mt-0">
                                                     <div className="flex-1 md:col-span-4">
                                                         <div className={`flex items-center w-full rounded-lg px-2 py-1 md:py-0.5 border transition-all ${tech.bg} ${tech.border}`}>
@@ -346,7 +341,71 @@ const WorkoutEditor = () => {
                 </div>
             </div>
 
-            {/* HISTORY SIDE DRAWER (Unchanged logic, just styling) */}
+            {/* --- PDF DOWNLOAD MODAL (New Cute & Modern Design) --- */}
+            {showPdfModal && (
+                <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="w-full max-w-sm bg-white dark:bg-[#18181b] border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
+                        
+                        <button onClick={() => setShowPdfModal(false)} className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
+                            <X size={20} />
+                        </button>
+
+                        <div className="flex flex-col items-center text-center mb-6">
+                            <div className="w-14 h-14 rounded-2xl bg-orange-100 dark:bg-orange-500/10 flex items-center justify-center mb-4 text-orange-600 dark:text-orange-500">
+                                <FileText size={28} />
+                            </div>
+                            <h3 className="text-xl font-black text-zinc-900 dark:text-white">Export Workout</h3>
+                            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Please enter the client's name in English for the PDF.</p>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Client Name (English)</label>
+                                <div className="relative">
+                                    <Type className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                                    <input 
+                                        autoFocus
+                                        value={pdfManualClientName}
+                                        onChange={(e) => setPdfManualClientName(e.target.value)}
+                                        placeholder="e.g. John Doe"
+                                        className="w-full bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-700 rounded-xl py-3 pl-10 pr-4 text-zinc-900 dark:text-white font-bold placeholder:font-normal focus:border-orange-500 focus:ring-1 focus:ring-orange-500/20 outline-none transition-all"
+                                    />
+                                </div>
+                            </div>
+
+                            <PDFDownloadLink
+                                document={
+                                    <WorkoutPDF_EN 
+                                        sessionName={debouncedSessionName || `Session ${sessionNum}`}
+                                        sessionNumber={parseInt(sessionNum) || 1}
+                                        // Use the Manual Name if entered, otherwise default to "Client"
+                                        clientName={pdfManualClientName || 'Client'} 
+                                        trainerName={trainerName || 'Trainer'}
+                                        brandName="TFG"
+                                        date={new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                        exercises={debouncedExercises}
+                                    />
+                                }
+                                fileName={`${(debouncedSessionName || 'Session').replace(/\s/g, '_')}_${pdfManualClientName || 'Client'}.pdf`}
+                                className={`w-full py-3.5 rounded-xl flex items-center justify-center gap-2 font-bold text-sm shadow-lg shadow-orange-500/20 transition-all active:scale-95 ${
+                                    !pdfManualClientName 
+                                    ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed' 
+                                    : 'bg-gradient-to-r from-orange-600 to-amber-600 text-white hover:from-orange-500 hover:to-amber-500'
+                                }`}
+                            >
+                                {({ loading }) => (
+                                    <>
+                                        {loading ? <Activity size={18} className="animate-spin"/> : <Download size={18} />}
+                                        <span>{loading ? 'Generating...' : 'Download PDF'}</span>
+                                    </>
+                                )}
+                            </PDFDownloadLink>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* HISTORY SIDE DRAWER */}
             {showHistory && (
                 <div className="fixed inset-0 z-[250] bg-black/60 dark:bg-black/80 backdrop-blur-sm flex justify-end">
                     <div className="w-full max-w-md bg-white dark:bg-[#121214] h-full border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-right duration-300 flex flex-col shadow-2xl">
