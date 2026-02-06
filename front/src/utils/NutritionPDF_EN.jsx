@@ -2,8 +2,6 @@
 import React from 'react';
 import { Page, Text, View, Document, StyleSheet, Svg, Path, Circle } from '@react-pdf/renderer';
 
-// Note: No Font.register needed for Helvetica (Standard PDF font)
-
 const colors = {
     primary: '#f97316', secondary: '#27272a', accent: '#52525b', 
     light: '#f4f4f5', white: '#ffffff',
@@ -11,7 +9,6 @@ const colors = {
 };
 
 const styles = StyleSheet.create({
-    // FIX: Using Helvetica ensures English letters render correctly
     page: { padding: 40, fontFamily: 'Helvetica', backgroundColor: '#ffffff', color: '#1f2937' },
     
     // Header (LTR)
@@ -28,7 +25,7 @@ const styles = StyleSheet.create({
     // Dashboard (LTR)
     dashboard: { flexDirection: 'row', gap: 20, marginBottom: 30, height: 160 },
     statsCard: { flex: 1, backgroundColor: colors.light, borderRadius: 12, padding: 15, justifyContent: 'space-between' },
-    statRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+    statRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }, // Reduced margin slightly
     
     // Tables (LTR)
     tableContainer: { marginBottom: 20 },
@@ -87,17 +84,42 @@ const NutritionPDF_EN = ({ plan, clientName, trainerName, brandText, results, ex
                 {/* Dashboard */}
                 <View style={styles.dashboard}>
                     <View style={styles.statsCard}>
-                        <View style={{borderBottom: '1px solid #e4e4e7', paddingBottom: 10, marginBottom: 10, alignItems: 'flex-start'}}>
+                        <View style={{borderBottom: '1px solid #e4e4e7', paddingBottom: 10, marginBottom: 8, alignItems: 'flex-start'}}>
                             <Text style={{ fontSize: 9, color: colors.accent }}>Daily Target</Text>
                             <Text style={{ fontSize: 16, fontWeight: 'black', color: colors.primary }}>
                                 {targetCalories} <Text style={{fontSize:10}}>kcal</Text>
                             </Text>
                         </View>
 
-                        <View style={styles.statRow}><Text style={{fontSize:9}}>Activity Level</Text><Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_activity_level || '-'}</Text></View>
-                        <View style={styles.statRow}><Text style={{fontSize:9}}>Frequency</Text><Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_meals || 0} Meals + {plan?.calc_snacks || 0} Snacks</Text></View>
-                        <View style={styles.statRow}><Text style={{fontSize:9}}>Weight</Text><Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_weight || 0} kg</Text></View>
-                        <View style={styles.statRow}><Text style={{fontSize:9}}>Water Goal</Text><Text style={{fontSize:11, fontWeight:'bold'}}>3.5 - 4.5 L</Text></View>
+                        {/* Activity */}
+                        <View style={styles.statRow}>
+                            <Text style={{fontSize:9}}>Activity Level</Text>
+                            <Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_activity_level || '-'}</Text>
+                        </View>
+                        
+                        {/* Meals (Separate Row) */}
+                        <View style={styles.statRow}>
+                            <Text style={{fontSize:9}}>Main Meals</Text>
+                            <Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_meals || 0}</Text>
+                        </View>
+
+                        {/* Snacks (Separate Row) */}
+                        <View style={styles.statRow}>
+                            <Text style={{fontSize:9}}>Snacks</Text>
+                            <Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_snacks || 0}</Text>
+                        </View>
+
+                        {/* Weight */}
+                        <View style={styles.statRow}>
+                            <Text style={{fontSize:9}}>Weight</Text>
+                            <Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_weight || 0} kg</Text>
+                        </View>
+                        
+                        {/* Water */}
+                        <View style={styles.statRow}>
+                            <Text style={{fontSize:9}}>Water Goal</Text>
+                            <Text style={{fontSize:11, fontWeight:'bold'}}>3.5 - 4.5 L</Text>
+                        </View>
                     </View>
 
                     <View style={[styles.statsCard, { flex: 1.5, flexDirection: 'row', alignItems: 'center' }]}>

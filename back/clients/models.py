@@ -279,7 +279,7 @@ class NutritionPlan(models.Model):
     calc_meals = models.IntegerField(default=4)
     calc_snacks = models.IntegerField(default=2)
     calc_carb_adjustment = models.IntegerField(default=0, help_text="Percentage +/- for carbs")
-    pdf_brand_text = models.CharField(max_length=50, default="AZ", help_text="Text to display as logo on PDF")
+    pdf_brand_text = models.CharField(max_length=50, default="TFG", help_text="Text to display as logo on PDF")
 
     # --- The Machine: Targets (Calculated Outputs) ---
     target_calories = models.IntegerField(default=2000)

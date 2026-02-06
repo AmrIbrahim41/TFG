@@ -5,7 +5,7 @@ import {
     Flame, Droplets, Wheat, Beef, AlertTriangle, 
     Leaf, FileText, Zap, Mars, Venus, Loader2, 
     ChevronLeft, ChevronRight, Download, Scale,
-    Check, ChevronDown 
+    Check, ChevronDown, X, Type // Added X and Type icons
 } from 'lucide-react';
 import api from '../../api';
 import { PDFDownloadLink } from '@react-pdf/renderer'; 
@@ -164,7 +164,7 @@ const CustomSelect = ({ label, value, options, onChange, disabled }) => {
 };
 
 // --- UPDATED INPUT COMPONENT ---
-const ModernInput = ({ label, value, onChange, type="text", suffix, options, disabled=false, className="", min }) => {
+const ModernInput = ({ label, value, onChange, type="text", suffix, options, disabled=false, className="", min, placeholder }) => {
     if (options) {
         return (
             <div className={className}>
@@ -186,7 +186,8 @@ const ModernInput = ({ label, value, onChange, type="text", suffix, options, dis
                 disabled={disabled} 
                 type={type} 
                 min={min}
-                value={value} 
+                value={value}
+                placeholder={placeholder}
                 onChange={(e) => {
                     if (type === 'number' && min !== undefined) {
                         const val = parseFloat(e.target.value);
@@ -213,6 +214,10 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
     const [newPlanName, setNewPlanName] = useState('');
     const [newPlanWeeks, setNewPlanWeeks] = useState(4);
     
+    // --- POPUP STATES ---
+    const [showEnPdfModal, setShowEnPdfModal] = useState(false);
+    const [customEnName, setCustomEnName] = useState('');
+
     const [calcState, setCalcState] = useState({
         gender: 'male', age: 25, heightCm: 175, weightKg: 80,
         activityLevel: 'moderate', deficitSurplus: -500,
@@ -258,6 +263,8 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                 brandText: activePlan.pdf_brand_text || 'TFG'
             });
             setPlanNotes(activePlan.notes || '');
+            // Reset English Name when opening a plan
+            setCustomEnName('');
         }
     }, [activePlan]);
 
@@ -392,6 +399,91 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         return groups;
     }, [results, foodDatabase, calcState.carbAdjustment]);
 
+    // --- RENDER MODAL ---
+    const renderEnPdfModal = () => {
+        if (!showEnPdfModal) return null;
+
+        // Use custom name if typed, otherwise fallback to default
+        const nameToUse = customEnName.trim() ? customEnName : pdfClientName;
+
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                <div className="bg-white dark:bg-[#18181b] w-full max-w-md rounded-3xl p-6 shadow-2xl ring-1 ring-zinc-200 dark:ring-zinc-800 animate-in zoom-in-95 duration-200 relative">
+                    
+                    {/* Close Button */}
+                    <button 
+                        onClick={() => setShowEnPdfModal(false)}
+                        className="absolute right-4 top-4 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                    >
+                        <X size={20} />
+                    </button>
+
+                    {/* Header */}
+                    <div className="mb-6 text-center">
+                        <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <Type size={24} className="text-orange-600 dark:text-orange-500" />
+                        </div>
+                        <h3 className="text-lg font-black text-zinc-900 dark:text-white">English Name Required</h3>
+                        <p className="text-xs text-zinc-500 mt-1 max-w-[80%] mx-auto">
+                            Please enter the client's name in English for the PDF.
+                        </p>
+                    </div>
+
+                    {/* Input */}
+                    <div className="space-y-4">
+                        <ModernInput 
+                            label="Client Name (English)" 
+                            value={customEnName}
+                            onChange={setCustomEnName} // Updates state only, no refresh loop
+                            placeholder="e.g. John Doe"
+                            className="w-full"
+                        />
+
+                        {/* Actions */}
+                        <div className="flex gap-3 mt-6">
+                            <button 
+                                onClick={() => setShowEnPdfModal(false)}
+                                className="flex-1 py-3 text-sm font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-colors"
+                            >
+                                Cancel
+                            </button>
+
+                            <PDFDownloadLink
+                                document={
+                                    <NutritionPDF_EN 
+                                        plan={activePlan} 
+                                        clientName={nameToUse} 
+                                        trainerName={trainerName} 
+                                        brandText={calcState.brandText} 
+                                        results={results} 
+                                        exchangeList={exchangeList} 
+                                        notes={planNotes} 
+                                    />
+                                }
+                                fileName={`${activePlan?.name || 'Nutrition'}_EN.pdf`}
+                                className="flex-1"
+                            >
+                                {({ loading: pdfLoading }) => (
+                                    <button 
+                                        disabled={pdfLoading || !customEnName.trim()} 
+                                        onClick={() => {
+                                            // Optional: Close modal after short delay
+                                            setTimeout(() => setShowEnPdfModal(false), 2000);
+                                        }}
+                                        className="w-full py-3 bg-zinc-900 dark:bg-white text-white dark:text-black hover:bg-orange-600 dark:hover:bg-orange-500 hover:text-white dark:hover:text-white disabled:opacity-50 disabled:cursor-not-allowed font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all text-sm"
+                                    >
+                                        {pdfLoading ? <Loader2 size={16} className="animate-spin"/> : <Download size={16} />}
+                                        Download PDF
+                                    </button>
+                                )}
+                            </PDFDownloadLink>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     if (view === 'list') {
         return (
             <div className="space-y-6 animate-in fade-in duration-500 p-2 md:p-4">
@@ -515,6 +607,10 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
     if (view === 'detail' && results) {
         return (
             <div className="animate-in slide-in-from-bottom-4 duration-500 pb-20 p-1 md:p-2">
+                
+                {/* PDF NAME MODAL */}
+                {renderEnPdfModal()}
+
                 {/* DETAIL HEADER */}
                 <div className="flex flex-col gap-4 mb-6">
                     <div className="flex items-center gap-4">
@@ -529,17 +625,15 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                     <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
                         {results && activePlan && (
                             <>
-                                <PDFDownloadLink
-                                    document={<NutritionPDF_EN plan={activePlan} clientName={pdfClientName} trainerName={trainerName} brandText={calcState.brandText} carbAdjustment={calcState.carbAdjustment} results={results} exchangeList={exchangeList} notes={planNotes} />}
-                                    fileName={`${activePlan.name}_EN.pdf`}
+                                {/* MODIFIED: Opens Modal instead of direct download */}
+                                <button 
+                                    onClick={() => setShowEnPdfModal(true)}
+                                    className="whitespace-nowrap px-4 py-2.5 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-200 font-bold rounded-xl border border-zinc-300 dark:border-zinc-700 text-xs flex items-center gap-2 transition-all disabled:opacity-50"
                                 >
-                                    {({ loading: pdfLoading }) => (
-                                        <button disabled={pdfLoading} className="whitespace-nowrap px-4 py-2.5 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-200 font-bold rounded-xl border border-zinc-300 dark:border-zinc-700 text-xs flex items-center gap-2 transition-all disabled:opacity-50">
-                                            {pdfLoading ? <Loader2 size={14} className="animate-spin"/> : <Download size={14} />} EN PDF
-                                        </button>
-                                    )}
-                                </PDFDownloadLink>
+                                    <Download size={14} /> EN PDF
+                                </button>
 
+                                {/* Arabic PDF (Unchanged) */}
                                 <PDFDownloadLink
                                     document={<NutritionPDF_AR plan={activePlan} clientName={pdfClientName} trainerName={trainerName} brandText={calcState.brandText} carbAdjustment={calcState.carbAdjustment} results={results} exchangeList={exchangeList} notes={planNotes} />}
                                     fileName={`${activePlan.name}_AR.pdf`}

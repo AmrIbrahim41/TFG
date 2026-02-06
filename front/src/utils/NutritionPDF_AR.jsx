@@ -3,11 +3,19 @@ import React from 'react';
 import { Page, Text, View, Document, StyleSheet, Svg, Path, Circle, Font } from '@react-pdf/renderer';
 
 // IMPORT LOCAL FONT
+// تأكد أن ملف الخط موجود في نفس المجلد باسم Cairo-ExtraBold.ttf
 import CairoFont from './Cairo-ExtraBold.ttf';
 
+// FIX 1: Font Registration with Weights
 Font.register({
   family: 'Cairo',
-  src: CairoFont
+  fonts: [
+      { src: CairoFont }, // normal
+      { src: CairoFont, fontWeight: 'bold' },
+      { src: CairoFont, fontWeight: 'black' },
+      { src: CairoFont, fontWeight: 700 },
+      { src: CairoFont, fontWeight: 900 }
+  ]
 });
 
 const colors = {
@@ -33,18 +41,32 @@ const styles = StyleSheet.create({
     // Dashboard
     dashboard: { flexDirection: 'row-reverse', gap: 20, marginBottom: 30, height: 160 },
     statsCard: { flex: 1, backgroundColor: colors.light, borderRadius: 12, padding: 15, justifyContent: 'space-between' },
-    statRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+    statRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }, // قللنا المارجن قليلا عشان المساحة
     
     // Tables
     tableContainer: { marginBottom: 20 },
     sectionTitle: { fontSize: 14, fontWeight: 'bold', color: colors.secondary, marginBottom: 15, flexDirection: 'row-reverse', alignItems: 'center' },
-    tableHeader: { flexDirection: 'row-reverse', backgroundColor: colors.secondary, padding: 8, borderTopLeftRadius: 6, borderTopRightRadius: 6 },
-    tableRow: { flexDirection: 'row-reverse', padding: 10, borderBottom: '1px solid #e5e7eb', alignItems: 'center' },
     
-    colName: { flex: 3, textAlign: 'right' },
-    colQty: { flex: 1, textAlign: 'left' },
-    colMeta: { flex: 1, textAlign: 'left', fontSize: 8, color: '#9ca3af' },
-    itemName: { fontSize: 10, fontWeight: 'bold', color: '#374151' },
+    // FIX 2: Layout Strategy for Tables
+    tableHeader: { 
+        flexDirection: 'row', 
+        backgroundColor: colors.secondary, 
+        padding: 8, 
+        borderTopLeftRadius: 6, 
+        borderTopRightRadius: 6 
+    },
+    tableRow: { 
+        flexDirection: 'row', 
+        padding: 10, 
+        borderBottom: '1px solid #e5e7eb', 
+        alignItems: 'center' 
+    },
+    
+    colName: { flex: 3, textAlign: 'right' }, 
+    colQty: { flex: 1, textAlign: 'left', paddingLeft: 10 }, 
+    colMeta: { flex: 1, textAlign: 'left', fontSize: 8, color: '#9ca3af' }, 
+    
+    itemName: { fontSize: 10, fontWeight: 'bold', color: '#374151', textAlign: 'right' },
     
     footer: { position: 'absolute', bottom: 30, left: 40, right: 40, borderTop: '1px solid #f3f4f6', paddingTop: 10, flexDirection: 'row-reverse', justifyContent: 'space-between' }
 });
@@ -63,7 +85,6 @@ const MacroPlate = ({ macros }) => (
 const NutritionPDF_AR = ({ plan, clientName, trainerName, brandText, results, exchangeList, notes }) => {
     const datePrinted = new Date().toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' });
     
-    // Raw Data
     const targetCalories = results?.targetCalories || 0;
     const proteinGrams = results?.macros?.protein?.grams || 0;
     const carbsGrams = results?.macros?.carbs?.grams || 0;
@@ -101,7 +122,7 @@ const NutritionPDF_AR = ({ plan, clientName, trainerName, brandText, results, ex
                 <View style={styles.dashboard}>
                     <View style={styles.statsCard}>
                         {/* Target Calories */}
-                        <View style={{borderBottom: '1px solid #e4e4e7', paddingBottom: 10, marginBottom: 10, alignItems: 'flex-end'}}>
+                        <View style={{borderBottom: '1px solid #e4e4e7', paddingBottom: 10, marginBottom: 8, alignItems: 'flex-end'}}>
                             <Text style={{ fontSize: 9, color: colors.accent }}>السعرات اليومية المستهدفة</Text>
                             <Text style={{ fontSize: 14, fontWeight: 'black', color: colors.primary }}>
                                 {targetCalories} <Text style={{fontSize:10}}>كالوري</Text>
@@ -114,32 +135,29 @@ const NutritionPDF_AR = ({ plan, clientName, trainerName, brandText, results, ex
                             <Text style={{fontSize:9}}>مستوى النشاط</Text>
                         </View>
                         
-                        {/* FIX 2: MANUAL ORDERING (LTR View) */}
-                        {/* هذا التعديل يجبر العناصر على الظهور بالترتيب الصحيح بصرياً */}
+                        {/* Meals Count (Separate Row) */}
                         <View style={styles.statRow}>
-                            {/* نستخدم row عادي (من اليسار لليمين) ونرتب العناصر يدوياً لتظهر كأنها عربي */}
-                            {/* الترتيب في الكود: سناكس -> رقم -> + -> وجبات -> رقم */}
-                            {/* النتيجة في الشاشة: [يسار] سناكس 2 + وجبات 3 [يمين] */}
-                            {/* القراءة العربية (من اليمين): 3 وجبات + 2 سناكس */}
-                            
-                            <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                                <Text style={{fontSize:9}}>سناكس</Text>
-                                <Text style={{fontSize:11, fontWeight:'bold', marginLeft: 3}}>{plan?.calc_snacks || 0}</Text>
-                                
-                                <Text style={{fontSize:9, marginHorizontal: 4}}>+</Text>
-                                
-                                <Text style={{fontSize:9}}>وجبات</Text>
-                                <Text style={{fontSize:11, fontWeight:'bold', marginLeft: 3}}>{plan?.calc_meals || 0}</Text>
-                            </View>
+                            <Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_meals || 0}</Text>
+                            <Text style={{fontSize:9}}>عدد الوجبات الرئيسية</Text>
+                        </View>
 
-                            <Text style={{fontSize:9}}>عدد الوجبات</Text>
+                        {/* Snacks Count (Separate Row) */}
+                        <View style={styles.statRow}>
+                            <Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_snacks || 0}</Text>
+                            <Text style={{fontSize:9}}>عدد السناكس</Text>
                         </View>
 
                         {/* Weight */}
-                        <View style={styles.statRow}><Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_weight || 0} كجم</Text><Text style={{fontSize:9}}>الوزن الحالي</Text></View>
+                        <View style={styles.statRow}>
+                            <Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_weight || 0} كجم</Text>
+                            <Text style={{fontSize:9}}>الوزن الحالي</Text>
+                        </View>
                         
                         {/* Water Goal */}
-                        <View style={styles.statRow}><Text style={{fontSize:11, fontWeight:'bold'}}>٣.٥ - ٤.٥ لتر</Text><Text style={{fontSize:9}}>هدف المياه</Text></View>
+                        <View style={styles.statRow}>
+                            <Text style={{fontSize:11, fontWeight:'bold'}}>٣.٥ - ٤.٥ لتر</Text>
+                            <Text style={{fontSize:9}}>هدف المياه</Text>
+                        </View>
                     </View>
 
                     {/* Macro Plate */}
@@ -165,13 +183,14 @@ const NutritionPDF_AR = ({ plan, clientName, trainerName, brandText, results, ex
                     </View>
                 </View>
 
-                {/* Tables */}
+                {/* Tables Section */}
                 {exchangeList && Object.entries(exchangeList).map(([groupName, data]) => {
                     const groupColor = groupName.includes('Protein') ? colors.protein : groupName.includes('Carb') ? colors.carbs : colors.fats;
                     const arabicTitle = getArabicGroupName(groupName);
 
                     return (
                         <View key={groupName} style={styles.tableContainer} wrap={false}>
+                            {/* Section Title */}
                             <View style={styles.sectionTitle}>
                                 <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: groupColor, marginLeft: 8 }} />
                                 <Text>{arabicTitle}</Text>
@@ -181,25 +200,32 @@ const NutritionPDF_AR = ({ plan, clientName, trainerName, brandText, results, ex
                             </View>
 
                             <View style={{ borderRadius: 6, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                                {/* Table Header */}
                                 <View style={[styles.tableHeader, { backgroundColor: groupColor }]}>
-                                    <Text style={[styles.colName, {color:'white', fontWeight:'bold', fontSize:9}]}>نوع الطعام</Text>
-                                    <Text style={[styles.colQty, {color:'white', fontWeight:'bold', fontSize:9}]}>الكمية</Text>
                                     <Text style={[styles.colMeta, {color:'white', fontWeight:'bold', fontSize:9}]}>سعرات</Text>
+                                    <Text style={[styles.colQty, {color:'white', fontWeight:'bold', fontSize:9}]}>الكمية</Text>
+                                    <Text style={[styles.colName, {color:'white', fontWeight:'bold', fontSize:9}]}>نوع الطعام</Text>
                                 </View>
 
                                 {data?.items?.length > 0 ? (
                                     data.items.map((item, idx) => (
                                         <View key={idx} style={styles.tableRow}>
-                                            <View style={styles.colName}>
-                                                <Text style={styles.itemName}>{item.arabic_name || item.name}</Text>
-                                            </View>
-                                            <Text style={[styles.colQty, { fontSize: 10, fontWeight: 'bold' }]}>{item.weight} {item.unit === 'g' ? 'جم' : item.unit}</Text>
                                             <Text style={styles.colMeta}>~{item.meta?.cals || 0}</Text>
+                                            <Text style={[styles.colQty, { fontSize: 10, fontWeight: 'bold' }]}>
+                                                {item.weight} {item.unit === 'g' ? 'جم' : item.unit}
+                                            </Text>
+                                            <View style={styles.colName}>
+                                                <Text style={styles.itemName}>
+                                                    {item.arabic_name ? item.arabic_name : item.name}
+                                                </Text>
+                                            </View>
                                         </View>
                                     ))
                                 ) : (
-                                    <View style={styles.tableRow}>
-                                        <Text style={{ fontSize: 9, color: '#9ca3af', fontStyle: 'italic', padding: 10 }}>لم يتم اختيار عناصر لهذه القائمة.</Text>
+                                    <View style={[styles.tableRow, {justifyContent:'flex-end'}]}>
+                                        <Text style={{ fontSize: 9, color: '#9ca3af', fontStyle: 'italic', padding: 10, textAlign:'right' }}>
+                                            لم يتم اختيار عناصر لهذه القائمة.
+                                        </Text>
                                     </View>
                                 )}
                             </View>
