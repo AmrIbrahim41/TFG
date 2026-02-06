@@ -1,0 +1,26 @@
+# Python compiled files (ملفات مترجمة ملهاش لازمة تترفع)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment (البيئة الافتراضية مساحتها كبيرة وبنعملها install هناك)
+venv/
+env/
+.env
+myenv/
+
+# Database (عشان متكتبش على داتا السيرفر زي ما اتفقنا)
+db.sqlite3
+db.sqlite3-journal
+
+# Environment Variables (لو بتستخدم ملفات فيها كلمات سر)
+.env
+.env.local
+
+# Static & Media (ملفات اليوزر والملفات المجمعة)
+media/
+staticfiles/
+
+# IDE settings (إعدادات المحرر بتاعك مش مهمة للفريق)
+.vscode/
+.idea/
