@@ -4,14 +4,6 @@ from datetime import date,timedelta
 from django.utils import timezone
 from django.contrib.auth.models import User # Import User
 
-
-     
-
-
-
-
-
-
 class Client(models.Model):
     name = models.CharField(max_length=255)
     manual_id = models.CharField(max_length=50, unique=True)
@@ -46,8 +38,6 @@ class Client(models.Model):
             return today.year - self.birth_date.year - ((today.month, today.day) < (self.birth_date.month, self.birth_date.day))
         return None
 
-
-
 class Country(models.Model):
     name = models.CharField(max_length=100, unique=True) # e.g. Egypt
     code = models.CharField(max_length=5, unique=True)   # e.g. EG
@@ -55,9 +45,6 @@ class Country(models.Model):
 
     def __str__(self):
         return f"{self.flag} {self.name} ({self.dial_code})"
-
-
-
 
 class Subscription(models.Model):
     name = models.CharField(max_length=100) # e.g. "Gold Package"
@@ -69,8 +56,6 @@ class Subscription(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.units} units)"
-
-
 
 class ClientSubscription(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='subscriptions')
@@ -99,8 +84,6 @@ class ClientSubscription(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
-        # FIX: Only set end_date if it is NOT set yet. 
-        # This prevents the date from shifting if you edit the subscription later.
         if not self.end_date and self.plan:
             self.end_date = self.start_date + timedelta(days=self.plan.duration_days)
         super().save(*args, **kwargs)
@@ -114,10 +97,6 @@ class ClientSubscription(models.Model):
 
     def __str__(self):
         return f"{self.client.name} - {self.plan.name if self.plan else 'Unknown'}"
-    
-    
-    
-    
 
 class TrainingPlan(models.Model):
     # One Plan per Subscription
@@ -201,6 +180,8 @@ class SessionExercise(models.Model):
     training_session = models.ForeignKey(TrainingSession, on_delete=models.CASCADE, related_name='exercises')
     order = models.IntegerField(default=1)
     name = models.CharField(max_length=200)
+    # --- ADDED: Note field for specific session exercises ---
+    note = models.TextField(blank=True, null=True) 
     
     class Meta:
         ordering = ['order']
@@ -219,31 +200,6 @@ class SessionSet(models.Model):
 
     class Meta:
         ordering = ['order']
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-   
-
 
 class NutritionPlan(models.Model):
     # Changed to ForeignKey to allow multiple plans per client
@@ -508,18 +464,6 @@ class FoodDatabase(models.Model):
         verbose_name_plural = "Food Database"
 
 
-
-
-
-
-
-
-
-
-
-
-# ... existing models ...
-
 class CoachSchedule(models.Model):
     coach = models.ForeignKey(User, on_delete=models.CASCADE, related_name='schedules')
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='scheduled_days')
@@ -552,9 +496,6 @@ class GroupSessionParticipant(models.Model):
         return f"{self.client.name if self.client else 'Unknown'} in {self.session}"
     
     
-    
-    # ... existing code ...
-
 class GroupWorkoutTemplate(models.Model):
     name = models.CharField(max_length=200)
     # Storing exercises as JSON is efficient for templates: 
@@ -567,15 +508,6 @@ class GroupWorkoutTemplate(models.Model):
         return self.name
     
     
-    
-    
-    
-    
-    
-# In models.py
-
-# --- models.py ---
-
 class SessionTransferRequest(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'),
@@ -604,12 +536,6 @@ class SessionTransferRequest(models.Model):
         return f"{self.from_trainer} -> {self.to_trainer}: {self.subscription.client.name}"
     
     
-    
-    
-# models.py
-
-# ... (Existing imports)
-
 class ManualNutritionSave(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='manual_nutrition_saves')
     client_name = models.CharField(max_length=200)

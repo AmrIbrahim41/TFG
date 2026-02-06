@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
     ArrowLeft, Save, Plus, Trash2, CheckCircle, Dumbbell, Activity, Settings, Zap, 
-    Layers, TrendingUp, ArrowDown, Grip, History, X, Minus, FileText, MoreVertical, ChevronRight, Calendar, User, Download, Type
+    Layers, TrendingUp, ArrowDown, Grip, History, X, Minus, FileText, MoreVertical, ChevronRight, Calendar, User, Download, Type,
+    MessageSquare
 } from 'lucide-react';
 import api from '../api'; 
 import toast, { Toaster } from 'react-hot-toast';
@@ -47,6 +48,8 @@ const WorkoutEditor = () => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef(null);
 
+    const [activeNoteIndex, setActiveNoteIndex] = useState(null);
+
     // --- NEW STATES FOR PDF MODAL ---
     const [showPdfModal, setShowPdfModal] = useState(false);
     const [pdfManualClientName, setPdfManualClientName] = useState('');
@@ -76,7 +79,12 @@ const WorkoutEditor = () => {
                 const data = res.data;
                 setSessionName(data.name || `Session ${sessionNum}`);
                 setIsSessionCompleted(data.is_completed || false);
-                setExercises(data.exercises?.length ? data.exercises : [{ name: '', sets: [{ reps: '', weight: '', technique: 'Regular', equipment: '' }] }]);
+                // Ensure note is initialized
+                const loadedExercises = data.exercises?.length 
+                    ? data.exercises.map(ex => ({...ex, note: ex.note || ''})) 
+                    : [{ name: '', note: '', sets: [{ reps: '', weight: '', technique: 'Regular', equipment: '' }] }];
+                
+                setExercises(loadedExercises);
                 
                 api.get(`/training-sessions/history/?subscription=${subId}`).then(r => setRecentSplits(r.data)).catch(() => {});
             } catch (error) { console.error("Load error:", error); toast.error("Failed to load session"); } 
@@ -117,7 +125,7 @@ const WorkoutEditor = () => {
         if (delta > 0) {
             setExercises(prev => [
                 ...prev,
-                { name: '', sets: [{ reps: '', weight: '', technique: 'Regular', equipment: '' }] }
+                { name: '', note: '', sets: [{ reps: '', weight: '', technique: 'Regular', equipment: '' }] }
             ]);
         } else {
             setExercises(prev => {
@@ -158,6 +166,7 @@ const WorkoutEditor = () => {
         
         const newExercises = historySession.exercises.map(ex => ({
             name: ex.name,
+            note: ex.note || '', // Ensure note is copied
             sets: ex.sets.map(s => ({
                 reps: s.reps,
                 weight: s.weight,
@@ -321,6 +330,29 @@ const WorkoutEditor = () => {
                                         </div>
                                     )
                                 })}
+                             </div>
+
+                             {/* --- EXERCISE NOTE FOOTER --- */}
+                             <div className="mt-2 px-2 pb-2">
+                                <button 
+                                    onClick={() => setActiveNoteIndex(activeNoteIndex === exIndex ? null : exIndex)} 
+                                    className="flex items-center gap-2 text-xs font-bold text-zinc-400 hover:text-orange-500 transition-colors py-1"
+                                >
+                                    <MessageSquare size={14} />
+                                    {ex.note ? 'Edit Note' : 'Add Note'}
+                                </button>
+                                
+                                {(activeNoteIndex === exIndex || ex.note) && (
+                                    <div className={`mt-1 overflow-hidden transition-all ${activeNoteIndex === exIndex ? 'max-h-32 opacity-100' : ex.note ? 'max-h-auto opacity-100' : 'max-h-0 opacity-0'}`}>
+                                         <textarea
+                                            value={ex.note || ''}
+                                            onChange={(e) => updateExercise(exIndex, 'note', e.target.value)}
+                                            placeholder="Write notes for this exercise (e.g. Focus on tempo, Seat height 4)..."
+                                            className="w-full bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 rounded-lg p-2 text-sm text-zinc-700 dark:text-zinc-300 focus:outline-none focus:border-yellow-400 resize-none"
+                                            rows={2}
+                                         />
+                                    </div>
+                                )}
                              </div>
                         </div>
                      ))}

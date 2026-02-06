@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
     ArrowLeft, Plus, Trash2, Dumbbell, Activity, Settings, Zap, Layers, 
     TrendingUp, ArrowDown, Grip, X, Minus, FileText, User,
-    Save, FolderOpen, History, Smartphone, Search, FilePlus, Calendar, Briefcase
+    Save, FolderOpen, History, Smartphone, Search, FilePlus, Calendar, Briefcase,
+    MessageSquare
 } from 'lucide-react';
 import api from '../api';
 import toast, { Toaster } from 'react-hot-toast';
@@ -36,7 +37,8 @@ const ManualTrainingPlan = () => {
     const [currentId, setCurrentId] = useState(null);
     const [historySearch, setHistorySearch] = useState('');
 
-    const [exercises, setExercises] = useState([{ name: '', sets: [{ reps: '', weight: '', technique: 'Regular', equipment: '' }] }]);
+    const [exercises, setExercises] = useState([{ name: '', note: '', sets: [{ reps: '', weight: '', technique: 'Regular', equipment: '' }] }]);
+    const [activeNoteIndex, setActiveNoteIndex] = useState(null); // Track which note is open
 
     // --- PDF SYNC LOGIC ---
     const debouncedExercises = useDebounce(exercises, 1000);
@@ -86,7 +88,7 @@ const ManualTrainingPlan = () => {
     const handleExerciseCount = (delta) => {
         setExercises(prev => {
             const newEx = [...prev];
-            if (delta > 0) newEx.push({ name: '', sets: [{ reps: '', weight: '', technique: 'Regular', equipment: '' }] });
+            if (delta > 0) newEx.push({ name: '', note: '', sets: [{ reps: '', weight: '', technique: 'Regular', equipment: '' }] });
             else {
                 if (newEx.length > 1) {
                     if (newEx[newEx.length - 1].name.trim() !== '' && !confirm("Remove last exercise?")) return prev;
@@ -111,7 +113,7 @@ const ManualTrainingPlan = () => {
         setPhone('');
         setSessionName('');
         setTrainerName('');
-        setExercises([{ name: '', sets: [{ reps: '', weight: '', technique: 'Regular', equipment: '' }] }]);
+        setExercises([{ name: '', note: '', sets: [{ reps: '', weight: '', technique: 'Regular', equipment: '' }] }]);
         toast.success("New Session Started");
     };
 
@@ -174,7 +176,7 @@ const ManualTrainingPlan = () => {
             setSavedWorkouts(prev => prev.filter(p => p.id !== id));
             if (currentId === id) {
                 setCurrentId(null);
-                setExercises([{ name: '', sets: [{ reps: '', weight: '', technique: 'Regular', equipment: '' }] }]);
+                setExercises([{ name: '', note: '', sets: [{ reps: '', weight: '', technique: 'Regular', equipment: '' }] }]);
             }
             toast.success("Deleted");
         } catch (e) { toast.error("Delete Failed"); }
@@ -367,6 +369,29 @@ const ManualTrainingPlan = () => {
                                         </div>
                                     )
                                 })}
+                             </div>
+
+                             {/* --- EXERCISE NOTE FOOTER --- */}
+                             <div className="mt-2 px-2 pb-2">
+                                <button 
+                                    onClick={() => setActiveNoteIndex(activeNoteIndex === exIndex ? null : exIndex)} 
+                                    className="flex items-center gap-2 text-xs font-bold text-zinc-400 hover:text-orange-500 transition-colors py-1"
+                                >
+                                    <MessageSquare size={14} />
+                                    {ex.note ? 'Edit Note' : 'Add Note'}
+                                </button>
+                                
+                                {(activeNoteIndex === exIndex || ex.note) && (
+                                    <div className={`mt-1 overflow-hidden transition-all ${activeNoteIndex === exIndex ? 'max-h-32 opacity-100' : ex.note ? 'max-h-auto opacity-100' : 'max-h-0 opacity-0'}`}>
+                                         <textarea
+                                            value={ex.note || ''}
+                                            onChange={(e) => updateExercise(exIndex, 'note', e.target.value)}
+                                            placeholder="Write notes for this exercise (e.g. Focus on tempo, Seat height 4)..."
+                                            className="w-full bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 rounded-lg p-2 text-sm text-zinc-700 dark:text-zinc-300 focus:outline-none focus:border-yellow-400 resize-none"
+                                            rows={2}
+                                         />
+                                    </div>
+                                )}
                              </div>
                         </div>
                      ))}

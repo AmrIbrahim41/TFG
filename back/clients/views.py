@@ -650,7 +650,12 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
                             "equipment": s.equipment,
                         }
                     )
-                simulated_data["exercises"].append({"name": ex.name, "sets": sets_data})
+                # Ensure Note is passed from Template to Session Simulation
+                simulated_data["exercises"].append({
+                    "name": ex.name, 
+                    "note": ex.note, # Load note from template
+                    "sets": sets_data
+                })
 
             return Response(simulated_data)
 
@@ -698,7 +703,11 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
             session.exercises.all().delete()
             for ex_idx, ex_data in enumerate(exercises):
                 ex_obj = SessionExercise.objects.create(
-                    training_session=session, order=ex_idx + 1, name=ex_data.get("name")
+                    training_session=session, 
+                    order=ex_idx + 1, 
+                    name=ex_data.get("name"),
+                    # --- ADDED: Saving the note ---
+                    note=ex_data.get("note", "")
                 )
                 for set_idx, set_data in enumerate(ex_data.get("sets", [])):
                     SessionSet.objects.create(

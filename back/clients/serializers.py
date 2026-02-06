@@ -169,7 +169,8 @@ class SessionExerciseSerializer(serializers.ModelSerializer):
     sets = SessionSetSerializer(many=True, read_only=True)
     class Meta:
         model = SessionExercise
-        fields = ['id', 'order', 'name', 'sets']
+        # --- ADDED: 'note' to fields ---
+        fields = ['id', 'order', 'name', 'note', 'sets']
 
 class TrainingSessionSerializer(serializers.ModelSerializer):
     exercises = SessionExerciseSerializer(many=True, read_only=True)
@@ -388,10 +389,6 @@ class GroupSessionLogSerializer(serializers.ModelSerializer):
             'participants'
         ]
         
-        
-        
-# ... existing code ...
-
 class GroupWorkoutTemplateSerializer(serializers.ModelSerializer):
     created_by_name = serializers.ReadOnlyField(source='created_by.first_name')
 
@@ -399,17 +396,7 @@ class GroupWorkoutTemplateSerializer(serializers.ModelSerializer):
         model = GroupWorkoutTemplate
         fields = ['id', 'name', 'exercises', 'created_by', 'created_by_name', 'created_at']
         
-        
-        
-        
-        
-        
-        
-# In serializers.py
 
-# In serializers.py
-
-# --- serializers.py ---
 
 class SessionTransferRequestSerializer(serializers.ModelSerializer):
     from_trainer_name = serializers.ReadOnlyField(source='from_trainer.first_name')
@@ -466,10 +453,7 @@ class SessionTransferRequestSerializer(serializers.ModelSerializer):
 
         return data
     
-    
-    
-    
-# serializers.py
+
 
 class ManualNutritionSaveSerializer(serializers.ModelSerializer):
     class Meta:
