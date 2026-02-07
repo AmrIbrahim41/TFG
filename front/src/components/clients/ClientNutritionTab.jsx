@@ -5,7 +5,7 @@ import {
     Flame, Droplets, Wheat, Beef, AlertTriangle, 
     Leaf, FileText, Zap, Mars, Venus, Loader2, 
     ChevronLeft, ChevronRight, Download, Scale,
-    Check, ChevronDown, X, Type // Added X and Type icons
+    Check, ChevronDown, X, Type 
 } from 'lucide-react';
 import api from '../../api';
 import { PDFDownloadLink } from '@react-pdf/renderer'; 
@@ -272,6 +272,21 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         return ((parseFloat(calcState.weightKg) || 0) * 2.20462).toFixed(1);
     }, [calcState.weightKg]);
 
+    // --- FIX: CREATE DYNAMIC PLAN OBJECT FOR PDF ---
+    // This creates a plan object that reflects the Inputs immediately, not the Saved DB version.
+    const currentPdfPlan = useMemo(() => {
+        if (!activePlan) return null;
+        return {
+            ...activePlan,
+            calc_weight: calcState.weightKg,
+            calc_activity_level: calcState.activityLevel,
+            calc_meals: calcState.mealsCount,
+            calc_snacks: calcState.snacksCount,
+            // You can add other overridden fields here if needed
+        };
+    }, [activePlan, calcState]);
+
+
     const fetchPlans = async (pageNum = 1) => {
         if (!clientId) return;
         setLoading(true);
@@ -332,7 +347,9 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                 target_fats: parseInt(results.macros.fats.grams),
                 notes: planNotes
             };
-            await api.patch(`/nutrition-plans/${activePlan.id}/`, payload);
+            const res = await api.patch(`/nutrition-plans/${activePlan.id}/`, payload);
+            // UPDATE ACTIVE PLAN TO SYNC ID/TIMESTAMPS BUT KEEP UI STATE
+            setActivePlan(res.data);
             alert("✅ Targets & Notes Saved!");
             fetchPlans(page);
         } catch (err) { alert("Failed to save."); }
@@ -451,7 +468,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                             <PDFDownloadLink
                                 document={
                                     <NutritionPDF_EN 
-                                        plan={activePlan} 
+                                        plan={currentPdfPlan} // USE DYNAMIC PLAN
                                         clientName={nameToUse} 
                                         trainerName={trainerName} 
                                         brandText={calcState.brandText} 
@@ -633,9 +650,20 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                                     <Download size={14} /> EN PDF
                                 </button>
 
-                                {/* Arabic PDF (Unchanged) */}
+                                {/* Arabic PDF - USING DYNAMIC PLAN */}
                                 <PDFDownloadLink
-                                    document={<NutritionPDF_AR plan={activePlan} clientName={pdfClientName} trainerName={trainerName} brandText={calcState.brandText} carbAdjustment={calcState.carbAdjustment} results={results} exchangeList={exchangeList} notes={planNotes} />}
+                                    document={
+                                        <NutritionPDF_AR 
+                                            plan={currentPdfPlan} // USE DYNAMIC PLAN
+                                            clientName={pdfClientName} 
+                                            trainerName={trainerName} 
+                                            brandText={calcState.brandText} 
+                                            carbAdjustment={calcState.carbAdjustment} 
+                                            results={results} 
+                                            exchangeList={exchangeList} 
+                                            notes={planNotes} 
+                                        />
+                                    }
                                     fileName={`${activePlan.name}_AR.pdf`}
                                 >
                                     {({ loading: pdfLoading }) => (

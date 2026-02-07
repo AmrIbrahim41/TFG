@@ -25,7 +25,7 @@ const styles = StyleSheet.create({
     // Dashboard (LTR)
     dashboard: { flexDirection: 'row', gap: 20, marginBottom: 30, height: 160 },
     statsCard: { flex: 1, backgroundColor: colors.light, borderRadius: 12, padding: 15, justifyContent: 'space-between' },
-    statRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }, // Reduced margin slightly
+    statRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }, 
     
     // Tables (LTR)
     tableContainer: { marginBottom: 20 },
@@ -55,11 +55,16 @@ const MacroPlate = ({ macros }) => (
 const NutritionPDF_EN = ({ plan, clientName, trainerName, brandText, results, exchangeList, notes }) => {
     const datePrinted = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
     
-    // Use raw data
     const targetCalories = results?.targetCalories || 0;
     const proteinGrams = results?.macros?.protein?.grams || 0;
     const carbsGrams = results?.macros?.carbs?.grams || 0;
     const fatsGrams = results?.macros?.fats?.grams || 0;
+
+    // Helper to format activity level (e.g., 'very_active' -> 'Very Active')
+    const formatActivity = (str) => {
+        if (!str) return '-';
+        return str.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    };
 
     return (
         <Document>
@@ -94,22 +99,22 @@ const NutritionPDF_EN = ({ plan, clientName, trainerName, brandText, results, ex
                         {/* Activity */}
                         <View style={styles.statRow}>
                             <Text style={{fontSize:9}}>Activity Level</Text>
-                            <Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_activity_level || '-'}</Text>
+                            <Text style={{fontSize:11, fontWeight:'bold'}}>{formatActivity(plan?.calc_activity_level)}</Text>
                         </View>
                         
-                        {/* Meals (Separate Row) */}
+                        {/* Meals */}
                         <View style={styles.statRow}>
                             <Text style={{fontSize:9}}>Main Meals</Text>
                             <Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_meals || 0}</Text>
                         </View>
 
-                        {/* Snacks (Separate Row) */}
+                        {/* Snacks */}
                         <View style={styles.statRow}>
                             <Text style={{fontSize:9}}>Snacks</Text>
                             <Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_snacks || 0}</Text>
                         </View>
 
-                        {/* Weight */}
+                        {/* Weight - NOW SAFE due to passed prop */}
                         <View style={styles.statRow}>
                             <Text style={{fontSize:9}}>Weight</Text>
                             <Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_weight || 0} kg</Text>

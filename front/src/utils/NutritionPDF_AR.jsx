@@ -6,7 +6,6 @@ import { Page, Text, View, Document, StyleSheet, Svg, Path, Circle, Font } from 
 // تأكد أن ملف الخط موجود في نفس المجلد باسم Cairo-ExtraBold.ttf
 import CairoFont from './Cairo-ExtraBold.ttf';
 
-// FIX 1: Font Registration with Weights
 Font.register({
   family: 'Cairo',
   src: CairoFont,
@@ -35,13 +34,12 @@ const styles = StyleSheet.create({
     // Dashboard
     dashboard: { flexDirection: 'row-reverse', gap: 20, marginBottom: 30, height: 160 },
     statsCard: { flex: 1, backgroundColor: colors.light, borderRadius: 12, padding: 15, justifyContent: 'space-between' },
-    statRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }, // قللنا المارجن قليلا عشان المساحة
+    statRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }, 
     
     // Tables
     tableContainer: { marginBottom: 20 },
     sectionTitle: { fontSize: 14, fontWeight: 'bold', color: colors.secondary, marginBottom: 15, flexDirection: 'row-reverse', alignItems: 'center' },
     
-    // FIX 2: Layout Strategy for Tables
     tableHeader: { 
         flexDirection: 'row', 
         backgroundColor: colors.secondary, 
@@ -129,13 +127,13 @@ const NutritionPDF_AR = ({ plan, clientName, trainerName, brandText, results, ex
                             <Text style={{fontSize:9}}>مستوى النشاط</Text>
                         </View>
                         
-                        {/* Meals Count (Separate Row) */}
+                        {/* Meals Count */}
                         <View style={styles.statRow}>
                             <Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_meals || 0}</Text>
                             <Text style={{fontSize:9}}>عدد الوجبات الرئيسية</Text>
                         </View>
 
-                        {/* Snacks Count (Separate Row) */}
+                        {/* Snacks Count */}
                         <View style={styles.statRow}>
                             <Text style={{fontSize:11, fontWeight:'bold'}}>{plan?.calc_snacks || 0}</Text>
                             <Text style={{fontSize:9}}>عدد السناكس</Text>
