@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { 
     ArrowLeft, Save, Plus, Trash2, CheckCircle, Dumbbell, Activity, Settings, Zap, 
     Layers, TrendingUp, ArrowDown, Grip, History, X, Minus, FileText, MoreVertical, ChevronRight, Calendar, User, Download, Type,
-    MessageSquare
+    MessageSquare, Lock
 } from 'lucide-react';
 import api from '../api'; 
 import toast, { Toaster } from 'react-hot-toast';
@@ -54,11 +54,23 @@ const WorkoutEditor = () => {
     const [showPdfModal, setShowPdfModal] = useState(false);
     const [pdfManualClientName, setPdfManualClientName] = useState('');
 
+    // --- NEW SECURITY STATES ---
+    const [currentUserId, setCurrentUserId] = useState(null);
+    const [completedByTrainerId, setCompletedByTrainerId] = useState(null);
+    const [completedByTrainerName, setCompletedByTrainerName] = useState('');
+
     useEffect(() => { setIsClient(true); }, []);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
+                // 1. Fetch Current User (for Security Check)
+                try {
+                    // Try getting user profile. Adjust URL if your setup is different (e.g., /auth/users/me/)
+                    const meRes = await api.get('/auth/users/me/');
+                    setCurrentUserId(meRes.data.id);
+                } catch (e) { console.warn("Could not fetch current user ID", e); }
+
                 if (subId) {
                     try {
                         const subRes = await api.get(`/client-subscriptions/${subId}/`);
@@ -79,6 +91,13 @@ const WorkoutEditor = () => {
                 const data = res.data;
                 setSessionName(data.name || `Session ${sessionNum}`);
                 setIsSessionCompleted(data.is_completed || false);
+                
+                // --- SECURITY: STORE COMPLETER INFO ---
+                if (data.is_completed) {
+                    setCompletedByTrainerId(data.completed_by || null);
+                    setCompletedByTrainerName(data.trainer_name || 'Unknown Trainer');
+                }
+
                 // Ensure note is initialized
                 const loadedExercises = data.exercises?.length 
                     ? data.exercises.map(ex => ({...ex, note: ex.note || ''})) 
@@ -155,9 +174,20 @@ const WorkoutEditor = () => {
             toast.success(complete ? "Workout Completed!" : "Draft Saved");
             if(complete) { 
                 setIsSessionCompleted(true); 
+                // Update local security state so they can continue editing until they leave
+                if (currentUserId) {
+                    setCompletedByTrainerId(currentUserId);
+                }
                 setTimeout(() => handleBack(), 1000); 
             }
-        } catch (e) { toast.error("Save failed"); } 
+        } catch (e) { 
+            // Handle Security Error
+            if (e.response && e.response.status === 403) {
+                toast.error(e.response.data.error || "Permission Denied");
+            } else {
+                toast.error("Save failed"); 
+            }
+        } 
         finally { setIsSaving(false); }
     };
 
@@ -187,6 +217,11 @@ const WorkoutEditor = () => {
         setShowPdfModal(true);
     }
 
+    // --- CALCULATE READ ONLY STATUS ---
+    // Locked if Completed AND (Current User exists AND Completer exists AND They don't match)
+    const isReadOnly = isSessionCompleted && currentUserId && completedByTrainerId && (currentUserId !== completedByTrainerId);
+
+
     if (loading) return <div className="h-screen bg-zinc-50 dark:bg-black flex items-center justify-center text-orange-500"><Activity className="animate-spin" /></div>;
 
     return (
@@ -199,7 +234,13 @@ const WorkoutEditor = () => {
                     <button onClick={handleBack} className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors"><ArrowLeft size={20} className="text-zinc-600 dark:text-white" /></button>
                     
                     <div className="flex flex-col items-center justify-center min-w-0 px-2 pt-1">
-                        <input value={sessionName || ''} onChange={(e) => setSessionName(e.target.value)} placeholder="Workout Name" className="bg-transparent text-center text-lg md:text-xl font-black text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-700 outline-none w-full border-b border-transparent focus:border-zinc-300 dark:focus:border-zinc-700 transition-all pb-0.5 truncate" />
+                        <input 
+                            value={sessionName || ''} 
+                            onChange={(e) => setSessionName(e.target.value)} 
+                            disabled={isReadOnly}
+                            placeholder="Workout Name" 
+                            className="bg-transparent text-center text-lg md:text-xl font-black text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-700 outline-none w-full border-b border-transparent focus:border-zinc-300 dark:focus:border-zinc-700 transition-all pb-0.5 truncate disabled:opacity-70 disabled:cursor-not-allowed" 
+                        />
                         
                         <div className="flex items-center gap-2 text-[11px] font-medium text-zinc-500 dark:text-zinc-400 mt-1">
                             <span className="flex items-center gap-1 text-zinc-800 dark:text-zinc-300"><User size={10} className="text-orange-500"/> {clientName}</span>
@@ -211,7 +252,8 @@ const WorkoutEditor = () => {
                     <div className="relative flex items-center gap-2" ref={menuRef}>
                         <button 
                             onClick={() => setShowHistory(true)} 
-                            className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-orange-600 dark:hover:text-orange-500 hover:border-orange-500/50 flex items-center justify-center transition-all"
+                            disabled={isReadOnly}
+                            className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-orange-600 dark:hover:text-orange-500 hover:border-orange-500/50 flex items-center justify-center transition-all disabled:opacity-50"
                             title="View History"
                         >
                             <History size={18} />
@@ -240,13 +282,29 @@ const WorkoutEditor = () => {
             
             {/* Main Content */}
             <div className="flex-1 overflow-y-auto p-3 md:p-4 pb-32 custom-scrollbar">
+                
+                {/* --- READ ONLY BANNER --- */}
+                {isReadOnly && (
+                    <div className="max-w-4xl mx-auto mb-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-2xl p-4 flex items-center gap-3">
+                        <div className="p-2 bg-red-100 dark:bg-red-500/20 rounded-full text-red-600 dark:text-red-400">
+                            <Lock size={18} />
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-sm text-red-700 dark:text-red-400">Locked Session</h4>
+                            <p className="text-xs text-red-600 dark:text-red-300">
+                                This session was completed by <b>{completedByTrainerName}</b>. Only they can modify it.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 <div className="max-w-4xl mx-auto space-y-4">
                     
                     <div className="flex justify-end items-center sticky top-0 z-10 py-2 -my-2 bg-transparent">
                         <div className="flex items-center gap-1 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm rounded-full p-1 border border-zinc-200 dark:border-zinc-800 shadow-sm">
-                            <button onClick={() => handleExerciseCount(-1)} className="w-8 h-8 flex items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all active:scale-90"><Minus size={14}/></button>
+                            <button onClick={() => handleExerciseCount(-1)} disabled={isReadOnly} className="w-8 h-8 flex items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed"><Minus size={14}/></button>
                             <span className="min-w-[90px] text-center text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider">{exercises.length} Exercises</span>
-                            <button onClick={() => handleExerciseCount(1)} className="w-8 h-8 flex items-center justify-center rounded-full bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-500 hover:bg-orange-200 dark:hover:bg-orange-500/20 transition-all active:scale-90"><Plus size={14}/></button>
+                            <button onClick={() => handleExerciseCount(1)} disabled={isReadOnly} className="w-8 h-8 flex items-center justify-center rounded-full bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-500 hover:bg-orange-200 dark:hover:bg-orange-500/20 transition-all active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed"><Plus size={14}/></button>
                         </div>
                     </div>
 
@@ -257,19 +315,25 @@ const WorkoutEditor = () => {
                                 <div className="flex-1 space-y-2">
                                     <div className="flex items-center gap-2">
                                         <span className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-sm font-black text-zinc-400">{exIndex + 1}</span>
-                                        <input value={ex.name || ''} onChange={(e) => updateExercise(exIndex, 'name', e.target.value)} placeholder="Exercise Name..." className="w-full bg-transparent text-lg md:text-2xl font-bold text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-700 outline-none" />
-                                        <button onClick={() => { if(exercises.length > 1 && confirm('Delete exercise?')) setExercises(prev => prev.filter((_, i) => i !== exIndex)); }} className="md:hidden p-2 text-zinc-400 hover:text-red-500"><Trash2 size={16} /></button>
+                                        <input 
+                                            value={ex.name || ''} 
+                                            onChange={(e) => updateExercise(exIndex, 'name', e.target.value)} 
+                                            disabled={isReadOnly}
+                                            placeholder="Exercise Name..." 
+                                            className="w-full bg-transparent text-lg md:text-2xl font-bold text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-700 outline-none disabled:opacity-70 disabled:cursor-not-allowed" 
+                                        />
+                                        {!isReadOnly && <button onClick={() => { if(exercises.length > 1 && confirm('Delete exercise?')) setExercises(prev => prev.filter((_, i) => i !== exIndex)); }} className="md:hidden p-2 text-zinc-400 hover:text-red-500"><Trash2 size={16} /></button>}
                                     </div>
                                     <div className="flex items-center justify-between pl-1">
                                         <span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-600 uppercase tracking-widest hidden md:inline">{ex.sets.length} Sets Configured</span>
                                         <div className="flex items-center gap-1 bg-zinc-50 dark:bg-zinc-950 rounded-lg p-1 border border-zinc-200 dark:border-zinc-800/50 ml-auto md:ml-0">
-                                            <button onClick={() => handleSetCount(exIndex, -1)} className="w-7 h-7 flex items-center justify-center rounded bg-zinc-200 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-300 dark:hover:bg-zinc-800 transition-all active:scale-90"><Minus size={12}/></button>
+                                            <button onClick={() => handleSetCount(exIndex, -1)} disabled={isReadOnly} className="w-7 h-7 flex items-center justify-center rounded bg-zinc-200 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-300 dark:hover:bg-zinc-800 transition-all active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed"><Minus size={12}/></button>
                                             <span className="min-w-[40px] text-center text-xs font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider">{ex.sets.length} Sets</span>
-                                            <button onClick={() => handleSetCount(exIndex, 1)} className="w-7 h-7 flex items-center justify-center rounded bg-zinc-200 dark:bg-zinc-800 text-orange-600 dark:text-orange-500 hover:text-orange-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-all active:scale-90"><Plus size={12}/></button>
+                                            <button onClick={() => handleSetCount(exIndex, 1)} disabled={isReadOnly} className="w-7 h-7 flex items-center justify-center rounded bg-zinc-200 dark:bg-zinc-800 text-orange-600 dark:text-orange-500 hover:text-orange-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-all active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed"><Plus size={12}/></button>
                                         </div>
                                     </div>
                                 </div>
-                                <button onClick={() => { if(exercises.length > 1 && confirm('Delete exercise?')) setExercises(prev => prev.filter((_, i) => i !== exIndex)); }} className="hidden md:block p-2 text-zinc-400 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={18} /></button>
+                                {!isReadOnly && <button onClick={() => { if(exercises.length > 1 && confirm('Delete exercise?')) setExercises(prev => prev.filter((_, i) => i !== exIndex)); }} className="hidden md:block p-2 text-zinc-400 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={18} /></button>}
                             </div>
                             
                              <div className="mt-2 space-y-2 md:space-y-1 bg-zinc-50 dark:bg-black/20 rounded-2xl p-2 md:p-3">
@@ -299,14 +363,14 @@ const WorkoutEditor = () => {
                                                     </div>
                                                     
                                                     <div className="flex-1 md:col-span-2 relative">
-                                                        <input type="number" placeholder="0" value={set.reps || ''} onChange={(e) => updateSet(exIndex, setIndex, 'reps', e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:border-orange-500/50 rounded-lg py-2.5 text-center text-sm font-bold text-zinc-900 dark:text-white outline-none transition-all placeholder:text-zinc-300 dark:placeholder:text-zinc-800 appearance-none"/>
+                                                        <input type="number" placeholder="0" value={set.reps || ''} disabled={isReadOnly} onChange={(e) => updateSet(exIndex, setIndex, 'reps', e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:border-orange-500/50 rounded-lg py-2.5 text-center text-sm font-bold text-zinc-900 dark:text-white outline-none transition-all placeholder:text-zinc-300 dark:placeholder:text-zinc-800 appearance-none disabled:opacity-60"/>
                                                     </div>
                                                     
                                                     <div className="flex-1 md:col-span-2 relative">
-                                                        <input type="number" placeholder="0" value={set.weight || ''} onChange={(e) => updateSet(exIndex, setIndex, 'weight', e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:border-orange-500/50 rounded-lg py-2.5 text-center text-sm font-bold text-zinc-900 dark:text-white outline-none transition-all placeholder:text-zinc-300 dark:placeholder:text-zinc-800 appearance-none"/>
+                                                        <input type="number" placeholder="0" value={set.weight || ''} disabled={isReadOnly} onChange={(e) => updateSet(exIndex, setIndex, 'weight', e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:border-orange-500/50 rounded-lg py-2.5 text-center text-sm font-bold text-zinc-900 dark:text-white outline-none transition-all placeholder:text-zinc-300 dark:placeholder:text-zinc-800 appearance-none disabled:opacity-60"/>
                                                     </div>
 
-                                                    {ex.sets.length > 1 ? (
+                                                    {ex.sets.length > 1 && !isReadOnly ? (
                                                         <button onClick={() => setExercises(prev => prev.map((e, i) => i !== exIndex ? e : { ...e, sets: e.sets.filter((_, j) => j !== setIndex) }))} className="md:hidden w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-red-500 bg-zinc-100 dark:bg-zinc-800 rounded-lg ml-1">
                                                             <X size={16}/>
                                                         </button>
@@ -315,17 +379,17 @@ const WorkoutEditor = () => {
 
                                                 <div className="w-full flex gap-2 md:contents mt-1 md:mt-0">
                                                     <div className="flex-1 md:col-span-4">
-                                                        <div className={`flex items-center w-full rounded-lg px-2 py-0.5 border transition-all ${tech.bg} ${tech.border}`}>
+                                                        <div className={`flex items-center w-full rounded-lg px-2 py-0.5 border transition-all ${tech.bg} ${tech.border} ${isReadOnly ? 'opacity-70' : ''}`}>
                                                             <TechIcon size={14} className={`${tech.color} mr-2 shrink-0`} />
-                                                            <select value={set.technique || ''} onChange={(e) => updateSet(exIndex, setIndex, 'technique', e.target.value)} className="w-full bg-transparent text-xs font-bold uppercase py-2 md:py-2.5 outline-none text-zinc-600 dark:text-zinc-200 cursor-pointer">
+                                                            <select value={set.technique || ''} disabled={isReadOnly} onChange={(e) => updateSet(exIndex, setIndex, 'technique', e.target.value)} className="w-full bg-transparent text-xs font-bold uppercase py-2 md:py-2.5 outline-none text-zinc-600 dark:text-zinc-200 cursor-pointer disabled:cursor-not-allowed">
                                                                 {Object.keys(TECHNIQUE_CONFIG).map(k => <option key={k} value={k} className="bg-white dark:bg-zinc-900">{k}</option>)}
                                                             </select>
                                                         </div>
                                                     </div>
                                                     <div className="flex-1 md:col-span-3">
-                                                        <div className="flex items-center w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg px-2 py-0.5 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
+                                                        <div className={`flex items-center w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg px-2 py-0.5 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors ${isReadOnly ? 'opacity-70' : ''}`}>
                                                             <EquipIcon size={14} className={`${equip.color} mr-2 shrink-0`} />
-                                                            <select value={set.equipment || ''} onChange={(e) => updateSet(exIndex, setIndex, 'equipment', e.target.value)} className="w-full bg-transparent text-xs font-bold text-zinc-600 dark:text-zinc-300 py-2 md:py-2.5 outline-none cursor-pointer">
+                                                            <select value={set.equipment || ''} disabled={isReadOnly} onChange={(e) => updateSet(exIndex, setIndex, 'equipment', e.target.value)} className="w-full bg-transparent text-xs font-bold text-zinc-600 dark:text-zinc-300 py-2 md:py-2.5 outline-none cursor-pointer disabled:cursor-not-allowed">
                                                                 <option value="" className="bg-white dark:bg-zinc-900">No Equip</option>
                                                                 {Object.keys(EQUIP_CONFIG).map(k => <option key={k} value={k} className="bg-white dark:bg-zinc-900">{k}</option>)}
                                                             </select>
@@ -354,8 +418,9 @@ const WorkoutEditor = () => {
                                          <textarea
                                             value={ex.note || ''}
                                             onChange={(e) => updateExercise(exIndex, 'note', e.target.value)}
+                                            disabled={isReadOnly}
                                             placeholder="Write notes for this exercise (e.g. Focus on tempo, Seat height 4)..."
-                                            className="w-full bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 rounded-lg p-2 text-sm text-zinc-700 dark:text-zinc-300 focus:outline-none focus:border-yellow-400 resize-none"
+                                            className="w-full bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 rounded-lg p-2 text-sm text-zinc-700 dark:text-zinc-300 focus:outline-none focus:border-yellow-400 resize-none disabled:opacity-60 disabled:cursor-not-allowed"
                                             rows={2}
                                          />
                                     </div>
@@ -368,16 +433,22 @@ const WorkoutEditor = () => {
 
             {/* Bottom Actions */}
             <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-md px-4 z-50 safe-area-bottom">
-                <div className="flex gap-3 bg-zinc-50/90 dark:bg-[#121214]/90 backdrop-blur-xl p-2 rounded-2xl border border-zinc-200 dark:border-white/10 shadow-2xl dark:shadow-black/80">
-                    <button onClick={() => handleSave(false)} disabled={isSaving} className="flex-1 py-3.5 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95">
-                        {isSaving ? <Activity size={16} className="animate-spin"/> : <Save size={16} />} Save
-                    </button>
-                    {!isSessionCompleted && (
-                        <button onClick={() => handleSave(true)} disabled={isSaving} className="flex-[1.5] py-3.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-orange-900/20 transition-all active:scale-95">
-                            <CheckCircle size={16} /> Complete
+                {!isReadOnly ? (
+                    <div className="flex gap-3 bg-zinc-50/90 dark:bg-[#121214]/90 backdrop-blur-xl p-2 rounded-2xl border border-zinc-200 dark:border-white/10 shadow-2xl dark:shadow-black/80">
+                        <button onClick={() => handleSave(false)} disabled={isSaving} className="flex-1 py-3.5 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95">
+                            {isSaving ? <Activity size={16} className="animate-spin"/> : <Save size={16} />} Save
                         </button>
-                    )}
-                </div>
+                        {!isSessionCompleted && (
+                            <button onClick={() => handleSave(true)} disabled={isSaving} className="flex-[1.5] py-3.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-orange-900/20 transition-all active:scale-95">
+                                <CheckCircle size={16} /> Complete
+                            </button>
+                        )}
+                    </div>
+                ) : (
+                    <div className="bg-zinc-900/90 backdrop-blur-xl p-3 rounded-2xl border border-white/10 shadow-2xl text-center">
+                         <p className="text-zinc-400 text-xs font-medium">Session finalized by <span className="text-white font-bold">{completedByTrainerName}</span></p>
+                    </div>
+                )}
             </div>
 
             {/* --- PDF DOWNLOAD MODAL (New Cute & Modern Design) --- */}
@@ -471,7 +542,8 @@ const WorkoutEditor = () => {
                                             </div>
                                             <button 
                                                 onClick={() => loadFromHistory(session)}
-                                                className="text-[10px] font-bold bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-500 border border-orange-200 dark:border-orange-500/20 px-2 py-1 rounded hover:bg-orange-500 hover:text-white transition-all"
+                                                disabled={isReadOnly}
+                                                className="text-[10px] font-bold bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-500 border border-orange-200 dark:border-orange-500/20 px-2 py-1 rounded hover:bg-orange-500 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 LOAD
                                             </button>

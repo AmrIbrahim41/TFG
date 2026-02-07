@@ -176,10 +176,13 @@ class TrainingSessionSerializer(serializers.ModelSerializer):
     exercises = SessionExerciseSerializer(many=True, read_only=True)
     # NEW: Fetch the trainer name from the completed_by field
     trainer_name = serializers.ReadOnlyField(source='completed_by.first_name') 
+    
+    # --- SECURITY UPDATE: Added completed_by ID ---
+    completed_by = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = TrainingSession
-        fields = ['id', 'subscription', 'session_number', 'name', 'is_completed', 'date_completed', 'exercises', 'trainer_name']
+        fields = ['id', 'subscription', 'session_number', 'name', 'is_completed', 'date_completed', 'exercises', 'trainer_name', 'completed_by']
 
 
 class FoodItemSerializer(serializers.ModelSerializer):

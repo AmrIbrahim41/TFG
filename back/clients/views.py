@@ -679,6 +679,15 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
                 defaults={"name": data.get("name", "Workout")},
             )
 
+            # --- SECURITY UPDATE: Check if session is already completed by someone else ---
+            if session.is_completed and not request.user.is_superuser:
+                # If session is completed, only the person who completed it can edit it
+                if session.completed_by and session.completed_by != request.user:
+                     return Response(
+                         {"error": f"Locked! This session was completed by {session.completed_by.first_name}. Only they can edit it."}, 
+                         status=status.HTTP_403_FORBIDDEN
+                     )
+
             session.name = data.get("name", session.name)
 
             if complete_it:
