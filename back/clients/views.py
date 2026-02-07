@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, Group
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import (viewsets,parsers,generics,permissions,serializers,filters,status,mixins,
@@ -36,6 +36,8 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         token["username"] = user.username
         token["first_name"] = user.first_name
         token["is_superuser"] = user.is_superuser
+        # Identify if REC
+        token["is_receptionist"] = user.groups.filter(name='REC').exists()
         return token
 
 
@@ -44,12 +46,17 @@ class MyTokenObtainPairView(TokenObtainPairView):
 
 
 class TrainerSerializer(serializers.ModelSerializer):
+    # Added field to select role during creation
+    role = serializers.ChoiceField(choices=[('trainer', 'Trainer'), ('rec', 'Receptionist')], write_only=True, default='trainer')
+
     class Meta:
         model = User
-        fields = ("id", "username", "first_name", "email", "password", "date_joined")
+        fields = ("id", "username", "first_name", "email", "password", "date_joined", "role")
         extra_kwargs = {"password": {"write_only": True, "required": False}}
 
     def create(self, validated_data):
+        role = validated_data.pop('role', 'trainer')
+        
         user = User.objects.create_user(
             username=validated_data["username"],
             email=validated_data.get("email", ""),
@@ -58,15 +65,35 @@ class TrainerSerializer(serializers.ModelSerializer):
         )
         user.is_staff = False
         user.save()
+
+        # Handle Role Assignment
+        if role == 'rec':
+            group, _ = Group.objects.get_or_create(name='REC')
+            user.groups.add(group)
+            
         return user
 
     def update(self, instance, validated_data):
+        # Allow updating role if provided
+        role = validated_data.pop("role", None)
         password = validated_data.pop("password", None)
+        
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         if password:
             instance.set_password(password)
         instance.save()
+        
+        if role:
+            # Clear existing REC groups to reset
+            rec_group = Group.objects.filter(name='REC').first()
+            if rec_group:
+                instance.groups.remove(rec_group)
+            
+            if role == 'rec':
+                group, _ = Group.objects.get_or_create(name='REC')
+                instance.groups.add(group)
+
         return instance
 
 
@@ -74,7 +101,11 @@ class ManageTrainersViewSet(viewsets.ModelViewSet):
     serializer_class = TrainerSerializer
     # Allow any authenticated user (trainers) to access this list
     permission_classes = [permissions.IsAuthenticated]
-    queryset = User.objects.filter(is_superuser=False).order_by("-date_joined")
+    
+    def get_queryset(self):
+        # Admins see everyone (Trainers + REC)
+        # Regular trainers see other trainers/REC
+        return User.objects.filter(is_superuser=False).order_by("-date_joined")
 
     def get_permissions(self):
         # Allow viewing (GET) for all trainers
@@ -135,6 +166,9 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
         user = request.user
         now = timezone.now()
         
+        # Identify Role
+        is_rec = user.groups.filter(name='REC').exists()
+        
         # 1. Safe Date Parsing
         try:
             month = int(request.query_params.get('month', now.month))
@@ -194,8 +228,8 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
             
             return group_adjustments
 
-        # --- 1. TRAINER VIEW ---
-        if not user.is_superuser:
+        # --- 1. TRAINER VIEW (Non-Admin, Non-REC) ---
+        if not user.is_superuser and not is_rec:
             # A. Base Revenue
             base_revenue = ClientSubscription.objects.filter(
                 trainer=user,
@@ -280,10 +314,47 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
                 'clients': client_list
             })
 
-        # --- 2. ADMIN VIEW ---
+        # --- 2. RECEPTIONIST VIEW (New) ---
+        elif is_rec:
+             # Basic Stats for Reception
+            active_members_count = ClientSubscription.objects.filter(is_active=True).count()
+            
+            current_month_qs = ClientSubscription.objects.filter(created_at__month=month, created_at__year=year)
+            new_sales_count = current_month_qs.count()
+            
+            # Check-ins today (Training Sessions completed today + Group Sessions)
+            today = timezone.now().date()
+            checkins_today = TrainingSession.objects.filter(is_completed=True, date_completed=today).count()
+            group_checkins_today = GroupSessionParticipant.objects.filter(session__date__date=today).count()
+            
+            total_visits_today = checkins_today + group_checkins_today
+
+            # List of recent sales/subscriptions to verify
+            recent_subs = current_month_qs.select_related('client', 'plan', 'trainer').order_by('-created_at')[:10]
+            recent_list = []
+            for sub in recent_subs:
+                recent_list.append({
+                    'id': sub.id,
+                    'client_name': sub.client.name,
+                    'plan_name': sub.plan.name if sub.plan else "-",
+                    'trainer_name': sub.trainer.first_name if sub.trainer else "Unassigned",
+                    'date': sub.created_at.date()
+                })
+
+            return Response({
+                'role': 'rec',
+                'summary': {
+                    'active_members': active_members_count,
+                    'new_sales_this_month': new_sales_count,
+                    'visits_today': total_visits_today
+                },
+                'recent_sales': recent_list
+            })
+
+        # --- 3. ADMIN VIEW ---
         else:
             # 1. Base Stats
-            trainers = User.objects.filter(is_superuser=False).annotate(
+            trainers = User.objects.filter(is_superuser=False).exclude(groups__name='REC').annotate(
                 active_packages=Count('clientsubscription', filter=Q(clientsubscription__is_active=True)),
                 inactive_packages=Count('clientsubscription', filter=Q(clientsubscription__is_active=False)),
                 total_assigned=Count('clientsubscription'),
@@ -395,12 +466,21 @@ class ClientSubscriptionViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
-        # 1. RESTORED: This allows everyone to see everything in the main "Clients" page
+        # 1. Base Queryset
         queryset = ClientSubscription.objects.all().select_related('client', 'plan', 'trainer').order_by("-start_date")
         
+        # 2. Filtering
         client_id = self.request.query_params.get("client_id")
         if client_id:
             queryset = queryset.filter(client=client_id)
+        
+        # 3. Role Based Restriction
+        # If Admin OR REC -> See All
+        # If Trainer -> See Own Only (This logic was implicit before, making it explicit helps)
+        # Note: The original code returned .all() for everyone. 
+        # If you want to restrict Trainers to only their clients, add checks here.
+        # Currently keeping existing logic (return all) which fits Reception usage too.
+        
         return queryset
 
     # --- NEW: Dedicated endpoint for Trainer Profile ---
@@ -422,10 +502,13 @@ class ClientSubscriptionViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         with transaction.atomic():
-            if not self.request.user.is_superuser:
-                serializer.save(trainer=self.request.user)
-            else:
+            user = self.request.user
+            # Admin OR REC can assign any trainer (or leave blank)
+            if user.is_superuser or user.groups.filter(name='REC').exists():
                 serializer.save()
+            else:
+                # Trainer assigns themselves automatically
+                serializer.save(trainer=user)
 
 
 

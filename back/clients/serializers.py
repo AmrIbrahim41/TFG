@@ -53,19 +53,23 @@ class ClientSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request and hasattr(request, "user"):
             user = request.user
+            
+            # Helper to identify Role
+            is_admin = user.is_superuser
+            is_rec = user.groups.filter(name='REC').exists()
 
-            # If the user is NOT an admin (superuser)
-            if not user.is_superuser and self.instance:
+            # If the user is NOT an admin AND NOT a Receptionist
+            if not is_admin and not is_rec and self.instance:
                 # Check if they are trying to change the Name
                 if "name" in data and data["name"] != self.instance.name:
                     raise serializers.ValidationError(
-                        {"name": "Only Admins can edit the Name."}
+                        {"name": "Only Admins or Reception can edit the Name."}
                     )
 
                 # Check if they are trying to change the ID
                 if "manual_id" in data and data["manual_id"] != self.instance.manual_id:
                     raise serializers.ValidationError(
-                        {"manual_id": "Only Admins can edit the ID."}
+                        {"manual_id": "Only Admins or Reception can edit the ID."}
                     )
 
         return data
