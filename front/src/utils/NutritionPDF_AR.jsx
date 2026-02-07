@@ -9,13 +9,7 @@ import CairoFont from './Cairo-ExtraBold.ttf';
 // FIX 1: Font Registration with Weights
 Font.register({
   family: 'Cairo',
-  fonts: [
-      { src: CairoFont }, // normal
-      { src: CairoFont, fontWeight: 'bold' },
-      { src: CairoFont, fontWeight: 'black' },
-      { src: CairoFont, fontWeight: 700 },
-      { src: CairoFont, fontWeight: 900 }
-  ]
+  src: CairoFont,
 });
 
 const colors = {
@@ -66,7 +60,7 @@ const styles = StyleSheet.create({
     colQty: { flex: 1, textAlign: 'left', paddingLeft: 10 }, 
     colMeta: { flex: 1, textAlign: 'left', fontSize: 8, color: '#9ca3af' }, 
     
-    itemName: { fontSize: 10, fontWeight: 'bold', color: '#374151', textAlign: 'right' },
+    itemName: { fontSize: 10, color: '#374151', textAlign: 'right' },
     
     footer: { position: 'absolute', bottom: 30, left: 40, right: 40, borderTop: '1px solid #f3f4f6', paddingTop: 10, flexDirection: 'row-reverse', justifyContent: 'space-between' }
 });

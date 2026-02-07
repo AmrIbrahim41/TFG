@@ -223,7 +223,6 @@ const WorkoutEditor = () => {
                             <div className="absolute top-12 right-0 w-64 bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-2 animate-in fade-in zoom-in-95 duration-200 z-50">
                                 <div className="space-y-2">
                                     {isClient && (
-                                        // تم تغيير هذا الجزء لفتح النافذة بدلاً من التحميل المباشر
                                         <button 
                                             onClick={handleOpenPdfModal}
                                             className="w-full px-4 py-3 rounded-xl bg-zinc-50 hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white font-medium text-sm flex items-center justify-between gap-3 transition-all"
@@ -274,12 +273,24 @@ const WorkoutEditor = () => {
                             </div>
                             
                              <div className="mt-2 space-y-2 md:space-y-1 bg-zinc-50 dark:bg-black/20 rounded-2xl p-2 md:p-3">
+                                {/* HEADER ROW FOR SETS - VISIBLE ON MOBILE AND DESKTOP */}
+                                {ex.sets.length > 0 && (
+                                    <div className="px-3 pb-1 flex gap-2 md:grid md:grid-cols-12 md:gap-3 text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider select-none">
+                                        <div className="w-[24px] md:col-span-1 text-center flex items-center justify-center">#</div>
+                                        <div className="flex-1 md:col-span-2 text-center">Reps</div>
+                                        <div className="flex-1 md:col-span-2 text-center">Weight <span className="text-[9px] lowercase opacity-50">(kg)</span></div>
+                                        <div className="hidden md:block md:col-span-4">Technique</div>
+                                        <div className="hidden md:block md:col-span-3">Equipment</div>
+                                        <div className="w-8 md:hidden"></div> {/* Mobile Delete Spacer */}
+                                    </div>
+                                )}
+
                                 {ex.sets.map((set, setIndex) => {
                                      const tech = TECHNIQUE_CONFIG[set.technique] || TECHNIQUE_CONFIG['Regular'];
                                      const equip = EQUIP_CONFIG[set.equipment] || { icon: Dumbbell, color: 'text-zinc-500' };
                                      const TechIcon = tech.icon; const EquipIcon = equip.icon;
                                     return (
-                                        <div key={setIndex} className="relative bg-white dark:bg-zinc-900/60 rounded-xl p-3 md:p-0 md:bg-transparent md:hover:bg-zinc-200 dark:md:hover:bg-zinc-900/30 transition-colors grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3 md:items-center border border-zinc-200 dark:border-transparent md:border-0 shadow-sm md:shadow-none">
+                                        <div key={setIndex} className="relative bg-white dark:bg-zinc-900/60 rounded-xl p-2 md:p-0 md:bg-transparent md:hover:bg-zinc-200 dark:md:hover:bg-zinc-900/30 transition-colors grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3 md:items-center border border-zinc-200 dark:border-transparent md:border-0 shadow-sm md:shadow-none">
                                             <div className="flex md:contents flex-wrap gap-2">
                                                 
                                                 <div className="flex items-center gap-2 w-full md:w-auto md:contents">
@@ -288,37 +299,33 @@ const WorkoutEditor = () => {
                                                     </div>
                                                     
                                                     <div className="flex-1 md:col-span-2 relative">
-                                                        <input type="number" placeholder="0" value={set.reps || ''} onChange={(e) => updateSet(exIndex, setIndex, 'reps', e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:border-orange-500/50 rounded-lg py-3 md:py-2.5 text-center text-lg md:text-sm font-bold text-zinc-900 dark:text-white outline-none transition-all placeholder:text-zinc-300 dark:placeholder:text-zinc-800 appearance-none"/>
-                                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400 pointer-events-none md:hidden">REPS</span>
+                                                        <input type="number" placeholder="0" value={set.reps || ''} onChange={(e) => updateSet(exIndex, setIndex, 'reps', e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:border-orange-500/50 rounded-lg py-2.5 text-center text-sm font-bold text-zinc-900 dark:text-white outline-none transition-all placeholder:text-zinc-300 dark:placeholder:text-zinc-800 appearance-none"/>
                                                     </div>
-                                                    
-                                                    <span className="md:hidden text-zinc-300">✕</span>
                                                     
                                                     <div className="flex-1 md:col-span-2 relative">
-                                                        <input type="number" placeholder="0" value={set.weight || ''} onChange={(e) => updateSet(exIndex, setIndex, 'weight', e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:border-orange-500/50 rounded-lg py-3 md:py-2.5 text-center text-lg md:text-sm font-bold text-zinc-900 dark:text-white outline-none transition-all placeholder:text-zinc-300 dark:placeholder:text-zinc-800 appearance-none"/>
-                                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400 pointer-events-none md:hidden">KG</span>
+                                                        <input type="number" placeholder="0" value={set.weight || ''} onChange={(e) => updateSet(exIndex, setIndex, 'weight', e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:border-orange-500/50 rounded-lg py-2.5 text-center text-sm font-bold text-zinc-900 dark:text-white outline-none transition-all placeholder:text-zinc-300 dark:placeholder:text-zinc-800 appearance-none"/>
                                                     </div>
 
-                                                    {ex.sets.length > 1 && (
+                                                    {ex.sets.length > 1 ? (
                                                         <button onClick={() => setExercises(prev => prev.map((e, i) => i !== exIndex ? e : { ...e, sets: e.sets.filter((_, j) => j !== setIndex) }))} className="md:hidden w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-red-500 bg-zinc-100 dark:bg-zinc-800 rounded-lg ml-1">
                                                             <X size={16}/>
                                                         </button>
-                                                    )}
+                                                    ) : <div className="md:hidden w-8 ml-1"></div>}
                                                 </div>
 
                                                 <div className="w-full flex gap-2 md:contents mt-1 md:mt-0">
                                                     <div className="flex-1 md:col-span-4">
-                                                        <div className={`flex items-center w-full rounded-lg px-2 py-1 md:py-0.5 border transition-all ${tech.bg} ${tech.border}`}>
+                                                        <div className={`flex items-center w-full rounded-lg px-2 py-0.5 border transition-all ${tech.bg} ${tech.border}`}>
                                                             <TechIcon size={14} className={`${tech.color} mr-2 shrink-0`} />
-                                                            <select value={set.technique || ''} onChange={(e) => updateSet(exIndex, setIndex, 'technique', e.target.value)} className="w-full bg-transparent text-xs font-bold uppercase py-1.5 md:py-2.5 outline-none text-zinc-600 dark:text-zinc-200 cursor-pointer">
+                                                            <select value={set.technique || ''} onChange={(e) => updateSet(exIndex, setIndex, 'technique', e.target.value)} className="w-full bg-transparent text-xs font-bold uppercase py-2 md:py-2.5 outline-none text-zinc-600 dark:text-zinc-200 cursor-pointer">
                                                                 {Object.keys(TECHNIQUE_CONFIG).map(k => <option key={k} value={k} className="bg-white dark:bg-zinc-900">{k}</option>)}
                                                             </select>
                                                         </div>
                                                     </div>
                                                     <div className="flex-1 md:col-span-3">
-                                                        <div className="flex items-center w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg px-2 py-1 md:py-0.5 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
+                                                        <div className="flex items-center w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg px-2 py-0.5 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
                                                             <EquipIcon size={14} className={`${equip.color} mr-2 shrink-0`} />
-                                                            <select value={set.equipment || ''} onChange={(e) => updateSet(exIndex, setIndex, 'equipment', e.target.value)} className="w-full bg-transparent text-xs font-bold text-zinc-600 dark:text-zinc-300 py-1.5 md:py-2.5 outline-none cursor-pointer">
+                                                            <select value={set.equipment || ''} onChange={(e) => updateSet(exIndex, setIndex, 'equipment', e.target.value)} className="w-full bg-transparent text-xs font-bold text-zinc-600 dark:text-zinc-300 py-2 md:py-2.5 outline-none cursor-pointer">
                                                                 <option value="" className="bg-white dark:bg-zinc-900">No Equip</option>
                                                                 {Object.keys(EQUIP_CONFIG).map(k => <option key={k} value={k} className="bg-white dark:bg-zinc-900">{k}</option>)}
                                                             </select>
