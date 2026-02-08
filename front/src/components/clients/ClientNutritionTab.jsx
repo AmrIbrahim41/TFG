@@ -7,10 +7,11 @@ import {
     ChevronLeft, ChevronRight, Download, Scale,
     Check, ChevronDown, X, Type 
 } from 'lucide-react';
-import api from '../../api';
+import api from '../../api'; // تأكد من مسار api الصحيح لديك
 import { PDFDownloadLink } from '@react-pdf/renderer'; 
 
 // --- IMPORT SEPARATE PDF FILES ---
+// تأكد من صحة مسارات الملفات التالية
 import NutritionPDF_EN from '../../utils/NutritionPDF_EN'; 
 import NutritionPDF_AR from '../../utils/NutritionPDF_AR'; 
 
@@ -272,8 +273,6 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         return ((parseFloat(calcState.weightKg) || 0) * 2.20462).toFixed(1);
     }, [calcState.weightKg]);
 
-    // --- FIX: CREATE DYNAMIC PLAN OBJECT FOR PDF ---
-    // This creates a plan object that reflects the Inputs immediately, not the Saved DB version.
     const currentPdfPlan = useMemo(() => {
         if (!activePlan) return null;
         return {
@@ -282,7 +281,6 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
             calc_activity_level: calcState.activityLevel,
             calc_meals: calcState.mealsCount,
             calc_snacks: calcState.snacksCount,
-            // You can add other overridden fields here if needed
         };
     }, [activePlan, calcState]);
 
@@ -317,13 +315,20 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
             const res = await api.post('/nutrition-plans/', payload);
             fetchPlans(page);
             setNewPlanName('');
-            setActivePlan(res.data);
+            setActivePlan(res.data); // الآن res.data يجب أن يحتوي على id بفضل تعديل الباك إند
             setView('detail');
         } catch (err) { alert("Error creating plan."); }
     };
 
     const handleSavePlan = async () => {
-        if (!activePlan || !results) return;
+        // --- FIX: Check if ID exists to avoid 404/undefined error ---
+        if (!activePlan?.id) {
+            alert("خطأ: لم يتم التعرف على الخطة. يرجى تحديث الصفحة والمحاولة مرة أخرى.");
+            return;
+        }
+        
+        if (!results) return;
+        
         try {
             const payload = {
                 calc_gender: calcState.gender,
@@ -348,11 +353,13 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                 notes: planNotes
             };
             const res = await api.patch(`/nutrition-plans/${activePlan.id}/`, payload);
-            // UPDATE ACTIVE PLAN TO SYNC ID/TIMESTAMPS BUT KEEP UI STATE
             setActivePlan(res.data);
             alert("✅ Targets & Notes Saved!");
             fetchPlans(page);
-        } catch (err) { alert("Failed to save."); }
+        } catch (err) { 
+            console.error("Save Error:", err);
+            alert("Failed to save."); 
+        }
     };
 
     const handleDeletePlan = async (id, e) => {
@@ -419,15 +426,11 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
     // --- RENDER MODAL ---
     const renderEnPdfModal = () => {
         if (!showEnPdfModal) return null;
-
-        // Use custom name if typed, otherwise fallback to default
         const nameToUse = customEnName.trim() ? customEnName : pdfClientName;
 
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm animate-in fade-in duration-200">
                 <div className="bg-white dark:bg-[#18181b] w-full max-w-md rounded-3xl p-6 shadow-2xl ring-1 ring-zinc-200 dark:ring-zinc-800 animate-in zoom-in-95 duration-200 relative">
-                    
-                    {/* Close Button */}
                     <button 
                         onClick={() => setShowEnPdfModal(false)}
                         className="absolute right-4 top-4 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
@@ -435,7 +438,6 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         <X size={20} />
                     </button>
 
-                    {/* Header */}
                     <div className="mb-6 text-center">
                         <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
                             <Type size={24} className="text-orange-600 dark:text-orange-500" />
@@ -446,17 +448,15 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         </p>
                     </div>
 
-                    {/* Input */}
                     <div className="space-y-4">
                         <ModernInput 
                             label="Client Name (English)" 
                             value={customEnName}
-                            onChange={setCustomEnName} // Updates state only, no refresh loop
+                            onChange={setCustomEnName}
                             placeholder="e.g. John Doe"
                             className="w-full"
                         />
 
-                        {/* Actions */}
                         <div className="flex gap-3 mt-6">
                             <button 
                                 onClick={() => setShowEnPdfModal(false)}
@@ -468,7 +468,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                             <PDFDownloadLink
                                 document={
                                     <NutritionPDF_EN 
-                                        plan={currentPdfPlan} // USE DYNAMIC PLAN
+                                        plan={currentPdfPlan}
                                         clientName={nameToUse} 
                                         trainerName={trainerName} 
                                         brandText={calcState.brandText} 
@@ -484,7 +484,6 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                                     <button 
                                         disabled={pdfLoading || !customEnName.trim()} 
                                         onClick={() => {
-                                            // Optional: Close modal after short delay
                                             setTimeout(() => setShowEnPdfModal(false), 2000);
                                         }}
                                         className="w-full py-3 bg-zinc-900 dark:bg-white text-white dark:text-black hover:bg-orange-600 dark:hover:bg-orange-500 hover:text-white dark:hover:text-white disabled:opacity-50 disabled:cursor-not-allowed font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all text-sm"
@@ -504,8 +503,6 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
     if (view === 'list') {
         return (
             <div className="space-y-6 animate-in fade-in duration-500 p-2 md:p-4">
-                
-                {/* LIST HEADER */}
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         <div className="w-10 h-10 md:w-12 md:h-12 bg-orange-500 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/20 shrink-0">
@@ -518,7 +515,6 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                     </div>
                 </div>
 
-                {/* CREATE NEW PLAN CARD */}
                 <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 p-4 md:p-6 rounded-3xl relative overflow-hidden">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end relative z-10">
                         <div className="md:col-span-2 space-y-2">
@@ -625,10 +621,8 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         return (
             <div className="animate-in slide-in-from-bottom-4 duration-500 pb-20 p-1 md:p-2">
                 
-                {/* PDF NAME MODAL */}
                 {renderEnPdfModal()}
 
-                {/* DETAIL HEADER */}
                 <div className="flex flex-col gap-4 mb-6">
                     <div className="flex items-center gap-4">
                         <button onClick={() => setView('list')} className="w-10 h-10 flex items-center justify-center bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white shrink-0"><ArrowLeft size={18} /></button>
@@ -638,11 +632,9 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         </div>
                     </div>
                     
-                    {/* ACTION BUTTONS (Scrollable on mobile) */}
                     <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
                         {results && activePlan && (
                             <>
-                                {/* MODIFIED: Opens Modal instead of direct download */}
                                 <button 
                                     onClick={() => setShowEnPdfModal(true)}
                                     className="whitespace-nowrap px-4 py-2.5 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-200 font-bold rounded-xl border border-zinc-300 dark:border-zinc-700 text-xs flex items-center gap-2 transition-all disabled:opacity-50"
@@ -650,11 +642,10 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                                     <Download size={14} /> EN PDF
                                 </button>
 
-                                {/* Arabic PDF - USING DYNAMIC PLAN */}
                                 <PDFDownloadLink
                                     document={
                                         <NutritionPDF_AR 
-                                            plan={currentPdfPlan} // USE DYNAMIC PLAN
+                                            plan={currentPdfPlan}
                                             clientName={pdfClientName} 
                                             trainerName={trainerName} 
                                             brandText={calcState.brandText} 
@@ -683,19 +674,16 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
 
                 <div className="space-y-4 md:space-y-6 max-w-7xl mx-auto">
                     
-                    {/* 1. CLIENT METRICS */}
                     <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 rounded-3xl p-4 md:p-6">
                         <h3 className="font-bold text-zinc-900 dark:text-white mb-4 flex items-center gap-2 text-sm md:text-base">
                             <User size={16} className="text-orange-500"/> Body Metrics
                         </h3>
-                        {/* GRID: 1 col on mobile, 2 on tablet, 6 on desktop */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 md:gap-4">
                             <ModernInput label="Gender" value={calcState.gender} onChange={(v) => setCalcState({...calcState, gender: v})} options={[{val:'male', lbl:'Male'}, {val:'female', lbl:'Female'}]} />
                             <ModernInput label="Age" value={calcState.age} onChange={(v) => setCalcState({...calcState, age: v})} type="number" min="0" />
                             <ModernInput label="Height" value={calcState.heightCm} onChange={(v) => setCalcState({...calcState, heightCm: v})} type="number" suffix="cm" min="0" />
                             <ModernInput label="Weight" value={calcState.weightKg} onChange={(v) => setCalcState({...calcState, weightKg: v})} type="number" suffix="kg" min="0" />
                             
-                            {/* Read-only LBS Display */}
                             <div className="bg-zinc-200 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-800 p-3.5 rounded-2xl flex flex-col justify-center">
                                 <label className="text-[10px] uppercase font-bold text-zinc-600 dark:text-zinc-500 flex items-center gap-1"><Scale size={10} /> LBS</label>
                                 <span className="text-zinc-900 dark:text-white font-bold text-sm md:text-base">{weightLbs}</span>
@@ -709,7 +697,6 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         </div>
                     </div>
 
-                    {/* 2. STRATEGY INPUTS */}
                     <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 rounded-3xl p-4 md:p-6">
                         <h3 className="font-bold text-zinc-900 dark:text-white mb-4 flex items-center gap-2 text-sm md:text-base">
                             <Activity size={16} className="text-emerald-500"/> Strategy
@@ -724,7 +711,6 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         </div>
                     </div>
 
-                    {/* BRANDING */}
                     <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 rounded-3xl p-4 md:p-6">
                         <h3 className="font-bold text-zinc-900 dark:text-white mb-4 flex items-center gap-2 text-sm md:text-base">
                             <FileText size={16} className="text-purple-500"/> PDF Branding
@@ -741,16 +727,13 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         </div>
                     )}
 
-                    {/* 3. DAILY TARGET DASHBOARD */}
                     <div className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-3xl p-4 md:p-6 flex flex-col lg:flex-row items-center gap-6 md:gap-8">
-                        {/* Total Calories */}
                         <div className="text-center lg:text-left min-w-[150px]">
                             <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Daily Target</p>
                             <p className="text-4xl md:text-5xl font-black text-zinc-900 dark:text-white leading-none">{results.targetCalories}</p>
                             <span className="text-sm text-zinc-500 font-bold">kcal</span>
                         </div>
                         
-                        {/* Macro Cards (Grid 2x2 on Mobile) */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 w-full">
                             {[
                                 { label: 'Protein', val: results.macros.protein.grams, sub: results.perMeal.proteinGrams, icon: Beef, color: 'text-red-500' },
@@ -769,7 +752,6 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         </div>
                     </div>
 
-                    {/* 4. EXCHANGE LIST */}
                     <div className="space-y-4 md:space-y-6">
                         {exchangeList && Object.entries(exchangeList).map(([groupName, data]) => (
                             <div key={groupName} className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 rounded-3xl overflow-hidden">
@@ -814,7 +796,6 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         ))}
                     </div>
 
-                    {/* 5. NOTES */}
                     <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 rounded-3xl p-4 md:p-6">
                         <h3 className="font-bold text-zinc-900 dark:text-white mb-4 flex items-center gap-2 text-sm md:text-base">
                             <FileText size={16} className="text-emerald-500"/> Notes & Instructions

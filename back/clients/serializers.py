@@ -285,6 +285,7 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = NutritionPlan
         fields = [
+            'id',  # <--- (هام جداً) تمت إضافة هذا الحقل لكي يعود الـ ID بعد الإنشاء
             'subscription', 'name', 'duration_weeks',
             'calc_gender', 'calc_age', 'calc_height', 'calc_weight', 'calc_activity_level',
             'calc_tdee', 'calc_defer_cal', 'calc_fat_percent',
@@ -349,7 +350,7 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
                             setattr(meal_obj, k, v)
                         meal_obj.save()
                         
-                        # Handle Foods for this meal (Simple Replace Strategy for foods is usually safer unless fine-grained needed)
+                        # Handle Foods for this meal
                         meal_obj.foods.all().delete()
                         FoodItem.objects.bulk_create([FoodItem(meal_plan=meal_obj, **f) for f in foods_data])
                         
