@@ -135,7 +135,7 @@ class TrainingExercise(models.Model):
     split = models.ForeignKey(TrainingDaySplit, on_delete=models.CASCADE, related_name='exercises')
     order = models.IntegerField(default=1)
     name = models.CharField(max_length=200)
-    note = models.CharField(max_length=200, blank=True) # General note
+    note = models.CharField(max_length=200, blank=True, default="")
     
     class Meta:
         ordering = ['order']
@@ -180,8 +180,7 @@ class SessionExercise(models.Model):
     training_session = models.ForeignKey(TrainingSession, on_delete=models.CASCADE, related_name='exercises')
     order = models.IntegerField(default=1)
     name = models.CharField(max_length=200)
-    # --- ADDED: Note field for specific session exercises ---
-    note = models.TextField(blank=True, null=True) 
+    note = models.CharField(max_length=200, blank=True, default="")
     
     class Meta:
         ordering = ['order']
@@ -191,202 +190,132 @@ class SessionSet(models.Model):
     order = models.IntegerField(default=1)
     reps = models.CharField(max_length=50, blank=True)
     weight = models.CharField(max_length=50, blank=True)
+    completed = models.BooleanField(default=False)
     
-    TECHNIQUE_CHOICES = [('Regular', 'Regular'), ('Drop Set', 'Drop Set'), ('Super Set', 'Super Set'), ('Pyramid', 'Pyramid'), ('Negative', 'Negative')]
+    TECHNIQUE_CHOICES = [
+        ('Regular', 'Regular'), ('Drop Set', 'Drop Set'), ('Super Set', 'Super Set'),
+        ('Pyramid', 'Pyramid'), ('Negative', 'Negative'),
+    ]
     technique = models.CharField(max_length=50, choices=TECHNIQUE_CHOICES, default='Regular')
 
-    EQUIPMENT_CHOICES = [('Bodyweight', 'Bodyweight'), ('Dumbbell', 'Dumbbell'), ('Barbell', 'Barbell'), ('Cable', 'Cable'), ('Machine', 'Machine')]
+    EQUIPMENT_CHOICES = [
+        ('Bodyweight', 'Bodyweight'), ('Dumbbell', 'Dumbbell'), ('Barbell', 'Barbell'),
+        ('Cable', 'Cable'), ('Machine', 'Machine'),
+    ]
     equipment = models.CharField(max_length=50, choices=EQUIPMENT_CHOICES, blank=True, null=True)
 
     class Meta:
         ordering = ['order']
+        
+        
 
-class NutritionPlan(models.Model):
-    # Changed to ForeignKey to allow multiple plans per client
-    subscription = models.ForeignKey(
-        'ClientSubscription', 
-        on_delete=models.CASCADE, 
-        related_name='nutrition_plans'
-    )
+# NEW: Food Item (Child of Meal Plan)
+class FoodItem(models.Model):
+    meal_plan = models.ForeignKey('MealPlan', on_delete=models.CASCADE, related_name='foods')
+    name = models.CharField(max_length=200)
     
-    # --- Card Info (New) ---
-    name = models.CharField(max_length=100, default="New Diet Plan", help_text="e.g. Winter Bulk")
-    duration_weeks = models.IntegerField(default=4)
-
-    # --- The Machine: Calculator State (Saved Inputs) ---
-    GENDER_CHOICES = [('male', 'Male'), ('female', 'Female')]
-    calc_gender = models.CharField(max_length=10, choices=GENDER_CHOICES, default='male', blank=True)
-    calc_age = models.IntegerField(blank=True, null=True, help_text="Age in years (can be from client)")
-    calc_height = models.FloatField(default=170.0, help_text="Height in cm")
-    calc_weight = models.FloatField(default=80.0)
-    ACTIVITY_CHOICES = [
-        ('sedentary', 'Sedentary'),
-        ('light', 'Light'),
-        ('moderate', 'Moderate'),
-        ('active', 'Active'),
-        ('very_active', 'Very Active'),
-    ]
-    calc_activity_level = models.CharField(max_length=20, choices=ACTIVITY_CHOICES, default='moderate', blank=True)
-    calc_tdee = models.IntegerField(default=2500)
-    calc_defer_cal = models.IntegerField(default=500)  # Deficit (negative) or surplus (positive)
-    calc_fat_percent = models.FloatField(default=25.0)
-    calc_protein_multiplier = models.FloatField(default=2.2)
-    calc_protein_advance = models.FloatField(default=0.8)
-    calc_meals = models.IntegerField(default=4)
-    calc_snacks = models.IntegerField(default=2)
-    calc_carb_adjustment = models.IntegerField(default=0, help_text="Percentage +/- for carbs")
-    pdf_brand_text = models.CharField(max_length=50, default="TFG", help_text="Text to display as logo on PDF")
-
-    # --- The Machine: Targets (Calculated Outputs) ---
-    target_calories = models.IntegerField(default=2000)
-    target_protein = models.IntegerField(default=150)
-    target_carbs = models.IntegerField(default=200)
-    target_fats = models.IntegerField(default=60)
+    # تم إضافة default=0.0 لكل الحقول أدناه لتجنب أخطاء الـ Migration
+    amount = models.FloatField(default=0.0, help_text="Amount in grams or pieces")
+    unit = models.CharField(max_length=50, default="g", help_text="e.g. 'g', 'slice', 'egg'")
+    calories = models.IntegerField(default=0)
+    protein = models.FloatField(default=0.0)
+    carbs = models.FloatField(default=0.0)
+    fats = models.FloatField(default=0.0)
     
-    # --- General Metadata (Restored) ---
-    water_intake = models.FloatField(default=3.0)
-    meals_per_day = models.IntegerField(default=5) # Kept for backward compatibility
-    
-    DIET_CHOICES = [
-        ('Balanced', 'Balanced'),
-        ('High Protein', 'High Protein'),
-        ('Low Carb', 'Low Carb'),
-        ('Keto', 'Keto'),
-        ('Vegan', 'Vegan'),
-        ('Mediterranean', 'Mediterranean'),
-    ]
-    diet_type = models.CharField(max_length=50, choices=DIET_CHOICES, default='Balanced')
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    
-    notes = models.TextField(blank=True)
-    
-    def __str__(self):
-        return f"{self.name} - {self.subscription.client.name}"
+    # Metadata
+    order = models.IntegerField(default=1, help_text="Order within the meal")
     
     class Meta:
-        ordering = ['-created_at']
+        ordering = ['order']
+    
+    def __str__(self):
+        return f"{self.name} ({self.amount}{self.unit})"
 
 
+
+# NEW: Meal Plan (Child of Nutrition Plan)
 class MealPlan(models.Model):
-    """
-    Individual meal plan for a specific day and meal time
-    """
-    nutrition_plan = models.ForeignKey(
-        NutritionPlan, 
-        on_delete=models.CASCADE, 
-        related_name='meal_plans'
-    )
+    nutrition_plan = models.ForeignKey('NutritionPlan', on_delete=models.CASCADE, related_name='meal_plans')
     
-    # Day and Meal Time
-    DAY_CHOICES = [
-        ('Monday', 'Monday'),
-        ('Tuesday', 'Tuesday'),
-        ('Wednesday', 'Wednesday'),
-        ('Thursday', 'Thursday'),
-        ('Friday', 'Friday'),
-        ('Saturday', 'Saturday'),
-        ('Sunday', 'Sunday'),
-    ]
-    day = models.CharField(max_length=20, choices=DAY_CHOICES)
+    # Schedule
+    day = models.IntegerField(help_text="Day number (1-7 or 1-14...)")
     
-    MEAL_TYPE_CHOICES = [
+    MEAL_CHOICES = [
         ('breakfast', 'Breakfast'),
-        ('snack1', 'Morning Snack'),
+        ('snack_1', 'Snack 1'),
         ('lunch', 'Lunch'),
-        ('snack2', 'Afternoon Snack'),
+        ('snack_2', 'Snack 2'),
         ('dinner', 'Dinner'),
-        ('snack3', 'Evening Snack'),
+        ('snack_3', 'Snack 3'),
     ]
-    meal_type = models.CharField(max_length=20, choices=MEAL_TYPE_CHOICES)
+    meal_type = models.CharField(max_length=20, choices=MEAL_CHOICES)
+    meal_name = models.CharField(max_length=200, blank=True, null=True, help_text="Optional name")
+    meal_time = models.TimeField(blank=True, null=True, help_text="Suggested time")
     
-    # Meal Details
-    meal_name = models.CharField(max_length=200, blank=True, help_text="e.g., Chicken Rice Bowl")
-    meal_time = models.TimeField(blank=True, null=True, help_text="Suggested meal time")
-    
-    # Nutritional Totals (calculated from foods)
+    # Totals (Calculated from food items or set manually)
     total_calories = models.IntegerField(default=0)
     total_protein = models.FloatField(default=0.0)
     total_carbs = models.FloatField(default=0.0)
     total_fats = models.FloatField(default=0.0)
     
-    # Additional Info
+    # Notes & Completion
     notes = models.TextField(blank=True)
-    is_completed = models.BooleanField(default=False, help_text="Did client complete this meal?")
+    is_completed = models.BooleanField(default=False)
     completed_at = models.DateTimeField(blank=True, null=True)
-    
-    # Meal Photo (optional)
     photo = models.ImageField(upload_to='meal_photos/', blank=True, null=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
-        return f"{self.day} - {self.get_meal_type_display()}"
+        return f"Day {self.day} - {self.get_meal_type_display()}"
     
     class Meta:
         ordering = ['day', 'meal_type']
-        unique_together = ['nutrition_plan', 'day', 'meal_type']
 
 
-class FoodItem(models.Model):
-    """
-    Individual food item in a meal
-    """
-    meal_plan = models.ForeignKey(
-        MealPlan, 
-        on_delete=models.CASCADE, 
-        related_name='foods'
-    )
+
+# NEW: Nutrition Plan (Parent)
+class NutritionPlan(models.Model):
+    subscription = models.ForeignKey(ClientSubscription, on_delete=models.CASCADE, related_name='nutrition_plans')
+    name = models.CharField(max_length=200, default="Nutrition Plan")
+    duration_weeks = models.IntegerField(default=1, help_text="How many weeks is this plan for?")
     
-    # Food Details
-    name = models.CharField(max_length=200, help_text="e.g., Chicken Breast")
-    quantity = models.FloatField(default=100, help_text="Quantity in grams or ml")
+    # Calculator inputs (stored for reference)
+    calc_gender = models.CharField(max_length=10, default='male')
+    calc_age = models.IntegerField(default=25)
+    calc_height = models.FloatField(default=170.0, help_text="Height in cm")
+    calc_weight = models.FloatField(default=70.0, help_text="Weight in kg")
+    calc_activity_level = models.CharField(max_length=50, default='moderate')
+    calc_tdee = models.IntegerField(default=2000, help_text="Calculated TDEE")
+    calc_defer_cal = models.IntegerField(default=500, help_text="Calorie deficit/surplus")
+    calc_fat_percent = models.FloatField(default=25.0, help_text="Fat percentage target")
+    calc_protein_multiplier = models.FloatField(default=2.0, help_text="Protein multiplier")
+    calc_protein_advance = models.IntegerField(default=0, help_text="Additional protein adjustment")
+    calc_meals = models.IntegerField(default=3)
+    calc_snacks = models.IntegerField(default=2)
+    calc_carb_adjustment = models.CharField(max_length=50, default='moderate')
     
-    UNIT_CHOICES = [
-        ('g', 'Grams'),
-        ('ml', 'Milliliters'),
-        ('piece', 'Piece'),
-        ('cup', 'Cup'),
-        ('tbsp', 'Tablespoon'),
-        ('tsp', 'Teaspoon'),
-    ]
-    unit = models.CharField(max_length=10, choices=UNIT_CHOICES, default='g')
+    # PDF Branding
+    pdf_brand_text = models.CharField(max_length=255, blank=True, null=True, help_text="Custom branding text for PDF export")
     
-    # Nutritional Info (per serving)
-    calories = models.IntegerField(default=0)
-    protein = models.FloatField(default=0.0)
-    carbs = models.FloatField(default=0.0)
-    fats = models.FloatField(default=0.0)
-    fiber = models.FloatField(default=0.0, blank=True)
+    # Target Macros (Results)
+    target_calories = models.IntegerField(default=2000)
+    target_protein = models.FloatField(default=150.0)
+    target_carbs = models.FloatField(default=200.0)
+    target_fats = models.FloatField(default=60.0)
     
-    # Food Category
-    CATEGORY_CHOICES = [
-        ('Protein', 'Protein'),
-        ('Carbs', 'Carbohydrates'),
-        ('Vegetables', 'Vegetables'),
-        ('Fruits', 'Fruits'),
-        ('Dairy', 'Dairy'),
-        ('Fats', 'Fats & Oils'),
-        ('Snacks', 'Snacks'),
-        ('Beverages', 'Beverages'),
-        ('Supplements', 'Supplements'),
-    ]
-    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, blank=True)
-    
-    # Preparation Method
-    preparation = models.CharField(max_length=100, blank=True, help_text="e.g., Grilled, Boiled, Raw")
-    
-    # Order in meal
-    order = models.IntegerField(default=1)
+    # Meta
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
-        return f"{self.quantity}{self.unit} {self.name}"
+        return f"{self.subscription.client.name} - {self.name}"
     
     class Meta:
-        ordering = ['order']
+        ordering = ['-created_at']
+
 
 
 class NutritionProgress(models.Model):
@@ -465,13 +394,21 @@ class FoodDatabase(models.Model):
 
 
 class CoachSchedule(models.Model):
+    """
+    UPDATED: Added session_time field for manual time entry
+    """
     coach = models.ForeignKey(User, on_delete=models.CASCADE, related_name='schedules')
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='scheduled_days')
     day = models.CharField(max_length=15) # Monday, Tuesday...
+    session_time = models.TimeField(blank=True, null=True, help_text="Scheduled time for this group session")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         unique_together = ('coach', 'client', 'day') 
+        
+    def __str__(self):
+        time_str = self.session_time.strftime('%H:%M') if self.session_time else 'No time set'
+        return f"{self.coach.first_name} - {self.day} at {time_str}"
 
 class GroupSessionLog(models.Model):
     coach = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)

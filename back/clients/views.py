@@ -28,6 +28,17 @@ class StandardResultsSetPagination(PageNumberPagination):
     max_page_size = 1000
 
 
+# NEW: Dedicated pagination class for history endpoints
+class HistoryPagination(PageNumberPagination):
+    """
+    Pagination specifically for group training history.
+    Designed to handle large datasets efficiently (1000+ records).
+    """
+    page_size = 20  # Default 20 records per page
+    page_size_query_param = "page_size"  # Allow client to override
+    max_page_size = 100  # Maximum allowed page size
+
+
 # ... [Keep Login/Token classes as they were] ...
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
@@ -1172,6 +1183,7 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
         coach_id = request.data.get('coach')
         client_id = request.data.get('client')
         day = request.data.get('day')
+        session_time = request.data.get('session_time')  # NEW: Optional time field
 
         if not all([coach_id, client_id, day]):
             return Response({"error": "Missing fields"}, status=400)
@@ -1179,8 +1191,15 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
         obj, created = CoachSchedule.objects.get_or_create(
             coach_id=coach_id,
             client_id=client_id,
-            day=day
+            day=day,
+            defaults={'session_time': session_time} if session_time else {}
         )
+        
+        # If updating existing record and time provided, update it
+        if not created and session_time:
+            obj.session_time = session_time
+            obj.save()
+            
         serializer = CoachScheduleSerializer(obj)
         return Response(serializer.data)
 
@@ -1192,13 +1211,35 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['get'])
     def history(self, request):
-        logs = GroupSessionLog.objects.all().order_by('-date')
+        """
+        Get paginated group session history.
         
-        page = self.paginate_queryset(logs)
+        Query Params:
+            - page: Page number (default: 1)
+            - page_size: Records per page (default: 20, max: 100)
+        
+        Returns:
+            Paginated response with count, next, previous, and results
+        """
+        user = request.user
+        
+        # Filter by coach unless admin
+        if user.is_superuser:
+            logs = GroupSessionLog.objects.all()
+        else:
+            logs = GroupSessionLog.objects.filter(coach=user)
+        
+        logs = logs.order_by('-date')
+        
+        # Apply pagination
+        paginator = HistoryPagination()
+        page = paginator.paginate_queryset(logs, request, view=self)
+        
         if page is not None:
             serializer = GroupSessionLogSerializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-
+            return paginator.get_paginated_response(serializer.data)
+        
+        # Fallback to unpaginated (shouldn't happen with proper pagination)
         serializer = GroupSessionLogSerializer(logs, many=True)
         return Response(serializer.data)
 
@@ -1249,17 +1290,43 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['get'])
     def client_history(self, request):
+        """
+        Get paginated history for a specific child.
+        
+        Query Params:
+            - client_id: ID of the child (required)
+            - page: Page number (default: 1)
+            - page_size: Records per page (default: 20, max: 100)
+        
+        Returns:
+            Paginated response with performance data for each session
+        """
         client_id = request.query_params.get('client_id')
+        user = request.user
+        
         if not client_id:
             return Response({"error": "client_id is required"}, status=400)
 
+        # Filter by coach permissions
         participations = GroupSessionParticipant.objects.filter(
             client_id=client_id
-        ).select_related('session', 'client').order_by('-session__date')
-
+        ).select_related('session', 'client')
+        
+        # Non-admin users only see their own sessions
+        if not user.is_superuser:
+            participations = participations.filter(session__coach=user)
+        
+        participations = participations.order_by('-session__date')
+        
+        # Apply pagination
+        paginator = HistoryPagination()
+        page = paginator.paginate_queryset(participations, request, view=self)
+        
+        # Process paginated results
+        page_data = page if page is not None else participations
         history_data = []
 
-        for p in participations:
+        for p in page_data:
             session = p.session
             client_name = p.client.name
             
@@ -1297,6 +1364,10 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
                 'performance': child_performance
             })
 
+        # Return paginated response
+        if page is not None:
+            return paginator.get_paginated_response(history_data)
+        
         return Response(history_data)
     
     

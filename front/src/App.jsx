@@ -25,12 +25,12 @@ const PrivateRoute = ({ children }) => {
   return user ? (
     <>
       <Sidebar />
-      {/* التعديلات المهمة هنا لحل مشكلة تغطية المحتوى:
-         1. pt-24: (Mobile) ضفنا مسافة من فوق 96px عشان الـ Header بتاع الموبايل اللي ارتفاعه h-24 مايغطيش المحتوى.
-         2. lg:pt-0: (Desktop) لغينا المسافة اللي فوق في الكمبيوتر لأن الـ Header مش موجود.
-         3. lg:pl-72: (Desktop) ضفنا مسافة من الشمال 288px عشان الـ Sidebar اللي عرضه w-72 مايغطيش المحتوى.
+      {/* FIXED LAYOUT:
+        1. lg:pl-72: This creates the space for the sidebar ONCE.
+        2. pt-24 lg:pt-0: Handles mobile header spacing.
+        3. w-full: Ensures content takes full remaining width.
       */}
-      <main className="flex-1 transition-colors duration-300 pt-24 lg:pt-0 lg:pl-72">
+      <main className="flex-1 w-full transition-all duration-300 pt-24 lg:pt-0 lg:pl-72">
         {children}
       </main>
     </>
@@ -44,8 +44,6 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <ThemeProvider>
-          {/* تم استخدام min-h-screen للتأكد أن الخلفية تغطي الشاشة بالكامل
-          */}
           <div className="flex bg-zinc-100 dark:bg-[#09090b] min-h-screen transition-colors duration-300">
             <Routes>
               <Route path="/login" element={<Login />} />

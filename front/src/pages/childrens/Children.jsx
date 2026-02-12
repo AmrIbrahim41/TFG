@@ -9,7 +9,6 @@ const Children = () => {
     const [activeTab, setActiveTab] = useState('profiles');
     const location = useLocation(); 
 
-    // --- FIX: Automatically switch to 'schedule' tab if repeating a session ---
     useEffect(() => {
         if (location.state && location.state.action === 'repeat_session') {
             setActiveTab('schedule');
@@ -17,7 +16,8 @@ const Children = () => {
     }, [location]);
 
     return (
-        <div className="min-h-screen bg-zinc-50 dark:bg-[#09090b] text-zinc-900 dark:text-white p-6 pt-24 lg:pl-80 animate-in fade-in duration-500 transition-colors">
+        // --- FIX: Removed 'lg:pl-80 pt-24' ---
+        <div className="min-h-screen bg-zinc-50 dark:bg-[#09090b] text-zinc-900 dark:text-white p-6 md:p-10 animate-in fade-in duration-500 transition-colors">
             <div className="max-w-7xl mx-auto space-y-8">
                 
                 {/* --- Header Section --- */}
@@ -37,10 +37,10 @@ const Children = () => {
                     </div>
 
                     {/* Navigation Tabs */}
-                    <div className="flex bg-white/80 dark:bg-zinc-900/80 p-1.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 backdrop-blur-sm">
+                    <div className="flex bg-white/80 dark:bg-zinc-900/80 p-1.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 backdrop-blur-sm shadow-sm">
                         <button 
                             onClick={() => setActiveTab('profiles')}
-                            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'profiles' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-lg border border-zinc-200 dark:border-zinc-700' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'profiles' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-md border border-zinc-200 dark:border-zinc-700' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
                         >
                             <LayoutGrid size={16} /> Profiles
                         </button>

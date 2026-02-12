@@ -210,29 +210,20 @@ class MealPlanSerializer(serializers.ModelSerializer):
 
 
 class NutritionPlanSerializer(serializers.ModelSerializer):
-    created_by_name = serializers.SerializerMethodField()  # username of card creator
+    meal_plans = MealPlanSerializer(many=True, read_only=True)
     client_name = serializers.ReadOnlyField(source='subscription.client.name')
-    client_age = serializers.SerializerMethodField()
-
+    
     class Meta:
         model = NutritionPlan
         fields = [
-            'id', 'subscription', 'client_name', 'client_age', 'name', 'duration_weeks',
+            'id', 'subscription', 'name', 'duration_weeks',
             'calc_gender', 'calc_age', 'calc_height', 'calc_weight', 'calc_activity_level',
             'calc_tdee', 'calc_defer_cal', 'calc_fat_percent',
             'calc_protein_multiplier', 'calc_protein_advance', 'calc_meals', 'calc_snacks',
-            # NEW FIELDS ADDED HERE
             'calc_carb_adjustment', 'pdf_brand_text',
             'target_calories', 'target_protein', 'target_carbs', 'target_fats',
-            'notes', 'created_at', 'updated_at', 'created_by', 'created_by_name'
+            'meal_plans', 'client_name', 'created_at', 'updated_at'
         ]
-
-    def get_created_by_name(self, obj):
-        return obj.created_by.username if obj.created_by else None
-
-    def get_client_age(self, obj):
-        client = getattr(obj.subscription, 'client', None)
-        return client.age if client else None
 
 
 class NutritionProgressSerializer(serializers.ModelSerializer):
@@ -247,20 +238,13 @@ class FoodDatabaseSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-# Nested Serializer for Creating Meal Plans with Foods
-class FoodItemCreateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = FoodItem
-        fields = ['name', 'quantity', 'unit', 'calories', 'protein', 'carbs', 'fats', 'fiber', 'category', 'preparation', 'order']
-
-
 class MealPlanCreateSerializer(serializers.ModelSerializer):
-    foods = FoodItemCreateSerializer(many=True, required=False)
-
+    foods = FoodItemSerializer(many=True, required=False)
+    
     class Meta:
         model = MealPlan
         fields = [
-            'nutrition_plan', 'day', 'meal_type', 'meal_name', 'meal_time',
+            'id', 'day', 'meal_type', 'meal_name', 'meal_time',
             'total_calories', 'total_protein', 'total_carbs', 'total_fats',
             'notes', 'foods',
         ]
@@ -361,16 +345,18 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
                     
         return instance
     
-    
 
 
 class CoachScheduleSerializer(serializers.ModelSerializer):
+    """
+    UPDATED: Added session_time field
+    """
     client_name = serializers.ReadOnlyField(source='client.name')
     client_photo = serializers.SerializerMethodField()
     
     class Meta:
         model = CoachSchedule
-        fields = ['id', 'coach', 'client', 'client_id', 'client_name', 'client_photo', 'day']
+        fields = ['id', 'coach', 'client', 'client_id', 'client_name', 'client_photo', 'day', 'session_time']
 
     def get_client_photo(self, obj):
         return obj.client.photo.url if obj.client.photo else None
@@ -383,6 +369,8 @@ class GroupSessionParticipantSerializer(serializers.ModelSerializer):
 
 class GroupSessionLogSerializer(serializers.ModelSerializer):
     coach_name = serializers.ReadOnlyField(source='coach.first_name')
+    # NEW: Include coach_id for permission filtering
+    coach_id = serializers.ReadOnlyField(source='coach.id')
     # Nested serializer to show participants details inside the log
     participants = GroupSessionParticipantSerializer(many=True, read_only=True)
     
@@ -390,7 +378,8 @@ class GroupSessionLogSerializer(serializers.ModelSerializer):
         model = GroupSessionLog
         fields = [
             'id', 
-            'coach_name', 
+            'coach_name',
+            'coach_id',  # NEW: Added for filtering
             'date', 
             'day_name', 
             'exercises_summary', 
