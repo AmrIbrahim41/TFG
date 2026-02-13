@@ -1,0 +1,41 @@
+# Vercel Speed Insights Implementation
+
+Successfully implemented Vercel Speed Insights for the TFG project (React + Vite application).
+
+## Changes Made
+
+### 1. Package Installation
+- **Added**: `@vercel/speed-insights` package to project dependencies
+- **Updated**: `package.json` and `package-lock.json` with the new dependency
+
+### 2. Code Integration
+- **Modified**: `front/src/main.jsx`
+  - Added import: `import { SpeedInsights } from "@vercel/speed-insights/react"`
+  - Added `<SpeedInsights />` component alongside existing `<Analytics />` component
+  - Follows the same pattern as the existing Vercel Analytics integration
+
+## Implementation Details
+
+The SpeedInsights component was added to the main entry point of the application (main.jsx), which is the recommended approach for React applications using Vite. This ensures that Speed Insights will track performance metrics across all pages and routes in the application.
+
+The implementation follows the official Vercel documentation for React applications and maintains consistency with the existing Vercel Analytics integration already present in the project.
+
+## Verification
+
+- ✅ Build completed successfully (npm run build)
+- ✅ Dependencies installed correctly
+- ✅ Lock file updated (package-lock.json)
+- ✅ Code follows existing patterns (placed alongside Analytics component)
+- ✅ No new linting errors introduced
+
+## Next Steps
+
+After deployment to Vercel:
+1. Enable Speed Insights in the Vercel dashboard under Project → Speed Insights tab
+2. The `/_vercel/speed-insights/script.js` route will be automatically available after deployment
+3. Performance metrics will start being collected once users visit the site
+4. View collected data in the Vercel dashboard under the Speed Insights tab
+
+## Note
+
+The existing linter warnings/errors shown during verification are pre-existing issues in other files (Sidebar.jsx, ClientInfoTab.jsx, etc.) and are unrelated to this implementation.
