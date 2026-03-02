@@ -1,13 +1,59 @@
-import React, { useState, useRef } from 'react';
-import { 
-    Dumbbell, ChevronRight, ChevronLeft, CheckCircle, RefreshCw, 
-    Save, ArrowLeft, Trash2, LayoutGrid, Calendar, 
-    Minus, Plus, Trophy, User, CircleDashed 
+import React, { useState, useRef, useCallback, useMemo } from 'react';
+import {
+    Dumbbell, ChevronRight, ChevronLeft, CheckCircle, RefreshCw,
+    Save, ArrowLeft, Trash2, LayoutGrid, Calendar,
+    Minus, Plus, Trophy, User, CircleDashed, AlertCircle, X, Loader2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api';
 
-// --- PAGINATION COMPONENT (Local) ---
+// --- TOAST ---
+const Toast = ({ message, type = 'error', onDismiss }) => {
+    React.useEffect(() => {
+        const t = setTimeout(onDismiss, 4000);
+        return () => clearTimeout(t);
+    }, [onDismiss]);
+
+    return (
+        <div className={`fixed bottom-6 right-6 z-[200] flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border text-sm font-bold animate-in slide-in-from-bottom-4 duration-300
+            ${type === 'error'
+                ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700 text-red-700 dark:text-red-300'
+                : 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700 text-green-700 dark:text-green-300'
+            }`}
+        >
+            <AlertCircle size={16} className="shrink-0" />
+            {message}
+            <button onClick={onDismiss} className="ml-2 text-current opacity-60 hover:opacity-100 transition-opacity"><X size={14} /></button>
+        </div>
+    );
+};
+
+// --- CONFIRM MODAL ---
+const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, isLoading }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+            <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 max-w-sm w-full border border-zinc-200 dark:border-zinc-800 shadow-2xl animate-in zoom-in-95 duration-200">
+                <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <RefreshCw size={24} className="text-amber-600 dark:text-amber-500" />
+                </div>
+                <h3 className="text-lg font-black text-zinc-900 dark:text-white text-center mb-2">{title}</h3>
+                <p className="text-zinc-500 text-sm text-center mb-6">{message}</p>
+                <div className="flex gap-3">
+                    <button onClick={onCancel} className="flex-1 py-3 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold text-sm hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
+                        Cancel
+                    </button>
+                    <button onClick={onConfirm} disabled={isLoading} className="flex-1 py-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-colors">
+                        {isLoading ? <Loader2 size={14} className="animate-spin" /> : null} Continue
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- PAGINATION ---
 const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => {
     const totalPages = Math.ceil(totalItems / itemsPerPage);
     if (totalPages <= 1) return null;
@@ -17,21 +63,21 @@ const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => 
             <button
                 onClick={() => onPageChange(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
-                className="w-8 h-8 flex items-center justify-center rounded-lg bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white disabled:opacity-30 disabled:hover:text-zinc-500 transition-all"
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white disabled:opacity-30 transition-all"
             >
                 <ChevronLeft size={16} />
             </button>
-            
+
             <div className="flex gap-1">
                 {Array.from({ length: totalPages }).map((_, idx) => (
                     <button
                         key={idx}
                         onClick={() => onPageChange(idx + 1)}
-                        className={`
-                            w-8 h-8 rounded-lg font-bold text-xs transition-all border
-                            ${currentPage === idx + 1 
-                                ? 'bg-orange-500 border-orange-500 text-white shadow-lg shadow-orange-900/20' 
-                                : 'bg-zinc-200 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:border-zinc-400 dark:hover:border-zinc-700'}
+                        className={`w-8 h-8 rounded-lg font-bold text-xs transition-all border
+                            ${currentPage === idx + 1
+                                ? 'bg-orange-500 border-orange-500 text-white shadow-lg shadow-orange-900/20'
+                                : 'bg-zinc-200 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:border-zinc-400 dark:hover:border-zinc-700'
+                            }
                         `}
                     >
                         {idx + 1}
@@ -42,7 +88,7 @@ const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => 
             <button
                 onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}
-                className="w-8 h-8 flex items-center justify-center rounded-lg bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white disabled:opacity-30 disabled:hover:text-zinc-500 transition-all"
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white disabled:opacity-30 transition-all"
             >
                 <ChevronRight size={16} />
             </button>
@@ -50,107 +96,120 @@ const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => 
     );
 };
 
+// --- MAIN COMPONENT ---
 const ClientTrainingTab = ({ subscriptions }) => {
     const navigate = useNavigate();
-    
-    // Pagination State for Subscriptions
-    const [page, setPage] = useState(1);
-    const itemsPerPage = 4;
 
-    // Data States
+    const [page, setPage] = useState(1);
+    const ITEMS_PER_PAGE = 4;
+
     const [selectedSub, setSelectedSub] = useState(null);
     const [trainingPlan, setTrainingPlan] = useState(null);
-    const [logs, setLogs] = useState([]); 
+    const [logs, setLogs] = useState([]);
     const [loadingPlan, setLoadingPlan] = useState(false);
+    const [isSavingPlan, setIsSavingPlan] = useState(false);
 
-    // Setup Form States
     const [setupStep, setSetupStep] = useState(0);
     const [cycleLength, setCycleLength] = useState(3);
     const [dayNames, setDayNames] = useState({});
 
-    // --- 1. FETCH LOGIC ---
-    const fetchPlan = async (subId) => {
+    // Confirmation modal for reset plan
+    const [confirmReset, setConfirmReset] = useState({ isOpen: false, isLoading: false });
+
+    // Toast state
+    const [toast, setToast] = useState(null);
+    const showToast = useCallback((message, type = 'error') => setToast({ message, type }), []);
+    const dismissToast = useCallback(() => setToast(null), []);
+
+    const fetchPlan = useCallback(async (subId) => {
+        let cancelled = false;
         setLoadingPlan(true);
         setTrainingPlan(null);
         setLogs([]);
         setSetupStep(0);
         try {
-            // Get Plan
-            const res = await api.get(`/training-plans/?subscription_id=${subId}`);
-            if (res.data.length > 0) {
-                setTrainingPlan(res.data[0]);
-            } else {
-                setSetupStep(1); // Go to Wizard
-                setCycleLength(3);
-                setDayNames({});
+            const [planRes, logRes] = await Promise.all([
+                api.get(`/training-plans/?subscription_id=${subId}`),
+                api.get(`/training-sessions/?subscription=${subId}&is_completed=true`),
+            ]);
+            if (!cancelled) {
+                const planData = planRes.data.results ?? planRes.data;
+                if (planData.length > 0) {
+                    setTrainingPlan(planData[0]);
+                } else {
+                    setSetupStep(1);
+                    setCycleLength(3);
+                    setDayNames({});
+                }
+                setLogs(logRes.data.results ?? logRes.data);
             }
-
-            // Get Completed Logs
-            const logRes = await api.get(`/training-sessions/?subscription=${subId}&is_completed=true`);
-            setLogs(logRes.data);
-
         } catch (error) {
-            console.error(error);
+            if (!cancelled) showToast('Failed to load training plan.');
         } finally {
-            setLoadingPlan(false);
+            if (!cancelled) setLoadingPlan(false);
         }
-    };
+        return () => { cancelled = true; };
+    }, [showToast]);
 
-    const handleSelectSub = (sub) => {
-        if (!sub.plan_total_sessions || sub.plan_total_sessions === 0) {
-            sub.plan_total_sessions = 30;
-        }
-        setSelectedSub(sub);
+    const handleSelectSub = useCallback((sub) => {
+        const normalizedSub = {
+            ...sub,
+            plan_total_sessions: sub.plan_total_sessions || 30,
+        };
+        setSelectedSub(normalizedSub);
         fetchPlan(sub.id);
-    };
+    }, [fetchPlan]);
 
-    // --- 2. PLAN WIZARD LOGIC ---
-    const handleIncrement = () => { if (cycleLength < 14) setCycleLength(prev => prev + 1); };
-    const handleDecrement = () => { if (cycleLength > 1) setCycleLength(prev => prev - 1); };
+    // --- WIZARD LOGIC ---
+    const handleIncrement = useCallback(() => { if (cycleLength < 14) setCycleLength(prev => prev + 1); }, [cycleLength]);
+    const handleDecrement = useCallback(() => { if (cycleLength > 1)  setCycleLength(prev => prev - 1); }, [cycleLength]);
 
-    const handleNextStep = () => {
+    const handleNextStep = useCallback(() => {
         const newNames = { ...dayNames };
         for (let i = 1; i <= cycleLength; i++) {
             if (!newNames[i]) newNames[i] = `Day ${i}`;
         }
         setDayNames(newNames);
         setSetupStep(2);
-    };
+    }, [dayNames, cycleLength]);
 
-    const handleSavePlan = async () => {
-        const namesArray = [];
-        for (let i = 1; i <= cycleLength; i++) {
-            namesArray.push(dayNames[i]);
-        }
+    const handleSavePlan = useCallback(async () => {
+        const namesArray = Array.from({ length: cycleLength }, (_, i) => dayNames[i + 1] || `Day ${i + 1}`);
+        setIsSavingPlan(true);
         try {
             await api.post('/training-plans/', {
                 subscription: selectedSub.id,
                 cycle_length: cycleLength,
-                day_names: namesArray
+                day_names: namesArray,
             });
-            fetchPlan(selectedSub.id);
+            await fetchPlan(selectedSub.id);
+            showToast('Plan created!', 'success');
         } catch (error) {
-            alert("Error creating plan");
+            showToast('Error creating plan. Please try again.');
+        } finally {
+            setIsSavingPlan(false);
         }
-    };
+    }, [cycleLength, dayNames, selectedSub, fetchPlan, showToast]);
 
-    const handleDeletePlan = async () => {
-        if (!confirm("⚠️ Resetting the plan will hide the schedule. History is preserved, but the grid will be rebuilt. Continue?")) return;
+    const handleDeletePlan = useCallback(async () => {
+        setConfirmReset(prev => ({ ...prev, isLoading: true }));
         try {
             await api.delete(`/training-plans/${trainingPlan.id}/`);
             setTrainingPlan(null);
             setSetupStep(1);
             setDayNames({});
             setCycleLength(3);
+            setConfirmReset({ isOpen: false, isLoading: false });
         } catch (error) {
-            alert("Error deleting plan");
+            showToast('Error resetting plan.');
+            setConfirmReset(prev => ({ ...prev, isLoading: false }));
         }
-    };
+    }, [trainingPlan, showToast]);
 
-    // --- 3. HELPER: PROGRESS BAR ---
-    const renderProgressBar = () => {
+    // --- PROGRESS BAR ---
+    const renderProgressBar = useCallback(() => {
         if (!selectedSub) return null;
-        const total = selectedSub.plan_total_sessions;
+        const total     = selectedSub.plan_total_sessions;
         const completed = logs.length;
         const percentage = Math.min((completed / total) * 100, 100);
 
@@ -164,25 +223,25 @@ const ClientTrainingTab = ({ subscriptions }) => {
                             <span className="text-zinc-500 font-medium">/ {total} Sessions</span>
                         </div>
                     </div>
-                    <Trophy size={24} className={percentage === 100 ? "text-yellow-500" : "text-zinc-400 dark:text-zinc-700"} />
+                    <Trophy size={24} className={percentage === 100 ? 'text-yellow-500' : 'text-zinc-400 dark:text-zinc-700'} />
                 </div>
-                
+
                 <div className="h-3 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-                    <div 
+                    <div
                         className="h-full bg-gradient-to-r from-orange-600 to-orange-400 transition-all duration-1000 ease-out rounded-full"
                         style={{ width: `${percentage}%` }}
                     />
                 </div>
             </div>
         );
-    };
+    }, [selectedSub, logs]);
 
-    // --- 4. RENDER GRID (UPDATED DESIGN) ---
-    const renderSessionGrid = () => {
+    // --- SESSION GRID ---
+    const renderSessionGrid = useCallback(() => {
         if (!selectedSub || !trainingPlan) return null;
 
         const totalSessions = selectedSub.plan_total_sessions;
-        const splits = trainingPlan.splits.sort((a, b) => a.order - b.order);
+        const splits   = [...trainingPlan.splits].sort((a, b) => a.order - b.order);
         const cycleLen = trainingPlan.cycle_length;
 
         const cycles = [];
@@ -195,8 +254,8 @@ const ClientTrainingTab = ({ subscriptions }) => {
                 const template = splits[i];
                 cycleSessions.push({
                     number: currentSession,
-                    name: template.name,
-                    templateId: template.id
+                    name: template?.name || `Session ${currentSession}`,
+                    templateId: template?.id,
                 });
                 currentSession++;
             }
@@ -207,7 +266,6 @@ const ClientTrainingTab = ({ subscriptions }) => {
             <div className="space-y-8 pb-20 animate-in slide-in-from-bottom-4 duration-500">
                 {cycles.map((cycle, cIndex) => (
                     <div key={cIndex} className="space-y-4">
-                        {/* Cycle Header */}
                         <div className="flex items-center gap-3 px-1">
                             <div className="h-px flex-1 bg-zinc-300 dark:bg-zinc-800" />
                             <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest bg-zinc-100 dark:bg-[#09090b] px-3 py-1 rounded-full border border-zinc-300 dark:border-zinc-800">
@@ -216,25 +274,22 @@ const ClientTrainingTab = ({ subscriptions }) => {
                             <div className="h-px flex-1 bg-zinc-300 dark:bg-zinc-800" />
                         </div>
 
-                        {/* Grid */}
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                             {cycle.map((session, sIndex) => {
-                                const isCompleted = logs.some(l => l.session_number === session.number && l.is_completed);
+                                const isCompleted  = logs.some(l => l.session_number === session.number && l.is_completed);
                                 const completedLog = logs.find(l => l.session_number === session.number);
-                                const dateStr = completedLog?.date_completed 
+                                const dateStr = completedLog?.date_completed
                                     ? new Date(completedLog.date_completed).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })
                                     : '--/--';
-                                const trainerName = completedLog?.trainer_name || 'TFG Trainer';
+                                const logTrainerName = completedLog?.trainer_name || 'TFG Trainer';
 
                                 return (
-                                    <div 
+                                    <div
                                         key={sIndex}
                                         onClick={() => navigate(`/training-plan/${trainingPlan.id}/day/${session.templateId}?sub=${selectedSub.id}&session=${session.number}`)}
-                                        className={`
-                                            group relative rounded-2xl cursor-pointer border transition-all duration-300 overflow-hidden
-                                            flex flex-col justify-between min-h-[140px]
-                                            ${isCompleted 
-                                                ? 'bg-zinc-50 dark:bg-[#121214] border-emerald-500/30 hover:bg-emerald-500/5 hover:border-emerald-500/50' 
+                                        className={`group relative rounded-2xl cursor-pointer border transition-all duration-300 overflow-hidden flex flex-col justify-between min-h-[140px]
+                                            ${isCompleted
+                                                ? 'bg-zinc-50 dark:bg-[#121214] border-emerald-500/30 hover:bg-emerald-500/5 hover:border-emerald-500/50'
                                                 : 'bg-zinc-50 dark:bg-[#121214] border-zinc-300 dark:border-zinc-800 border-dashed hover:border-solid hover:border-orange-500/50 hover:bg-zinc-100 dark:hover:bg-zinc-900 hover:-translate-y-1 hover:shadow-xl hover:shadow-orange-900/10'
                                             }
                                         `}
@@ -268,7 +323,7 @@ const ClientTrainingTab = ({ subscriptions }) => {
                                                 </div>
                                                 <div className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400">
                                                     <User size={12} className="text-blue-500" />
-                                                    <span className="text-[11px] font-medium truncate max-w-[120px]">{trainerName}</span>
+                                                    <span className="text-[11px] font-medium truncate max-w-[120px]">{logTrainerName}</span>
                                                 </div>
                                             </div>
                                         ) : (
@@ -285,40 +340,51 @@ const ClientTrainingTab = ({ subscriptions }) => {
                 ))}
             </div>
         );
-    };
+    }, [selectedSub, trainingPlan, logs, navigate]);
 
-    // Calculate displayed subscriptions for pagination
-    const displayedSubs = subscriptions.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+    const displayedSubs = useMemo(
+        () => subscriptions.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE),
+        [subscriptions, page]
+    );
 
     return (
         <div className="min-h-[500px]">
+            {toast && <Toast message={toast.message} type={toast.type} onDismiss={dismissToast} />}
+
+            <ConfirmModal
+                isOpen={confirmReset.isOpen}
+                title="Reset Training Plan?"
+                message="This will hide the current schedule. Your session history will be preserved, but the grid will need to be rebuilt. Continue?"
+                onConfirm={handleDeletePlan}
+                onCancel={() => setConfirmReset({ isOpen: false, isLoading: false })}
+                isLoading={confirmReset.isLoading}
+            />
+
             {!selectedSub ? (
-                /* 1. SUBSCRIPTION SELECTION (PAGINATED GRID) */
+                /* 1. SUBSCRIPTION SELECTION */
                 <div className="space-y-5 animate-in fade-in duration-300">
                     <div className="flex items-center gap-2 mb-2">
                         <LayoutGrid className="text-orange-500" size={20} />
                         <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Active Memberships</h3>
                     </div>
-                    
-                    {/* Grid Layout replacing the Carousel */}
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {displayedSubs.map((sub) => (
-                            <div 
-                                key={sub.id} 
-                                onClick={() => handleSelectSub(sub)} 
-                                className={`
-                                    relative overflow-hidden p-6 rounded-3xl border cursor-pointer transition-all duration-300 group
-                                    ${sub.is_active 
-                                        ? 'bg-zinc-50 dark:bg-[#121214] border-zinc-300 dark:border-zinc-800 hover:border-orange-500 hover:shadow-xl hover:shadow-orange-900/10' 
+                            <div
+                                key={sub.id}
+                                onClick={() => handleSelectSub(sub)}
+                                className={`relative overflow-hidden p-6 rounded-3xl border cursor-pointer transition-all duration-300 group
+                                    ${sub.is_active
+                                        ? 'bg-zinc-50 dark:bg-[#121214] border-zinc-300 dark:border-zinc-800 hover:border-orange-500 hover:shadow-xl hover:shadow-orange-900/10'
                                         : 'bg-zinc-200 dark:bg-zinc-900/20 border-zinc-300 dark:border-zinc-800/50 opacity-60 grayscale'
                                     }
                                 `}
                             >
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-full blur-2xl group-hover:bg-orange-500/10 transition-colors" />
-                                
+
                                 <div className="relative z-10 flex justify-between items-center">
-                                    <div className="flex items-center gap-4">
-                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${sub.is_active ? 'bg-zinc-200 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-700 text-orange-600 dark:text-orange-500' : 'bg-zinc-200 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-800 text-zinc-500 dark:text-zinc-600'}`}>
+                                    <div className="flex items-center gap-4 min-w-0">
+                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border shrink-0 ${sub.is_active ? 'bg-zinc-200 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-700 text-orange-600 dark:text-orange-500' : 'bg-zinc-200 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-800 text-zinc-500 dark:text-zinc-600'}`}>
                                             <Dumbbell size={24} />
                                         </div>
                                         <div className="min-w-0">
@@ -344,12 +410,11 @@ const ClientTrainingTab = ({ subscriptions }) => {
                         )}
                     </div>
 
-                    {/* Pagination Controls */}
-                    <Pagination 
-                        totalItems={subscriptions.length} 
-                        itemsPerPage={itemsPerPage} 
-                        currentPage={page} 
-                        onPageChange={setPage} 
+                    <Pagination
+                        totalItems={subscriptions.length}
+                        itemsPerPage={ITEMS_PER_PAGE}
+                        currentPage={page}
+                        onPageChange={setPage}
                     />
                 </div>
             ) : (
@@ -357,18 +422,18 @@ const ClientTrainingTab = ({ subscriptions }) => {
                 <div className="space-y-6">
                     {/* Header */}
                     <div className="flex items-center justify-between">
-                        <button 
-                            onClick={() => { setSelectedSub(null); setTrainingPlan(null); }} 
+                        <button
+                            onClick={() => { setSelectedSub(null); setTrainingPlan(null); }}
                             className="flex items-center gap-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors text-sm font-bold"
                         >
                             <ArrowLeft size={16} /> Back to Plans
                         </button>
-                        
+
                         {trainingPlan && (
-                            <button 
-                                onClick={handleDeletePlan} 
-                                className="p-2 bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-500 hover:text-red-600 dark:hover:text-red-500 hover:border-red-500/50 rounded-lg transition-all"
+                            <button
+                                onClick={() => setConfirmReset({ isOpen: true, isLoading: false })}
                                 title="Reset Plan"
+                                className="p-2 bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-500 hover:text-red-600 dark:hover:text-red-500 hover:border-red-500/50 rounded-lg transition-all"
                             >
                                 <Trash2 size={16} />
                             </button>
@@ -381,20 +446,19 @@ const ClientTrainingTab = ({ subscriptions }) => {
                             <span className="text-sm font-bold tracking-widest uppercase">Loading Schedule...</span>
                         </div>
                     ) : !trainingPlan ? (
-                        /* --- WIZARD DESIGN --- */
+                        /* WIZARD */
                         <div className="max-w-md mx-auto py-8 animate-in zoom-in-95 duration-300">
                             {setupStep === 1 && (
                                 <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 rounded-3xl p-8 text-center shadow-2xl relative overflow-hidden">
                                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-purple-500" />
-                                    
+
                                     <div className="w-16 h-16 bg-zinc-200 dark:bg-zinc-900 rounded-2xl border border-zinc-300 dark:border-zinc-800 flex items-center justify-center mx-auto mb-6 text-zinc-900 dark:text-white shadow-inner">
                                         <RefreshCw size={32} />
                                     </div>
-                                    
+
                                     <h3 className="text-2xl font-black text-zinc-900 dark:text-white mb-2">Split Structure</h3>
                                     <p className="text-zinc-500 text-sm mb-8">How many different workouts rotate in this cycle?</p>
-                                    
-                                    {/* Counter UI */}
+
                                     <div className="flex items-center justify-center gap-6 mb-8">
                                         <button onClick={handleDecrement} className="w-12 h-12 rounded-xl bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-white text-zinc-900 dark:text-white flex items-center justify-center transition-all active:scale-90">
                                             <Minus size={20} />
@@ -417,30 +481,37 @@ const ClientTrainingTab = ({ subscriptions }) => {
                             {setupStep === 2 && (
                                 <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 rounded-3xl p-8 shadow-2xl animate-in slide-in-from-right-8 duration-300">
                                     <div className="flex items-center gap-3 mb-6">
-                                        <button onClick={() => setSetupStep(1)} className="p-2 hover:bg-zinc-200 dark:hover:bg-zinc-900 rounded-lg text-zinc-500"><ArrowLeft size={18}/></button>
+                                        <button onClick={() => setSetupStep(1)} className="p-2 hover:bg-zinc-200 dark:hover:bg-zinc-900 rounded-lg text-zinc-500 transition-colors">
+                                            <ArrowLeft size={18} />
+                                        </button>
                                         <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Name Your Days</h3>
                                     </div>
 
                                     <div className="space-y-3 mb-8 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                                         {Array.from({ length: cycleLength }).map((_, i) => (
                                             <div key={i} className="flex items-center gap-3 group">
-                                                <div className="w-8 h-8 rounded-lg bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 flex items-center justify-center text-zinc-500 font-bold text-xs group-focus-within:border-orange-500 group-focus-within:text-orange-500 transition-colors">
+                                                <div className="w-8 h-8 rounded-lg bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 flex items-center justify-center text-zinc-500 font-bold text-xs group-focus-within:border-orange-500 group-focus-within:text-orange-500 transition-colors shrink-0">
                                                     {i + 1}
                                                 </div>
-                                                <input 
-                                                    type="text" 
-                                                    autoFocus={i === 0} 
-                                                    placeholder={`e.g. Push, Pull, Legs`} 
-                                                    value={dayNames[i + 1] || ''} 
-                                                    className="flex-1 bg-zinc-200 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3 text-zinc-900 dark:text-white outline-none focus:border-orange-500 transition-colors text-sm" 
-                                                    onChange={(e) => setDayNames({ ...dayNames, [i + 1]: e.target.value })} 
+                                                <input
+                                                    type="text"
+                                                    autoFocus={i === 0}
+                                                    placeholder="e.g. Push, Pull, Legs"
+                                                    value={dayNames[i + 1] || ''}
+                                                    className="flex-1 bg-zinc-200 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3 text-zinc-900 dark:text-white outline-none focus:border-orange-500 transition-colors text-sm"
+                                                    onChange={(e) => setDayNames(prev => ({ ...prev, [i + 1]: e.target.value }))}
+                                                    onKeyPress={(e) => { if (e.key === 'Enter' && i === cycleLength - 1) handleSavePlan(); }}
                                                 />
                                             </div>
                                         ))}
                                     </div>
 
-                                    <button onClick={handleSavePlan} className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-orange-900/20 active:scale-95 flex items-center justify-center gap-2">
-                                        <Save size={18} /> Generate Schedule
+                                    <button
+                                        onClick={handleSavePlan}
+                                        disabled={isSavingPlan}
+                                        className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-60 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-orange-900/20 active:scale-95 flex items-center justify-center gap-2"
+                                    >
+                                        {isSavingPlan ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Generate Schedule
                                     </button>
                                 </div>
                             )}
@@ -457,4 +528,5 @@ const ClientTrainingTab = ({ subscriptions }) => {
         </div>
     );
 };
+
 export default ClientTrainingTab;

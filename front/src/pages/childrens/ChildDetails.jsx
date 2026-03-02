@@ -1,12 +1,55 @@
-import React, { useState, useEffect, useContext, useMemo } from 'react';
-import { ArrowLeft, Save, User, Trash2, Activity, Hash, Baby, ShieldCheck, Dumbbell } from 'lucide-react';
+import React, { useState, useEffect, useContext, useCallback, useMemo } from 'react';
+import {
+    ArrowLeft, Save, User, Trash2, Baby,
+    Hash, ShieldCheck, Dumbbell, X, AlertCircle, CheckCircle2
+} from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api, { BASE_URL } from '../../api';
+import api from '../../api';
 import { AuthContext } from '../../context/AuthContext';
 import ChildInfoTab from '../../components/children/ChildInfoTab';
 import ChildMembershipTab from '../../components/children/ChildMembershipTab';
 import ChildHistoryTab from '../../components/children/ChildHistoryTab';
 
+// ─── Toast ────────────────────────────────────────────────────────────────────
+const Toast = ({ message, type = 'success', onClose }) => (
+    <div className={`fixed bottom-6 right-6 z-[200] flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border animate-in slide-in-from-bottom-4 duration-300 ${
+        type === 'error'
+            ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400'
+            : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400'
+    }`}>
+        {type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+        <span className="font-semibold text-sm">{message}</span>
+        <button onClick={onClose} className="ml-2 hover:opacity-70"><X size={16} /></button>
+    </div>
+);
+
+// ─── Loading Skeleton ─────────────────────────────────────────────────────────
+const LoadingSkeleton = () => (
+    <div className="min-h-screen bg-zinc-50 dark:bg-[#09090b] p-4 lg:p-6 transition-colors">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 xl:grid-cols-12 gap-6 lg:gap-8">
+            <div className="xl:col-span-4">
+                <div className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800/60 rounded-3xl p-6 animate-pulse space-y-6">
+                    <div className="w-32 h-32 rounded-full bg-zinc-200 dark:bg-zinc-800 mx-auto" />
+                    <div className="h-6 w-32 bg-zinc-200 dark:bg-zinc-800 rounded-lg mx-auto" />
+                    <div className="space-y-3">
+                        <div className="h-12 bg-zinc-200 dark:bg-zinc-800 rounded-2xl" />
+                        <div className="h-12 bg-zinc-200 dark:bg-zinc-800 rounded-2xl" />
+                    </div>
+                </div>
+            </div>
+            <div className="xl:col-span-8">
+                <div className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800/60 rounded-3xl p-6 animate-pulse space-y-6">
+                    <div className="h-12 bg-zinc-200 dark:bg-zinc-800 rounded-2xl" />
+                    {Array.from({ length: 5 }).map((_, i) => (
+                        <div key={i} className="h-12 bg-zinc-200 dark:bg-zinc-800 rounded-xl" />
+                    ))}
+                </div>
+            </div>
+        </div>
+    </div>
+);
+
+// ─── Component ────────────────────────────────────────────────────────────────
 const ChildDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -16,212 +59,237 @@ const ChildDetails = () => {
     const [photoUrl, setPhotoUrl] = useState(null);
     const [dbAge, setDbAge] = useState('');
     const [activeTab, setActiveTab] = useState('info');
+    const [toast, setToast] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-    // --- DATA STATE ---
+    // ── Data State ────────────────────────────────────────────────────────
     const [formData, setFormData] = useState({
-        name: '', 
-        manual_id: '', 
-        phone: '', 
-        parent_phone: '', 
-        country: 'Egypt', 
-        nature_of_work: '', 
-        birth_date: '', 
-        address: '',
-        status: '', 
-        smoking: false, 
-        sleep_hours: '', 
-        notes: '',
-        trained_gym_before: false,
-        trained_coach_before: false,
-        injuries: '', 
-        created_at: ''
+        name: '', manual_id: '', phone: '', parent_phone: '',
+        country: 'Egypt', nature_of_work: '', birth_date: '',
+        address: '', status: '', smoking: false, sleep_hours: '',
+        notes: '', trained_gym_before: false, trained_coach_before: false,
+        injuries: '', created_at: ''
     });
 
-    // --- SUBSCRIPTION STATE ---
+    // ── Subscription State ────────────────────────────────────────────────
     const [subscriptions, setSubscriptions] = useState([]);
     const [availablePlans, setAvailablePlans] = useState([]);
-    const [trainers, setTrainers] = useState([]); 
+    const [trainers, setTrainers] = useState([]);
     const [selectedSub, setSelectedSub] = useState(null);
     const [isSubModalOpen, setIsSubModalOpen] = useState(false);
-    
-    // Sub Form Data
     const [newSubData, setNewSubData] = useState({
-        plan: '', 
-        trainer: '', 
-        start_date: new Date().toISOString().split('T')[0]
+        plan: '', trainer: '', start_date: new Date().toISOString().split('T')[0]
     });
 
-    // --- INSTANT AGE CALCULATION ---
+    // ── Calculated Age ────────────────────────────────────────────────────
     const calculatedAge = useMemo(() => {
-        if (formData.birth_date) {
-            const today = new Date();
-            const birthDate = new Date(formData.birth_date);
-            let age = today.getFullYear() - birthDate.getFullYear();
-            const m = today.getMonth() - birthDate.getMonth();
-            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-                age--;
-            }
-            return age;
-        }
-        return dbAge || '--';
+        if (!formData.birth_date) return dbAge || '--';
+        const today = new Date();
+        const birth = new Date(formData.birth_date);
+        let age = today.getFullYear() - birth.getFullYear();
+        const m = today.getMonth() - birth.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+        return age;
     }, [formData.birth_date, dbAge]);
 
-    const hasActiveSub = Array.isArray(subscriptions) ? subscriptions.some(sub => sub.is_active) : false;
+    const hasActiveSub = useMemo(
+        () => Array.isArray(subscriptions) && subscriptions.some(s => s.is_active),
+        [subscriptions]
+    );
 
+    const showToast = useCallback((message, type = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 4000);
+    }, []);
+
+    // ── Fetch All Data ────────────────────────────────────────────────────
     useEffect(() => {
+        let cancelled = false;
         const fetchData = async () => {
             try {
-                // 1. Fetch Child Details
-                const res = await api.get(`/clients/${id}/`);
-                const data = res.data;
-                
+                const requests = [
+                    api.get(`/clients/${id}/`),
+                    api.get(`/client-subscriptions/?client_id=${id}`),
+                    api.get('/subscriptions/?target=child'),
+                ];
+                if (user?.is_superuser) {
+                    requests.push(api.get('/manage-trainers/'));
+                }
+
+                const results = await Promise.all(requests);
+                if (cancelled) return;
+
+                const [clientRes, subRes, plansRes, trainersRes] = results;
+
+                const data = clientRes.data;
                 setFormData({
-                    name: data.name || '', 
-                    manual_id: data.manual_id || '', 
+                    name: data.name || '',
+                    manual_id: data.manual_id || '',
                     phone: data.phone || '',
-                    parent_phone: data.parent_phone || '', 
+                    parent_phone: data.parent_phone || '',
                     country: data.country || 'Egypt',
-                    nature_of_work: data.nature_of_work || '', 
-                    birth_date: data.birth_date || '', 
-                    address: data.address || '', 
+                    nature_of_work: data.nature_of_work || '',
+                    birth_date: data.birth_date || '',
+                    address: data.address || '',
                     status: data.status || '',
                     trained_gym_before: data.trained_gym_before || false,
                     trained_coach_before: data.trained_coach_before || false,
                     injuries: data.injuries || '',
-                    smoking: data.smoking || false, 
-                    sleep_hours: data.sleep_hours || '', 
+                    smoking: data.smoking || false,
+                    sleep_hours: data.sleep_hours || '',
                     notes: data.notes || '',
-                    created_at: data.created_at
+                    created_at: data.created_at,
                 });
-                
                 setDbAge(data.age);
-                if (data.photo_url) setPhotoUrl(data.photo_url.startsWith('http') ? data.photo_url : `${BASE_URL}${data.photo_url}`);
+                // Backend now returns absolute URIs — use directly
+                if (data.photo_url) setPhotoUrl(data.photo_url);
 
-                // 2. Fetch Subscriptions
-                const subRes = await api.get(`/client-subscriptions/?client_id=${id}`);
-                setSubscriptions(subRes.data.results || subRes.data);
+                setSubscriptions(subRes.data.results ?? subRes.data);
+                setAvailablePlans(plansRes.data.results ?? plansRes.data);
 
-                // 3. Fetch ONLY Child Plans
-                const plansRes = await api.get('/subscriptions/?target=child');
-                setAvailablePlans(plansRes.data);
-
-                // 4. If Admin, Fetch Trainers
-                if (user?.is_superuser) {
-                    const trainersRes = await api.get('/manage-trainers/');
-                    setTrainers(trainersRes.data);
+                if (trainersRes) {
+                    setTrainers(trainersRes.data.results ?? trainersRes.data);
                 }
-
-            } catch (error) {
-                console.error("Error fetching child data", error);
+            } catch (err) {
+                if (!cancelled) showToast('Failed to load child profile.', 'error');
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         };
         fetchData();
-    }, [id, user]);
+        return () => { cancelled = true; };
+    }, [id, user, showToast]);
 
-    const handleChange = (e) => {
+    // ── Handlers ──────────────────────────────────────────────────────────
+    const handleChange = useCallback((e) => {
         const { name, value, type, checked } = e.target;
-        const finalValue = type === 'checkbox' ? checked : value;
-        setFormData(prev => ({ ...prev, [name]: finalValue }));
-    };
+        setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    }, []);
 
     const handleSaveProfile = async () => {
+        setIsSaving(true);
         try {
             const payload = { ...formData };
             if (payload.sleep_hours === '') payload.sleep_hours = null;
             if (payload.birth_date === '') payload.birth_date = null;
-            
             await api.patch(`/clients/${id}/`, payload);
-            alert("Child profile updated successfully!");
-        } catch (error) { alert("Error updating profile."); }
+            showToast('Child profile updated successfully!', 'success');
+        } catch (err) {
+            const detail = err.response?.data?.detail || 'Error updating profile.';
+            showToast(detail, 'error');
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleDelete = async () => {
-        if (!confirm("Are you sure you want to delete this child account?")) return;
+        setIsDeleting(true);
         try {
             await api.delete(`/clients/${id}/`);
             navigate('/children');
-        } catch (error) { alert("Error deleting account."); }
+        } catch {
+            showToast('Error deleting account.', 'error');
+            setIsDeleting(false);
+        }
+        setShowDeleteConfirm(false);
     };
 
-    // --- SUBSCRIPTION LOGIC ---
+    // ── Subscription Logic ────────────────────────────────────────────────
+    const refreshSubscriptions = useCallback(async () => {
+        const res = await api.get(`/client-subscriptions/?client_id=${id}`);
+        setSubscriptions(res.data.results ?? res.data);
+    }, [id]);
+
     const handleCreateSub = async (e) => {
         e.preventDefault();
         try {
-            const payload = { 
-                client: id, 
-                plan: newSubData.plan, 
-                start_date: newSubData.start_date, 
-                is_active: true 
+            const payload = {
+                client: id,
+                plan: newSubData.plan,
+                start_date: newSubData.start_date,
+                is_active: true,
             };
-
             if (user?.is_superuser) {
                 if (newSubData.trainer) payload.trainer = newSubData.trainer;
             } else {
                 payload.trainer = user.id;
             }
-
             await api.post('/client-subscriptions/', payload);
-            
-            const subRes = await api.get(`/client-subscriptions/?client_id=${id}`);
-            setSubscriptions(subRes.data.results || subRes.data);
-            
+            await refreshSubscriptions();
             setIsSubModalOpen(false);
             setNewSubData({ plan: '', trainer: '', start_date: new Date().toISOString().split('T')[0] });
-        } catch (error) {
-            alert(error.response?.data?.detail || "Error creating subscription.");
+            showToast('Subscription assigned!', 'success');
+        } catch (err) {
+            showToast(err.response?.data?.detail || 'Error creating subscription.', 'error');
         }
     };
 
     const toggleSubStatus = async (e, sub) => {
         e.stopPropagation();
-        if (!confirm(`Mark as ${sub.is_active ? 'Inactive' : 'Active'}?`)) return;
         try {
             await api.patch(`/client-subscriptions/${sub.id}/`, { is_active: !sub.is_active });
-            const subRes = await api.get(`/client-subscriptions/?client_id=${id}`);
-            setSubscriptions(subRes.data.results || subRes.data);
-        } catch (error) { alert("Error updating status."); }
+            await refreshSubscriptions();
+            showToast(`Subscription marked as ${sub.is_active ? 'inactive' : 'active'}.`, 'success');
+        } catch {
+            showToast('Error updating subscription.', 'error');
+        }
     };
 
     const handleSaveInBody = async (data) => {
         if (!selectedSub) return;
         try {
             await api.patch(`/client-subscriptions/${selectedSub.id}/`, {
-                inbody_height: data.inbody_height, inbody_weight: data.inbody_weight,
-                inbody_muscle: data.inbody_muscle, inbody_fat: data.inbody_fat,
-                inbody_tbw: data.inbody_tbw, inbody_goal: data.inbody_goal,
-                inbody_activity: data.inbody_activity, inbody_notes: data.inbody_notes,
+                inbody_height: data.inbody_height,
+                inbody_weight: data.inbody_weight,
+                inbody_muscle: data.inbody_muscle,
+                inbody_fat: data.inbody_fat,
+                inbody_tbw: data.inbody_tbw,
+                inbody_goal: data.inbody_goal,
+                inbody_activity: data.inbody_activity,
+                inbody_notes: data.inbody_notes,
             });
-            alert("Child Stats Saved Successfully!");
+            showToast('Child stats saved!', 'success');
             setSelectedSub(data);
-        } catch (error) { alert("Error saving data"); }
+        } catch {
+            showToast('Error saving stats.', 'error');
+        }
     };
 
-    if (loading) return <div className="flex justify-center items-center h-screen bg-zinc-50 dark:bg-[#09090b] text-blue-500"><Activity className="animate-spin mr-2" /> Loading...</div>;
+    // ── Loading ───────────────────────────────────────────────────────────
+    if (loading) return <LoadingSkeleton />;
 
     const tabs = [
         { id: 'info', label: 'Personal Info', icon: User },
         { id: 'membership', label: 'Membership', icon: ShieldCheck },
-        { id: 'history', label: 'Training Log', icon: Dumbbell }, 
+        { id: 'history', label: 'Training Log', icon: Dumbbell },
     ];
 
+    // ── Render ─────────────────────────────────────────────────────────────
     return (
-        <div className="min-h-screen bg-zinc-50 dark:bg-[#09090b] text-zinc-900 dark:text-white p-4 lg:p-6 lg:pl-80 pt-20 lg:pt-6 transition-all animate-in fade-in duration-500">
-            
+        <div className="min-h-screen bg-zinc-50 dark:bg-[#09090b] text-zinc-900 dark:text-white p-4 lg:p-6 pt-20 lg:pt-6 transition-all animate-in fade-in duration-500">
+
+            {/* Mobile back button */}
             <div className="lg:hidden flex items-center justify-between mb-6">
-                <button onClick={() => navigate('/children')} className="p-2 bg-zinc-200 dark:bg-zinc-900 rounded-xl hover:bg-zinc-300 dark:hover:bg-zinc-800 transition-colors"><ArrowLeft size={20} /></button>
+                <button
+                    onClick={() => navigate('/children')}
+                    className="p-2 bg-zinc-200 dark:bg-zinc-900 rounded-xl hover:bg-zinc-300 dark:hover:bg-zinc-800 transition-colors"
+                >
+                    <ArrowLeft size={20} />
+                </button>
                 <div className="text-sm font-bold text-zinc-500 dark:text-zinc-400">Child Profile</div>
                 <div className="w-9" />
             </div>
 
             <div className="max-w-7xl mx-auto grid grid-cols-1 xl:grid-cols-12 gap-6 lg:gap-8 items-start">
-                
-                {/* --- LEFT COLUMN: Profile Card --- */}
+
+                {/* ── Left Column: Profile Card ───────────────────────────────────── */}
                 <div className="xl:col-span-4 xl:sticky xl:top-6 space-y-4">
-                    <div className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800/60 rounded-3xl p-6 shadow-xl dark:shadow-2xl relative overflow-hidden group">
-                        <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-blue-100/50 dark:from-blue-900/20 to-transparent" />
-                        
+                    <div className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800/60 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-blue-100/50 dark:from-blue-900/20 to-transparent pointer-events-none" />
+
+                        {/* Avatar */}
                         <div className="relative flex justify-center mb-4 mt-2">
                             <div className="w-32 h-32 rounded-full p-1.5 bg-gradient-to-br from-zinc-200 to-zinc-300 dark:from-zinc-700 dark:to-zinc-900 shadow-xl">
                                 <div className="w-full h-full rounded-full overflow-hidden bg-zinc-100 dark:bg-zinc-950 flex items-center justify-center border-4 border-white dark:border-[#121214]">
@@ -245,104 +313,142 @@ const ChildDetails = () => {
                         </div>
 
                         <div className="space-y-3">
-                            <button onClick={handleSaveProfile} className="w-full bg-zinc-900 dark:bg-white text-white dark:text-black hover:bg-blue-600 dark:hover:bg-blue-500 hover:text-white dark:hover:text-white transition-all duration-300 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-95">
-                                <Save size={18} strokeWidth={2.5} /> Save Changes
+                            <button
+                                onClick={handleSaveProfile}
+                                disabled={isSaving}
+                                className="w-full bg-zinc-900 dark:bg-white text-white dark:text-black hover:bg-blue-600 dark:hover:bg-blue-500 hover:text-white dark:hover:text-white transition-all duration-300 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                                {isSaving ? (
+                                    <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                    </svg>
+                                ) : <Save size={18} strokeWidth={2.5} />}
+                                {isSaving ? 'Saving...' : 'Save Changes'}
                             </button>
-                            <button onClick={handleDelete} className="w-full bg-red-100 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-500 hover:bg-red-500 hover:text-white transition-all duration-300 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95">
+                            <button
+                                onClick={() => setShowDeleteConfirm(true)}
+                                className="w-full bg-red-100 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-500 hover:bg-red-500 hover:text-white transition-all duration-300 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-95"
+                            >
                                 <Trash2 size={18} strokeWidth={2.5} /> Delete Account
                             </button>
                         </div>
                     </div>
                 </div>
 
-                {/* --- RIGHT COLUMN: Tabs Content --- */}
+                {/* ── Right Column: Tabs ──────────────────────────────────────────── */}
                 <div className="xl:col-span-8 space-y-6">
-                    {/* Tabs Navigation */}
-                    <div className="bg-white dark:bg-[#121214] p-1.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 inline-flex w-full overflow-x-auto no-scrollbar shadow-lg">
-                        {tabs.map((tab) => (
+                    {/* Tab Nav */}
+                    <div className="bg-white dark:bg-[#121214] p-1.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 inline-flex w-full overflow-x-auto shadow-lg">
+                        {tabs.map(tab => (
                             <button
                                 key={tab.id}
-                                onClick={() => { setActiveTab(tab.id); }}
-                                className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap ${activeTab === tab.id
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap ${
+                                    activeTab === tab.id
                                         ? 'bg-zinc-900 dark:bg-zinc-800 text-white shadow-md'
                                         : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900'
-                                    }`}
+                                }`}
                             >
                                 <tab.icon size={16} /> {tab.label}
                             </button>
                         ))}
                     </div>
 
-                    <div className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800/60 rounded-[2rem] p-6 md:p-8 min-h-[500px] shadow-lg dark:shadow-2xl relative animate-in slide-in-from-bottom-4 duration-500">
-                        
+                    <div className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800/60 rounded-[2rem] p-6 md:p-8 min-h-[500px] shadow-lg animate-in slide-in-from-bottom-4 duration-500">
                         {activeTab === 'info' && (
-                            <ChildInfoTab 
-                                formData={formData} 
-                                handleChange={handleChange} 
-                                clientAge={calculatedAge} 
-                                user={user} 
+                            <ChildInfoTab
+                                formData={formData}
+                                handleChange={handleChange}
+                                clientAge={calculatedAge}
+                                user={user}
                             />
                         )}
-
                         {activeTab === 'membership' && (
-                             <div className="animate-in fade-in duration-300">
+                            <div className="animate-in fade-in duration-300">
                                 <ChildMembershipTab
-                                    subscriptions={subscriptions} hasActiveSub={hasActiveSub}
-                                    setIsSubModalOpen={setIsSubModalOpen} setSelectedSub={setSelectedSub} selectedSub={selectedSub}
-                                    toggleSubStatus={toggleSubStatus} handleSaveInBody={handleSaveInBody}
+                                    subscriptions={subscriptions}
+                                    hasActiveSub={hasActiveSub}
+                                    setIsSubModalOpen={setIsSubModalOpen}
+                                    setSelectedSub={setSelectedSub}
+                                    selectedSub={selectedSub}
+                                    toggleSubStatus={toggleSubStatus}
+                                    handleSaveInBody={handleSaveInBody}
                                     clientAge={calculatedAge}
                                 />
                             </div>
                         )}
-
-                        {/* NEW HISTORY TAB RENDER */}
                         {activeTab === 'history' && (
                             <ChildHistoryTab clientId={id} />
                         )}
-
                     </div>
                 </div>
             </div>
 
-            {/* --- ASSIGN CHILD PLAN MODAL --- */}
+            {/* ── Assign Plan Modal ───────────────────────────────────────────────── */}
             {isSubModalOpen && (
-                <div className="fixed inset-0 bg-black/60 dark:bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800 w-full max-w-md rounded-3xl p-6 relative shadow-2xl animate-in zoom-in-95 duration-200">
+                <div
+                    className="fixed inset-0 bg-black/60 dark:bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200"
+                    onClick={e => { if (e.target === e.currentTarget) setIsSubModalOpen(false); }}
+                >
+                    <div className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800 w-full max-w-md rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 duration-200">
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-xl font-black text-zinc-900 dark:text-white flex items-center gap-2">
                                 <Baby className="text-blue-500" /> Assign Child Plan
                             </h2>
-                            <button onClick={() => setIsSubModalOpen(false)} className="text-zinc-500 hover:text-zinc-900 dark:hover:text-white"><Activity size={20} /></button>
+                            <button
+                                onClick={() => setIsSubModalOpen(false)}
+                                className="p-2 bg-zinc-200 dark:bg-zinc-800 rounded-full text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors"
+                            >
+                                <X size={18} />
+                            </button>
                         </div>
                         <form onSubmit={handleCreateSub} className="space-y-5">
                             <div>
                                 <label className="text-xs font-bold text-zinc-500 uppercase ml-1 block mb-1.5">Select Child Package</label>
-                                <select required className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white outline-none focus:border-blue-500 transition-colors appearance-none" onChange={(e) => setNewSubData({ ...newSubData, plan: e.target.value })}>
+                                <select
+                                    required
+                                    className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white outline-none focus:border-blue-500 transition-colors appearance-none"
+                                    onChange={e => setNewSubData(prev => ({ ...prev, plan: e.target.value }))}
+                                    value={newSubData.plan}
+                                >
                                     <option value="">-- Choose Package --</option>
-                                    {availablePlans.map(plan => (<option key={plan.id} value={plan.id}>{plan.name} ({plan.duration_days} days)</option>))}
+                                    {availablePlans.map(plan => (
+                                        <option key={plan.id} value={plan.id}>
+                                            {plan.name} ({plan.duration_days} days)
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
-                            
                             {user?.is_superuser && (
                                 <div>
                                     <label className="text-xs font-bold text-zinc-500 uppercase ml-1 block mb-1.5">Assign Trainer</label>
-                                    <select 
-                                        className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white outline-none focus:border-blue-500 transition-colors appearance-none" 
-                                        onChange={(e) => setNewSubData({ ...newSubData, trainer: e.target.value })}
-                                        defaultValue=""
+                                    <select
+                                        className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white outline-none focus:border-blue-500 transition-colors appearance-none"
+                                        onChange={e => setNewSubData(prev => ({ ...prev, trainer: e.target.value }))}
+                                        value={newSubData.trainer}
                                     >
-                                        <option value="">-- Auto (Me) --</option>
-                                        {trainers.map(t => (<option key={t.id} value={t.id}>{t.first_name || t.username}</option>))}
+                                        <option value="">-- Auto (Self) --</option>
+                                        {trainers.map(t => (
+                                            <option key={t.id} value={t.id}>{t.first_name || t.username}</option>
+                                        ))}
                                     </select>
                                 </div>
                             )}
-
                             <div>
                                 <label className="text-xs font-bold text-zinc-500 uppercase ml-1 block mb-1.5">Start Date</label>
-                                <input type="date" required value={newSubData.start_date} onChange={(e) => setNewSubData({ ...newSubData, start_date: e.target.value })} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white outline-none focus:border-blue-500 [color-scheme:light] dark:[color-scheme:dark]" />
+                                <input
+                                    type="date"
+                                    required
+                                    value={newSubData.start_date}
+                                    onChange={e => setNewSubData(prev => ({ ...prev, start_date: e.target.value }))}
+                                    className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white outline-none focus:border-blue-500 [color-scheme:light] dark:[color-scheme:dark]"
+                                />
                             </div>
-                            
-                            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all mt-2">
+                            <button
+                                type="submit"
+                                className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all mt-2"
+                            >
                                 Confirm Assignment
                             </button>
                         </form>
@@ -350,6 +456,42 @@ const ChildDetails = () => {
                 </div>
             )}
 
+            {/* ── Delete Confirmation Modal ───────────────────────────────────────── */}
+            {showDeleteConfirm && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 w-full max-w-sm rounded-3xl p-6 shadow-2xl text-center animate-in zoom-in-95 duration-200">
+                        <div className="w-16 h-16 mx-auto rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center text-red-500 mb-4">
+                            <Trash2 size={28} />
+                        </div>
+                        <h3 className="text-xl font-black text-zinc-900 dark:text-white mb-2">Delete Account?</h3>
+                        <p className="text-sm text-zinc-500 mb-6">
+                            This will permanently delete <span className="font-bold text-zinc-900 dark:text-white">{formData.name}</span>'s account and all associated data. This cannot be undone.
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button
+                                onClick={() => setShowDeleteConfirm(false)}
+                                className="py-3.5 rounded-xl font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDelete}
+                                disabled={isDeleting}
+                                className="py-3.5 rounded-xl font-bold bg-red-500 text-white hover:bg-red-600 transition-all shadow-lg shadow-red-500/20 disabled:opacity-60 flex items-center justify-center gap-2"
+                            >
+                                {isDeleting ? (
+                                    <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                    </svg>
+                                ) : 'Delete'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
         </div>
     );
 };

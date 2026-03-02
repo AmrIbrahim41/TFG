@@ -1,69 +1,86 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Phone, MessageCircle } from 'lucide-react';
 
 const COUNTRY_CODES = [
-    { code: '+20', country: 'EG', flag: '🇪🇬', name: 'Egypt' },
+    { code: '+20',  country: 'EG', flag: '🇪🇬', name: 'Egypt' },
     { code: '+966', country: 'SA', flag: '🇸🇦', name: 'Saudi Arabia' },
     { code: '+971', country: 'AE', flag: '🇦🇪', name: 'UAE' },
     { code: '+965', country: 'KW', flag: '🇰🇼', name: 'Kuwait' },
-    { code: '+1', country: 'US', flag: '🇺🇸', name: 'USA' },
-    { code: '+44', country: 'GB', flag: '🇬🇧', name: 'UK' },
-    // Add more as needed
+    { code: '+973', country: 'BH', flag: '🇧🇭', name: 'Bahrain' },
+    { code: '+974', country: 'QA', flag: '🇶🇦', name: 'Qatar' },
+    { code: '+1',   country: 'US', flag: '🇺🇸', name: 'USA' },
+    { code: '+44',  country: 'GB', flag: '🇬🇧', name: 'UK' },
 ];
 
-const WhatsAppInput = ({ value, onChange, label = "Phone Number" }) => {
-    // Attempt to detect existing country code, default to Egypt (+20)
+// Sort by code length desc so longer codes (e.g. +966) match before shorter (+9)
+const SORTED_CODES = [...COUNTRY_CODES].sort((a, b) => b.code.length - a.code.length);
+
+const WhatsAppInput = ({ value, onChange, label = 'Phone Number' }) => {
     const [selectedCode, setSelectedCode] = useState('+20');
     const [localNumber, setLocalNumber] = useState('');
+    // Track if we already parsed the initial value to avoid infinite loop
+    const parsedRef = useRef(false);
 
+    // Parse existing value once on mount / when value is provided externally
     useEffect(() => {
-        if (!value) return;
-        
-        // simple logic to split existing value if it starts with a known code
-        const found = COUNTRY_CODES.find(c => value.startsWith(c.code));
+        if (!value || parsedRef.current) return;
+        parsedRef.current = true;
+
+        const found = SORTED_CODES.find((c) => value.startsWith(c.code));
         if (found) {
             setSelectedCode(found.code);
-            setLocalNumber(value.replace(found.code, ''));
+            setLocalNumber(value.slice(found.code.length));
         } else {
             setLocalNumber(value);
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [value]);
 
-    const handleNumberChange = (e) => {
-        const num = e.target.value;
-        setLocalNumber(num);
-        // We send the combined string back to the parent form
-        // If you prefer to save only the local number, remove `selectedCode` here
-        onChange({ target: { name: 'phone', value: `${selectedCode}${num}` } });
-    };
+    const emitChange = useCallback(
+        (code, num) => {
+            onChange({ target: { name: 'phone', value: `${code}${num}` } });
+        },
+        [onChange]
+    );
 
-    const handleCodeChange = (e) => {
-        const code = e.target.value;
-        setSelectedCode(code);
-        onChange({ target: { name: 'phone', value: `${code}${localNumber}` } });
-    };
+    const handleNumberChange = useCallback(
+        (e) => {
+            const num = e.target.value;
+            setLocalNumber(num);
+            emitChange(selectedCode, num);
+        },
+        [selectedCode, emitChange]
+    );
 
-    const openWhatsApp = () => {
+    const handleCodeChange = useCallback(
+        (e) => {
+            const code = e.target.value;
+            setSelectedCode(code);
+            emitChange(code, localNumber);
+        },
+        [localNumber, emitChange]
+    );
+
+    const openWhatsApp = useCallback(() => {
         if (!localNumber) return;
-        // Strip '+' and spaces for the URL
         const cleanCode = selectedCode.replace('+', '');
-        const cleanNum = localNumber.replace(/^0+/, ''); // Remove leading zeros for WA
-        const url = `https://wa.me/${cleanCode}${cleanNum}`;
-        window.open(url, '_blank');
-    };
+        const cleanNum = localNumber.replace(/^0+/, '');
+        window.open(`https://wa.me/${cleanCode}${cleanNum}`, '_blank', 'noopener,noreferrer');
+    }, [selectedCode, localNumber]);
 
     return (
         <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-1.5">
                 <Phone size={12} /> {label}
             </label>
-            
+
             <div className="flex gap-2">
                 {/* Country Code Selector */}
-                <div className="relative w-24">
+                <div className="relative w-24 shrink-0">
                     <select
                         value={selectedCode}
                         onChange={handleCodeChange}
+                        aria-label="Country code"
                         className="w-full h-full bg-zinc-950 border border-zinc-800 rounded-xl pl-2 pr-6 py-3.5 text-white appearance-none outline-none focus:border-green-500 transition-all cursor-pointer text-sm font-mono"
                     >
                         {COUNTRY_CODES.map((c) => (
@@ -72,25 +89,29 @@ const WhatsAppInput = ({ value, onChange, label = "Phone Number" }) => {
                             </option>
                         ))}
                     </select>
+                    {/* Custom dropdown arrow */}
+                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-[10px]">▾</span>
                 </div>
 
                 {/* Number Input */}
-                <div className="relative flex-1">
+                <div className="relative flex-1 min-w-0">
                     <input
                         type="tel"
                         value={localNumber}
                         onChange={handleNumberChange}
                         placeholder="10xxxxxxxxx"
+                        inputMode="tel"
                         className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-4 pr-12 py-3.5 text-white transition-all outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500/20 placeholder:text-zinc-700 font-mono"
                     />
-                    
-                    {/* WhatsApp Action Button */}
+
+                    {/* WhatsApp Button */}
                     <button
                         type="button"
                         onClick={openWhatsApp}
                         disabled={!localNumber}
-                        className="absolute right-2 top-2 bottom-2 aspect-square bg-green-500/10 hover:bg-green-500 text-green-500 hover:text-white rounded-lg flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                         title="Open in WhatsApp"
+                        aria-label="Open in WhatsApp"
+                        className="absolute right-2 top-2 bottom-2 aspect-square bg-green-500/10 hover:bg-green-500 text-green-500 hover:text-white rounded-lg flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                         <MessageCircle size={18} />
                     </button>

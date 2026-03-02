@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext, useRef, useCallback, useMemo } from 'react';
 import { 
     Users, Activity, DollarSign, TrendingUp, 
     ChevronDown, Check, UserCheck, Hash, CreditCard, ChevronRight,
-    ArrowUpRight, ArrowDownRight, Wallet
+    ArrowUpRight, ArrowDownRight, Wallet, AlertCircle, RefreshCw
 } from 'lucide-react';
 import { 
     BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell 
@@ -10,9 +10,11 @@ import {
 import { useNavigate } from 'react-router-dom';
 import api from '../api'; 
 import { AuthContext } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext'; // <--- Import Theme Context
+import { useTheme } from '../context/ThemeContext';
 
-// --- 1. MODERN DARK DROPDOWN COMPONENT ---
+// ---------------------------------------------------------------------------
+// Custom Dropdown
+// ---------------------------------------------------------------------------
 const CustomSelect = ({ value, options, onChange }) => {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef(null);
@@ -23,17 +25,19 @@ const CustomSelect = ({ value, options, onChange }) => {
                 setIsOpen(false);
             }
         };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const selectedLabel = options.find(opt => opt.value == value)?.label || value;
+    const selectedLabel = useMemo(
+        () => options.find(opt => opt.value == value)?.label || value,
+        [options, value]
+    );
 
     return (
         <div className="relative z-50" ref={dropdownRef}>
-            <button 
+            <button
                 onClick={() => setIsOpen(!isOpen)}
-                // Button: bg-zinc-50 (not white), border-zinc-300
                 className="flex items-center justify-between min-w-[120px] bg-zinc-50 dark:bg-[#18181b] hover:bg-zinc-200 dark:hover:bg-zinc-800 border border-zinc-300 dark:border-zinc-800 text-zinc-900 dark:text-white text-sm font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm"
             >
                 <span className="truncate mr-2">{selectedLabel}</span>
@@ -41,17 +45,15 @@ const CustomSelect = ({ value, options, onChange }) => {
             </button>
 
             {isOpen && (
-                // Dropdown menu: bg-zinc-50, border-zinc-300
-                <div className="absolute top-full mt-2 w-full min-w-[140px] right-0 bg-zinc-50 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-800 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 max-h-60 overflow-y-auto custom-scrollbar">
+                <div className="absolute top-full mt-2 w-full min-w-[140px] right-0 bg-zinc-50 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-800 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 max-h-60 overflow-y-auto">
                     {options.map((option) => (
-                        <div 
+                        <div
                             key={option.value}
-                            onClick={() => {
-                                onChange(option.value);
-                                setIsOpen(false);
-                            }}
+                            onClick={() => { onChange(option.value); setIsOpen(false); }}
                             className={`px-4 py-3 text-xs font-bold cursor-pointer flex items-center justify-between transition-colors
-                                ${option.value == value ? 'bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-500' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-white'}
+                                ${option.value == value
+                                    ? 'bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-500'
+                                    : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-white'}
                             `}
                         >
                             {option.label}
@@ -64,11 +66,12 @@ const CustomSelect = ({ value, options, onChange }) => {
     );
 };
 
-// --- 2. CUSTOM CHART TOOLTIP ---
+// ---------------------------------------------------------------------------
+// Custom Chart Tooltip
+// ---------------------------------------------------------------------------
 const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
         return (
-            // Tooltip: bg-zinc-50, border-zinc-300
             <div className="bg-zinc-50 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-800 p-3 rounded-xl shadow-2xl">
                 <p className="text-zinc-500 dark:text-zinc-400 text-xs font-bold mb-1">{label}</p>
                 <p className="text-zinc-900 dark:text-white text-lg font-black">
@@ -80,56 +83,147 @@ const CustomTooltip = ({ active, payload, label }) => {
     return null;
 };
 
+// ---------------------------------------------------------------------------
+// Skeleton loaders
+// ---------------------------------------------------------------------------
+const StatCardSkeleton = () => (
+    <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 p-6 rounded-3xl animate-pulse">
+        <div className="flex justify-between items-start mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-zinc-200 dark:bg-zinc-800" />
+            <div className="w-24 h-6 rounded-lg bg-zinc-200 dark:bg-zinc-800" />
+        </div>
+        <div className="w-32 h-5 rounded bg-zinc-200 dark:bg-zinc-800 mb-2" />
+        <div className="w-48 h-10 rounded bg-zinc-200 dark:bg-zinc-800" />
+    </div>
+);
+
+const ClientCardSkeleton = () => (
+    <div className="bg-zinc-50 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-800 p-5 rounded-3xl animate-pulse">
+        <div className="flex items-start gap-4 mb-6">
+            <div className="w-14 h-14 rounded-2xl bg-zinc-200 dark:bg-zinc-800" />
+            <div className="flex-1 space-y-2 pt-1">
+                <div className="w-2/3 h-5 rounded bg-zinc-200 dark:bg-zinc-800" />
+                <div className="w-1/3 h-4 rounded bg-zinc-200 dark:bg-zinc-800" />
+            </div>
+        </div>
+        <div className="h-14 rounded-2xl bg-zinc-200 dark:bg-zinc-800" />
+    </div>
+);
+
+// ---------------------------------------------------------------------------
+// Main Component
+// ---------------------------------------------------------------------------
 const Dashboard = () => {
     const { user } = useContext(AuthContext);
-    const { theme } = useTheme(); // <--- Get current theme
+    const { theme } = useTheme();
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState(null);
+    const [error, setError] = useState(null);
     const navigate = useNavigate();
-    
-    // Date Filters
+
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
-    useEffect(() => {
-        fetchStats();
-    }, [selectedMonth, selectedYear]);
-
-    const fetchStats = async () => {
-        try {
-            setLoading(true);
-            const res = await api.get(`/dashboard/stats/?month=${selectedMonth}&year=${selectedYear}`);
-            setData(res.data);
-        } catch (error) {
-            console.error("Failed to load dashboard stats", error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Dropdown Options
-    const monthOptions = Array.from({length: 12}, (_, i) => ({
+    // Stable dropdown option arrays — only computed once
+    const monthOptions = useMemo(() => Array.from({ length: 12 }, (_, i) => ({
         value: i + 1,
-        label: new Date(0, i).toLocaleString('default', { month: 'long' })
-    }));
+        label: new Date(0, i).toLocaleString('default', { month: 'long' }),
+    })), []);
 
-    const yearOptions = [
+    const yearOptions = useMemo(() => [
         { value: 2024, label: '2024' },
         { value: 2025, label: '2025' },
         { value: 2026, label: '2026' },
-    ];
+    ], []);
 
-    if (loading) return (
-        <div className="min-h-screen bg-zinc-100 dark:bg-[#09090b] flex items-center justify-center transition-colors">
-            <div className="animate-spin w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full"></div>
-        </div>
+    // Current month label for display
+    const currentMonthLabel = useMemo(
+        () => monthOptions[selectedMonth - 1]?.label || '',
+        [monthOptions, selectedMonth]
     );
 
+    // ---------------------------------------------------------------------------
+    // Data Fetching — useCallback + cancelled flag
+    // ---------------------------------------------------------------------------
+    const fetchStats = useCallback(async () => {
+        let cancelled = false;
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await api.get(`/dashboard/stats/?month=${selectedMonth}&year=${selectedYear}`);
+            if (!cancelled) setData(res.data);
+        } catch (err) {
+            if (!cancelled) {
+                console.error('Failed to load dashboard stats', err);
+                setError('Failed to load dashboard data. Please try again.');
+            }
+        } finally {
+            if (!cancelled) setLoading(false);
+        }
+        return () => { cancelled = true; };
+    }, [selectedMonth, selectedYear]);
+
+    useEffect(() => {
+        const cleanup = fetchStats();
+        return () => { if (cleanup && typeof cleanup.then === 'function') cleanup.then(fn => fn && fn()); };
+    }, [fetchStats]);
+
+    // ---------------------------------------------------------------------------
+    // Progress bar helper — backend caps at 100%, but we clamp defensively
+    // ---------------------------------------------------------------------------
+    const clampedProgress = useCallback((val) => Math.min(100, Math.max(0, Number(val) || 0)), []);
+
+    // ---------------------------------------------------------------------------
+    // Render
+    // ---------------------------------------------------------------------------
+    if (loading) {
+        return (
+            <div className="p-6 pt-20 lg:p-10 min-h-screen bg-zinc-100 dark:bg-[#09090b] text-zinc-900 dark:text-white transition-colors">
+                <div className="max-w-7xl mx-auto space-y-8">
+                    {/* Header skeleton */}
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                        <div className="space-y-2">
+                            <div className="w-48 h-8 rounded-xl bg-zinc-200 dark:bg-zinc-800 animate-pulse" />
+                            <div className="w-64 h-5 rounded-lg bg-zinc-200 dark:bg-zinc-800 animate-pulse" />
+                        </div>
+                        <div className="flex gap-3">
+                            <div className="w-28 h-10 rounded-xl bg-zinc-200 dark:bg-zinc-800 animate-pulse" />
+                            <div className="w-20 h-10 rounded-xl bg-zinc-200 dark:bg-zinc-800 animate-pulse" />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <StatCardSkeleton /> <StatCardSkeleton />
+                    </div>
+                    <div className="h-[380px] bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 rounded-3xl animate-pulse" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        <ClientCardSkeleton /> <ClientCardSkeleton /> <ClientCardSkeleton />
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="p-6 pt-20 lg:p-10 min-h-screen bg-zinc-100 dark:bg-[#09090b] flex items-center justify-center transition-colors">
+                <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 rounded-3xl p-10 flex flex-col items-center gap-4 text-center max-w-sm">
+                    <AlertCircle size={40} className="text-red-500" />
+                    <p className="text-zinc-700 dark:text-zinc-300 font-medium">{error}</p>
+                    <button
+                        onClick={fetchStats}
+                        className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white font-bold px-6 py-3 rounded-xl transition-all"
+                    >
+                        <RefreshCw size={16} /> Retry
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     return (
-        // Main Background: bg-zinc-100
         <div className="p-6 pt-20 lg:p-10 min-h-screen bg-zinc-100 dark:bg-[#09090b] text-zinc-900 dark:text-white animate-in fade-in duration-300 transition-colors">
             <div className="max-w-7xl mx-auto space-y-8">
-                
+
                 {/* Header & Filters */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                     <div>
@@ -139,35 +233,25 @@ const Dashboard = () => {
                         </p>
                     </div>
 
-                    {/* Admin Controls */}
                     {(data?.role === 'admin' || data?.role === 'trainer') && (
                         <div className="flex items-center gap-3">
-                            <CustomSelect 
-                                value={selectedMonth} 
-                                options={monthOptions} 
-                                onChange={setSelectedMonth} 
-                            />
-                            <CustomSelect 
-                                value={selectedYear} 
-                                options={yearOptions} 
-                                onChange={setSelectedYear} 
-                            />
+                            <CustomSelect value={selectedMonth} options={monthOptions} onChange={setSelectedMonth} />
+                            <CustomSelect value={selectedYear} options={yearOptions} onChange={setSelectedYear} />
                         </div>
                     )}
                 </div>
 
-                {/* --- VIEW 1: ADMIN --- */}
+                {/* ── ADMIN VIEW ──────────────────────────────────────────────── */}
                 {data?.role === 'admin' && (
                     <div className="space-y-8">
                         {/* Financial Stats */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Card: bg-zinc-50, border-zinc-300 */}
                             <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 p-6 rounded-3xl relative overflow-hidden group hover:border-zinc-400 dark:hover:border-zinc-700 transition-colors shadow-sm">
-                                <div className="absolute right-0 top-0 p-32 bg-orange-500/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
+                                <div className="absolute right-0 top-0 p-32 bg-orange-500/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
                                 <div className="flex justify-between items-start mb-4">
-                                    <div className="p-3 bg-zinc-200 dark:bg-zinc-900 rounded-2xl text-zinc-500 dark:text-zinc-400"><TrendingUp size={24}/></div>
+                                    <div className="p-3 bg-zinc-200 dark:bg-zinc-900 rounded-2xl text-zinc-500 dark:text-zinc-400"><TrendingUp size={24} /></div>
                                     <span className="text-[10px] font-bold uppercase text-zinc-500 tracking-wider bg-zinc-200 dark:bg-zinc-900/50 px-2 py-1 rounded-lg">
-                                        {monthOptions[selectedMonth-1].label} Sales
+                                        {currentMonthLabel} Sales
                                     </span>
                                 </div>
                                 <h3 className="text-zinc-500 text-sm font-medium">Total Sales</h3>
@@ -177,11 +261,11 @@ const Dashboard = () => {
                             </div>
 
                             <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 p-6 rounded-3xl relative overflow-hidden group hover:border-zinc-400 dark:hover:border-zinc-700 transition-colors shadow-sm">
-                                <div className="absolute right-0 top-0 p-32 bg-green-500/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
+                                <div className="absolute right-0 top-0 p-32 bg-green-500/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
                                 <div className="flex justify-between items-start mb-4">
-                                    <div className="p-3 bg-zinc-200 dark:bg-zinc-900 rounded-2xl text-green-600 dark:text-green-500"><DollarSign size={24}/></div>
+                                    <div className="p-3 bg-zinc-200 dark:bg-zinc-900 rounded-2xl text-green-600 dark:text-green-500"><DollarSign size={24} /></div>
                                     <span className="text-[10px] font-bold uppercase text-zinc-500 tracking-wider bg-zinc-200 dark:bg-zinc-900/50 px-2 py-1 rounded-lg">
-                                        {monthOptions[selectedMonth-1].label} Revenue
+                                        {currentMonthLabel} Revenue
                                     </span>
                                 </div>
                                 <h3 className="text-zinc-500 text-sm font-medium">Total Revenue</h3>
@@ -194,30 +278,30 @@ const Dashboard = () => {
                         {/* Revenue Chart */}
                         <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 p-6 rounded-3xl shadow-sm">
                             <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-zinc-900 dark:text-white">
-                                <Activity size={20} className="text-orange-500"/> Revenue Overview ({selectedYear})
+                                <Activity size={20} className="text-orange-500" /> Revenue Overview ({selectedYear})
                             </h3>
                             <div className="h-[300px] w-full">
                                 {data.financials.chart_data.length === 0 ? (
                                     <div className="w-full h-full flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-600 gap-2">
-                                        <Activity size={32} className="opacity-20"/>
+                                        <Activity size={32} className="opacity-20" />
                                         <span className="text-sm font-medium">No sales data found.</span>
                                     </div>
                                 ) : (
                                     <ResponsiveContainer width="100%" height="100%">
                                         <BarChart data={data.financials.chart_data} barSize={40}>
-                                            <XAxis 
-                                                dataKey="name" 
-                                                axisLine={false} 
-                                                tickLine={false} 
-                                                tick={{fill: theme === 'dark' ? '#52525b' : '#a1a1aa', fontSize: 12, fontWeight: 'bold'}} 
+                                            <XAxis
+                                                dataKey="name"
+                                                axisLine={false}
+                                                tickLine={false}
+                                                tick={{ fill: theme === 'dark' ? '#52525b' : '#a1a1aa', fontSize: 12, fontWeight: 'bold' }}
                                                 dy={10}
                                             />
-                                            <Tooltip content={<CustomTooltip />} cursor={{fill: theme === 'dark' ? '#27272a' : '#f4f4f5', opacity: 0.4}} />
+                                            <Tooltip content={<CustomTooltip />} cursor={{ fill: theme === 'dark' ? '#27272a' : '#f4f4f5', opacity: 0.4 }} />
                                             <Bar dataKey="revenue" radius={[6, 6, 6, 6]}>
                                                 {data.financials.chart_data.map((entry, index) => (
-                                                    <Cell 
-                                                        key={`cell-${index}`} 
-                                                        fill={entry.revenue > 0 ? '#ea580c' : (theme === 'dark' ? '#27272a' : '#d4d4d8')} 
+                                                    <Cell
+                                                        key={`cell-${index}`}
+                                                        fill={entry.revenue > 0 ? '#ea580c' : (theme === 'dark' ? '#27272a' : '#d4d4d8')}
                                                     />
                                                 ))}
                                             </Bar>
@@ -230,42 +314,36 @@ const Dashboard = () => {
                         {/* Trainers Overview */}
                         <div className="space-y-4">
                             <h3 className="text-lg font-bold flex items-center gap-2 text-zinc-900 dark:text-white">
-                                <Users size={20} className="text-blue-500"/> Coach Performance
+                                <Users size={20} className="text-blue-500" /> Coach Performance
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {data.trainers_overview.map(trainer => (
                                     <div key={trainer.id} className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 p-5 rounded-2xl flex flex-col gap-4 hover:border-zinc-400 dark:hover:border-zinc-700 transition-colors group shadow-sm">
                                         <div className="flex items-center gap-3 border-b border-zinc-200 dark:border-zinc-800 pb-4">
-                                            <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-white font-bold group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 transition-colors">
+                                            <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-white font-bold group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 transition-colors shrink-0">
                                                 {trainer.name.charAt(0)}
                                             </div>
-                                            <div>
-                                                <h4 className="font-bold text-zinc-900 dark:text-white">{trainer.name}</h4>
+                                            <div className="min-w-0">
+                                                <h4 className="font-bold text-zinc-900 dark:text-white truncate">{trainer.name}</h4>
                                                 <span className="text-xs text-zinc-500">Coach</span>
                                             </div>
                                         </div>
-                                        
-                                        {/* --- UPDATED: 2 Column Grid for Stats --- */}
                                         <div className="grid grid-cols-2 gap-2">
-                                            {/* Left: Active Packages */}
                                             <div className="bg-green-500/5 border border-green-500/10 p-3 rounded-xl flex flex-col justify-center">
                                                 <div className="flex justify-between items-start mb-1">
                                                     <div className="text-[10px] text-green-600 dark:text-green-500 font-bold uppercase">Active</div>
-                                                    <UserCheck size={14} className="text-green-600 dark:text-green-500 opacity-50"/>
+                                                    <UserCheck size={14} className="text-green-600 dark:text-green-500 opacity-50" />
                                                 </div>
                                                 <div className="text-xl font-black text-zinc-900 dark:text-white">{trainer.active_packages}</div>
                                             </div>
-
-                                            {/* Right: NET Revenue (Adjusted) */}
                                             <div className="bg-blue-500/5 border border-blue-500/10 p-3 rounded-xl flex flex-col justify-center">
                                                 <div className="flex justify-between items-start mb-1">
                                                     <div className="text-[10px] text-blue-600 dark:text-blue-500 font-bold uppercase">Net Earn</div>
-                                                    <Wallet size={14} className="text-blue-600 dark:text-blue-500 opacity-50"/>
+                                                    <Wallet size={14} className="text-blue-600 dark:text-blue-500 opacity-50" />
                                                 </div>
                                                 <div className="text-xl font-black text-zinc-900 dark:text-white">
                                                     ${Number(trainer.net_revenue || 0).toLocaleString()}
                                                 </div>
-                                                {/* Show adjustment indicator if exists */}
                                                 {Math.abs(trainer.adjustments) > 0 && (
                                                     <div className={`text-[10px] font-bold mt-1 ${trainer.adjustments > 0 ? 'text-green-600 dark:text-green-500' : 'text-red-600 dark:text-red-500'}`}>
                                                         {trainer.adjustments > 0 ? '+' : ''}{Number(trainer.adjustments).toLocaleString()} adj.
@@ -280,24 +358,25 @@ const Dashboard = () => {
                     </div>
                 )}
 
-                {/* --- VIEW 2: TRAINER (MODERN REDESIGN + NEW ACCOUNTING) --- */}
+                {/* ── TRAINER VIEW ────────────────────────────────────────────── */}
                 {data?.role === 'trainer' && (
                     <div className="space-y-8 animate-in fade-in duration-500">
                         {/* Summary Cards */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Active Clients Card */}
+                            {/* Active Clients */}
                             <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 p-6 rounded-3xl flex flex-col justify-center items-center gap-2 group hover:border-green-500/50 transition-colors relative overflow-hidden h-[240px] shadow-sm">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 rounded-full -mr-10 -mt-10 blur-2xl"></div>
-                                <div className="p-4 bg-green-500/10 text-green-600 dark:text-green-500 rounded-2xl group-hover:scale-110 transition-transform"><UserCheck size={28} /></div>
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 rounded-full -mr-10 -mt-10 blur-2xl" />
+                                <div className="p-4 bg-green-500/10 text-green-600 dark:text-green-500 rounded-2xl group-hover:scale-110 transition-transform">
+                                    <UserCheck size={28} />
+                                </div>
                                 <div className="text-4xl font-black text-zinc-900 dark:text-white mt-2 z-10">{data.summary.active_clients}</div>
                                 <div className="text-xs font-bold text-zinc-500 uppercase tracking-widest z-10">Active Clients</div>
                             </div>
-                            
-                            {/* NEW: Financial Breakdown Card */}
+
+                            {/* Financial Breakdown */}
                             <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 p-6 rounded-3xl flex flex-col justify-between group hover:border-orange-500/50 transition-colors relative overflow-hidden h-[240px] shadow-sm">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-full -mr-10 -mt-10 blur-2xl"></div>
-                                
-                                {/* Header */}
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-full -mr-10 -mt-10 blur-2xl" />
+
                                 <div className="flex items-center justify-between z-10">
                                     <div className="flex items-center gap-3">
                                         <div className="p-3 bg-zinc-200 dark:bg-zinc-800 text-orange-600 dark:text-orange-500 rounded-2xl group-hover:bg-orange-100 dark:group-hover:bg-orange-500/10 transition-all">
@@ -305,35 +384,30 @@ const Dashboard = () => {
                                         </div>
                                         <div>
                                             <div className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Net Revenue</div>
-                                            <div className="text-sm font-medium text-zinc-400">{monthOptions[selectedMonth-1].label} {selectedYear}</div>
+                                            <div className="text-sm font-medium text-zinc-400">{currentMonthLabel} {selectedYear}</div>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Big Number */}
                                 <div className="z-10 mt-2">
                                     <div className="text-5xl font-black text-zinc-900 dark:text-white tracking-tight">
                                         ${Number(data.summary.net_revenue || 0).toLocaleString()}
                                     </div>
                                 </div>
 
-                                {/* Breakdown Grid */}
                                 <div className="grid grid-cols-2 gap-2 mt-4 z-10">
-                                    {/* Covered For Others (Gains) */}
                                     <div className="bg-zinc-100 dark:bg-zinc-900/50 rounded-xl p-2 border border-zinc-300 dark:border-zinc-800">
                                         <div className="flex items-center gap-1.5 mb-1">
-                                            <ArrowUpRight size={12} className="text-green-600 dark:text-green-500"/>
+                                            <ArrowUpRight size={12} className="text-green-600 dark:text-green-500" />
                                             <span className="text-[10px] font-bold text-zinc-500 uppercase">Covered</span>
                                         </div>
                                         <div className="text-green-600 dark:text-green-500 font-bold">
                                             +${Number(data.summary.additions || 0).toLocaleString()}
                                         </div>
                                     </div>
-
-                                    {/* Covered By Others (Losses) */}
                                     <div className="bg-zinc-100 dark:bg-zinc-900/50 rounded-xl p-2 border border-zinc-300 dark:border-zinc-800">
                                         <div className="flex items-center gap-1.5 mb-1">
-                                            <ArrowDownRight size={12} className="text-red-600 dark:text-red-500"/>
+                                            <ArrowDownRight size={12} className="text-red-600 dark:text-red-500" />
                                             <span className="text-[10px] font-bold text-zinc-500 uppercase">Deducted</span>
                                         </div>
                                         <div className="text-red-600 dark:text-red-500 font-bold">
@@ -344,11 +418,11 @@ const Dashboard = () => {
                             </div>
                         </div>
 
-                        {/* --- NEW MODERN CARD GRID (REPLACES TABLE) --- */}
+                        {/* Client Cards Grid */}
                         <div>
                             <div className="flex items-center justify-between mb-6">
                                 <h3 className="font-bold text-xl text-zinc-900 dark:text-white flex items-center gap-2">
-                                    <Users className="text-orange-500"/> My Active Clients
+                                    <Users className="text-orange-500" /> My Active Clients
                                 </h3>
                                 <span className="bg-zinc-50 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 text-xs font-bold px-4 py-2 rounded-xl">
                                     {data.clients.length} Active
@@ -358,73 +432,95 @@ const Dashboard = () => {
                             {data.clients.length === 0 ? (
                                 <div className="bg-zinc-50 dark:bg-[#121214] border border-dashed border-zinc-300 dark:border-zinc-800 rounded-3xl p-16 flex flex-col items-center justify-center text-center gap-4 shadow-sm">
                                     <div className="w-16 h-16 bg-zinc-200 dark:bg-zinc-900 rounded-full flex items-center justify-center">
-                                        <Users size={32} className="text-zinc-400 dark:text-zinc-600 opacity-50"/>
+                                        <Users size={32} className="text-zinc-400 dark:text-zinc-600 opacity-50" />
                                     </div>
                                     <div className="space-y-1">
                                         <h4 className="text-zinc-900 dark:text-white font-bold text-lg">No Active Clients</h4>
                                         <p className="text-zinc-500 text-sm max-w-xs mx-auto">
-                                            Clients assigned to you with an active subscription will appear here nicely.
+                                            Clients assigned to you with an active subscription will appear here.
                                         </p>
                                     </div>
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                                    {data.clients.map((client, i) => (
-                                        <div 
-                                            key={i} 
-                                            onClick={() => navigate(`/clients/${client.id}`)}
-                                            className="bg-zinc-50 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-800 hover:border-orange-500/50 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 p-5 rounded-3xl transition-all cursor-pointer group relative overflow-hidden flex flex-col justify-between h-full shadow-sm"
-                                        >
-                                            {/* Top: Avatar & ID */}
-                                            <div className="flex items-start justify-between mb-6">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="w-14 h-14 rounded-2xl bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center overflow-hidden border-2 border-zinc-300 dark:border-zinc-700/50 group-hover:border-orange-500 transition-colors shadow-lg">
-                                                        {client.photo ? (
-                                                            <img src={client.photo} alt={client.name} className="w-full h-full object-cover"/>
-                                                        ) : (
-                                                            <span className="text-lg font-bold text-zinc-400">{client.name.charAt(0)}</span>
-                                                        )}
+                                    {data.clients.map((client, i) => {
+                                        // Backend caps progress at 100% but we clamp defensively
+                                        const progress = clampedProgress(client.progress);
+                                        const isComplete = progress >= 100;
+                                        return (
+                                            <div
+                                                key={client.id || i}
+                                                onClick={() => navigate(`/clients/${client.id}`)}
+                                                className="bg-zinc-50 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-800 hover:border-orange-500/50 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 p-5 rounded-3xl transition-all cursor-pointer group relative overflow-hidden flex flex-col justify-between h-full shadow-sm"
+                                            >
+                                                {/* Active indicator strip */}
+                                                <div className="absolute left-0 top-6 bottom-6 w-1 rounded-r-full bg-green-500/20 group-hover:bg-green-500 transition-colors" />
+
+                                                {/* Top: Avatar & ID */}
+                                                <div className="flex items-start justify-between mb-4">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="w-14 h-14 rounded-2xl bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center overflow-hidden border-2 border-zinc-300 dark:border-zinc-700/50 group-hover:border-orange-500 transition-colors shadow-lg shrink-0">
+                                                            {/* Backend returns absolute URI for client photo */}
+                                                            {client.photo ? (
+                                                                <img src={client.photo} alt={client.name} className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <span className="text-lg font-bold text-zinc-400">{client.name.charAt(0)}</span>
+                                                            )}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <h4 className="font-bold text-zinc-900 dark:text-white text-base leading-tight group-hover:text-orange-600 dark:group-hover:text-orange-500 transition-colors truncate">
+                                                                {client.name}
+                                                            </h4>
+                                                            <div className="flex items-center gap-1.5 mt-1">
+                                                                <span className="bg-zinc-200 dark:bg-zinc-900 text-zinc-500 text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 border border-zinc-300 dark:border-zinc-800">
+                                                                    <Hash size={10} /> {client.manual_id || 'N/A'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
                                                     </div>
+                                                    <div className="p-2 bg-zinc-200 dark:bg-zinc-900 rounded-full text-zinc-500 dark:text-zinc-600 group-hover:text-orange-600 dark:group-hover:text-orange-500 group-hover:bg-orange-100 dark:group-hover:bg-orange-500/10 transition-colors shrink-0">
+                                                        <ChevronRight size={16} />
+                                                    </div>
+                                                </div>
+
+                                                {/* Progress Bar */}
+                                                <div className="mb-4">
+                                                    <div className="flex justify-between items-center mb-1.5">
+                                                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Progress</span>
+                                                        <span className={`text-[10px] font-black ${isComplete ? 'text-green-600 dark:text-green-500' : 'text-zinc-700 dark:text-zinc-300'}`}>
+                                                            {isComplete ? '✓ Complete' : `${progress}%`}
+                                                        </span>
+                                                    </div>
+                                                    <div className="h-1.5 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+                                                        <div
+                                                            className={`h-full rounded-full transition-all duration-500 ${isComplete ? 'bg-green-500' : 'bg-orange-500'}`}
+                                                            style={{ width: `${progress}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Bottom: Info Grid */}
+                                                <div className="grid grid-cols-2 gap-3 bg-zinc-100 dark:bg-zinc-900/50 p-3 rounded-2xl border border-zinc-300 dark:border-zinc-800/50">
                                                     <div>
-                                                        <h4 className="font-bold text-zinc-900 dark:text-white text-lg leading-tight group-hover:text-orange-600 dark:group-hover:text-orange-500 transition-colors">
-                                                            {client.name}
-                                                        </h4>
-                                                        <div className="flex items-center gap-1.5 mt-1">
-                                                            <span className="bg-zinc-200 dark:bg-zinc-900 text-zinc-500 text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 border border-zinc-300 dark:border-zinc-800">
-                                                                <Hash size={10}/> {client.manual_id || 'N/A'}
-                                                            </span>
+                                                        <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mb-1 flex items-center gap-1">
+                                                            <CreditCard size={10} /> Plan
+                                                        </div>
+                                                        <div className="text-zinc-700 dark:text-zinc-200 text-xs font-bold truncate" title={client.plan}>
+                                                            {client.plan}
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right border-l border-zinc-300 dark:border-zinc-800 pl-3">
+                                                        <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mb-1 flex items-center justify-end gap-1">
+                                                            <Activity size={10} /> Sessions
+                                                        </div>
+                                                        <div className="text-zinc-900 dark:text-white text-xs font-bold">
+                                                            {client.sessions_used ?? 0} / {client.total_sessions ?? '∞'}
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="p-2 bg-zinc-200 dark:bg-zinc-900 rounded-full text-zinc-500 dark:text-zinc-600 group-hover:text-orange-600 dark:group-hover:text-orange-500 group-hover:bg-orange-100 dark:group-hover:bg-orange-500/10 transition-colors">
-                                                    <ChevronRight size={16} />
-                                                </div>
                                             </div>
-
-                                            {/* Bottom: Info Grid */}
-                                            <div className="grid grid-cols-2 gap-3 bg-zinc-100 dark:bg-zinc-900/50 p-3 rounded-2xl border border-zinc-300 dark:border-zinc-800/50">
-                                                <div>
-                                                    <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mb-1 flex items-center gap-1">
-                                                        <CreditCard size={10} /> Plan
-                                                    </div>
-                                                    <div className="text-zinc-700 dark:text-zinc-200 text-xs font-bold truncate" title={client.plan}>
-                                                        {client.plan}
-                                                    </div>
-                                                </div>
-                                                <div className="text-right border-l border-zinc-300 dark:border-zinc-800 pl-3">
-                                                    <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mb-1 flex items-center justify-end gap-1">
-                                                        <Activity size={10} /> Progress
-                                                    </div>
-                                                    <div className="text-zinc-900 dark:text-white text-xs font-bold">
-                                                        {client.progress || 0}%
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Active Indicator Strip */}
-                                            <div className="absolute left-0 top-6 bottom-6 w-1 rounded-r-full bg-green-500/20 group-hover:bg-green-500 transition-colors"></div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>

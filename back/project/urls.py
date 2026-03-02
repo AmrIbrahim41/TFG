@@ -8,6 +8,7 @@ urlpatterns = [
     path('api/', include('clients.urls')), # This makes your API http://localhost:8000/api/clients/
 ]
 
-# This allows images to load
+# This allows images and static files to load correctly in development mode
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

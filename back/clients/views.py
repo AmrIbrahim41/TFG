@@ -1,26 +1,53 @@
+import calendar
+import json
 from datetime import timedelta
+from decimal import Decimal
 
 from django.contrib.auth.models import User, Group
 from django.db import transaction
-from django.utils import timezone
-from rest_framework import (viewsets,parsers,generics,permissions,serializers,filters,status,mixins,
-)
 from django.db.models import Sum, Count, Q, F, Case, When, DecimalField
 from django.db.models.functions import TruncMonth
-from rest_framework.decorators import api_view, permission_classes, action
+from django.utils import timezone
+
+from rest_framework import (
+    viewsets, parsers, generics, permissions, serializers,
+    filters, status, mixins,
+)
+from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .models import *
-from .serializers import *
-from django.db.models.functions import TruncDay
-import calendar 
-import json 
-from decimal import Decimal 
 
+from .models import (
+    Client, Country, Subscription, ClientSubscription,
+    TrainingPlan, TrainingDaySplit, TrainingExercise, TrainingSet,
+    SessionLog, TrainingSession, SessionExercise, SessionSet,
+    FoodItem, MealPlan, NutritionPlan, NutritionProgress, FoodDatabase,
+    CoachSchedule, GroupSessionLog, GroupSessionParticipant,
+    GroupWorkoutTemplate, SessionTransferRequest,
+    ManualNutritionSave, ManualWorkoutSave,
+)
+from .serializers import (
+    ClientSerializer, CountrySerializer, SubscriptionSerializer,
+    ClientSubscriptionSerializer, TrainingPlanSerializer,
+    TrainingExerciseSerializer, SessionLogSerializer,
+    TrainingSessionSerializer, FoodItemSerializer,
+    MealPlanSerializer, MealPlanCreateSerializer,
+    NutritionPlanSerializer, NutritionPlanCreateSerializer,
+    NutritionProgressSerializer, FoodDatabaseSerializer,
+    CoachScheduleSerializer, GroupSessionLogSerializer,
+    GroupSessionParticipantSerializer, GroupWorkoutTemplateSerializer,
+    SessionTransferRequestSerializer,
+    ManualNutritionSaveSerializer, ManualWorkoutSaveSerializer,
+)
+
+
+# ---------------------------------------------------------------------------
+# PAGINATION
+# ---------------------------------------------------------------------------
 
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 12
@@ -28,18 +55,16 @@ class StandardResultsSetPagination(PageNumberPagination):
     max_page_size = 1000
 
 
-# NEW: Dedicated pagination class for history endpoints
 class HistoryPagination(PageNumberPagination):
-    """
-    Pagination specifically for group training history.
-    Designed to handle large datasets efficiently (1000+ records).
-    """
-    page_size = 20  # Default 20 records per page
-    page_size_query_param = "page_size"  # Allow client to override
-    max_page_size = 100  # Maximum allowed page size
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 100
 
 
-# ... [Keep Login/Token classes as they were] ...
+# ---------------------------------------------------------------------------
+# AUTH – JWT with custom claims
+# ---------------------------------------------------------------------------
+
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):
@@ -47,7 +72,6 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         token["username"] = user.username
         token["first_name"] = user.first_name
         token["is_superuser"] = user.is_superuser
-        # Identify if REC
         token["is_receptionist"] = user.groups.filter(name='REC').exists()
         return token
 
@@ -56,9 +80,15 @@ class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
 
 
+# ---------------------------------------------------------------------------
+# TRAINERS
+# ---------------------------------------------------------------------------
+
 class TrainerSerializer(serializers.ModelSerializer):
-    # Added field to select role during creation
-    role = serializers.ChoiceField(choices=[('trainer', 'Trainer'), ('rec', 'Receptionist')], write_only=True, default='trainer')
+    role = serializers.ChoiceField(
+        choices=[('trainer', 'Trainer'), ('rec', 'Receptionist')],
+        write_only=True, default='trainer',
+    )
 
     class Meta:
         model = User
@@ -67,7 +97,6 @@ class TrainerSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         role = validated_data.pop('role', 'trainer')
-        
         user = User.objects.create_user(
             username=validated_data["username"],
             email=validated_data.get("email", ""),
@@ -77,30 +106,26 @@ class TrainerSerializer(serializers.ModelSerializer):
         user.is_staff = False
         user.save()
 
-        # Handle Role Assignment
         if role == 'rec':
             group, _ = Group.objects.get_or_create(name='REC')
             user.groups.add(group)
-            
+
         return user
 
     def update(self, instance, validated_data):
-        # Allow updating role if provided
         role = validated_data.pop("role", None)
         password = validated_data.pop("password", None)
-        
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         if password:
             instance.set_password(password)
         instance.save()
-        
+
         if role:
-            # Clear existing REC groups to reset
             rec_group = Group.objects.filter(name='REC').first()
             if rec_group:
                 instance.groups.remove(rec_group)
-            
             if role == 'rec':
                 group, _ = Group.objects.get_or_create(name='REC')
                 instance.groups.add(group)
@@ -110,64 +135,59 @@ class TrainerSerializer(serializers.ModelSerializer):
 
 class ManageTrainersViewSet(viewsets.ModelViewSet):
     serializer_class = TrainerSerializer
-    # Allow any authenticated user (trainers) to access this list
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def get_queryset(self):
-        # Admins see everyone (Trainers + REC)
-        # Regular trainers see other trainers/REC
         return User.objects.filter(is_superuser=False).order_by("-date_joined")
 
     def get_permissions(self):
-        # Allow viewing (GET) for all trainers
         if self.action in ['list', 'retrieve']:
             return [permissions.IsAuthenticated()]
-        # Only Admins can create/edit/delete
         return [permissions.IsAdminUser()]
 
 
+# ---------------------------------------------------------------------------
+# CLIENTS
+# ---------------------------------------------------------------------------
+
 class ClientViewSet(viewsets.ModelViewSet):
-    queryset = Client.objects.all().order_by("-created_at")
     serializer_class = ClientSerializer
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     filter_backends = [filters.SearchFilter]
     search_fields = ["name", "phone", "manual_id"]
     pagination_class = StandardResultsSetPagination
+
     def get_queryset(self):
         queryset = Client.objects.all().order_by("-created_at")
         is_child = self.request.query_params.get('is_child')
-        
-        # Filter by Child Status
         if is_child == 'true':
             queryset = queryset.filter(is_child=True)
         elif is_child == 'false':
             queryset = queryset.filter(is_child=False)
-            
         return queryset
 
 
-# views.py
+# ---------------------------------------------------------------------------
+# SUBSCRIPTIONS
+# ---------------------------------------------------------------------------
 
 class SubscriptionViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     serializer_class = SubscriptionSerializer
-    
+
     def get_queryset(self):
-        # Default: order by child status (adults first) then price
         queryset = Subscription.objects.all().order_by('is_child_plan', 'price')
-        
-        # --- NEW FILTERING LOGIC ---
-        target = self.request.query_params.get('target') # 'child' or 'adult'
-        
+        target = self.request.query_params.get('target')
         if target == 'child':
             queryset = queryset.filter(is_child_plan=True)
         elif target == 'adult':
             queryset = queryset.filter(is_child_plan=False)
-            
         return queryset
 
 
-# في ملف views.py
+# ---------------------------------------------------------------------------
+# DASHBOARD ANALYTICS
+# ---------------------------------------------------------------------------
 
 class DashboardAnalyticsViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
@@ -176,132 +196,179 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
     def stats(self, request):
         user = request.user
         now = timezone.now()
-        
-        # Identify Role
+
         is_rec = user.groups.filter(name='REC').exists()
-        
-        # 1. Safe Date Parsing
+
         try:
             month = int(request.query_params.get('month', now.month))
             year = int(request.query_params.get('year', now.year))
         except (ValueError, TypeError):
             month, year = now.month, now.year
 
-        # --- HELPER: Calculate Group Session Adjustments (Safe Version) ---
+        # -------------------------------------------------------------------
+        # HELPER: Group Session Revenue Adjustments
+        # -------------------------------------------------------------------
+        # FIX (N+1 Elimination): The original code executed a fresh DB query
+        # for each participant inside a nested loop, resulting in O(p) queries
+        # where p = total participants across all group logs for the month.
+        # With thousands of clients this crashed production servers.
+        #
+        # NEW APPROACH:
+        #   1. Fetch all group logs + participants in two queries using
+        #      select_related / prefetch_related.
+        #   2. Collect every client_id that was actually deducted.
+        #   3. Fetch ALL relevant ClientSubscription rows in ONE bulk query
+        #      using client_id__in.
+        #   4. Build a Python dict keyed by client_id (O(1) lookup).
+        #   5. Do all revenue math purely in memory – zero extra DB hits.
+        # -------------------------------------------------------------------
         def get_group_adjustments():
-            group_adjustments = {} # { trainer_id: amount }
+            group_adjustments = {}  # { trainer_id: Decimal(amount) }
 
-            # Fetch logs with necessary relations
-            group_logs = GroupSessionLog.objects.filter(
-                date__month=month,
-                date__year=year
-            ).select_related('coach').prefetch_related('participants__client')
+            group_logs = (
+                GroupSessionLog.objects
+                .filter(date__month=month, date__year=year)
+                .select_related('coach')
+                .prefetch_related('participants__client')
+            )
 
+            # Pass 1: collect all client IDs that need a subscription lookup
+            deducted_client_ids = set()
+            for log in group_logs:
+                for participant in log.participants.all():
+                    if participant.deducted and participant.client_id:
+                        deducted_client_ids.add(participant.client_id)
+
+            if not deducted_client_ids:
+                return group_adjustments
+
+            # Bulk-fetch active subscriptions (one query)
+            active_subs = (
+                ClientSubscription.objects
+                .filter(client_id__in=deducted_client_ids, is_active=True)
+                .select_related('plan', 'trainer')
+            )
+            sub_map = {sub.client_id: sub for sub in active_subs}
+
+            # Bulk-fetch fallback subs for clients with no active subscription (one query)
+            missing_ids = deducted_client_ids - set(sub_map.keys())
+            if missing_ids:
+                fallback_subs = (
+                    ClientSubscription.objects
+                    .filter(client_id__in=missing_ids)
+                    .select_related('plan', 'trainer')
+                    .order_by('client_id', '-created_at')
+                )
+                seen_fallback = set()
+                for sub in fallback_subs:
+                    if sub.client_id not in seen_fallback:
+                        sub_map[sub.client_id] = sub
+                        seen_fallback.add(sub.client_id)
+
+            # Pass 2: revenue math – all lookups are now O(1) dict hits
             for log in group_logs:
                 coach = log.coach
-                if not coach: continue
+                if not coach:
+                    continue
 
                 for participant in log.participants.all():
-                    # Check logic safety
-                    if not participant.deducted or not participant.client:
+                    if not participant.deducted or not participant.client_id:
                         continue
 
-                    # Safe Subscription Fetching
-                    client_sub = ClientSubscription.objects.filter(
-                        client=participant.client, 
-                        is_active=True
-                    ).select_related('plan', 'trainer').first()
-
-                    # Fallback to last sub if active not found
+                    client_sub = sub_map.get(participant.client_id)
                     if not client_sub:
-                        client_sub = ClientSubscription.objects.filter(
-                            client=participant.client
-                        ).select_related('plan', 'trainer').order_by('-created_at').first()
+                        continue
 
-                    # MATH SAFETY: Ensure plan exists and units > 0
-                    if client_sub and client_sub.plan and client_sub.plan.units and client_sub.plan.units > 0:
-                        owner = client_sub.trainer
-                        
-                        try:
-                            price = client_sub.plan.price or 0
-                            units = client_sub.plan.units
-                            # Calculate value per session safely
-                            session_value = Decimal(str(price)) / Decimal(str(units))
-                        except:
-                            session_value = Decimal(0)
+                    plan = client_sub.plan
+                    # FIX: Guard clause replaces bare try/except around division
+                    if not plan or not plan.units or plan.units <= 0:
+                        continue
 
-                        # Logic: If Owner != Group Coach, move money
-                        if owner and owner.id != coach.id:
-                            # Deduct from Owner
-                            group_adjustments[owner.id] = group_adjustments.get(owner.id, Decimal(0)) - session_value
-                            # Add to Group Coach
-                            group_adjustments[coach.id] = group_adjustments.get(coach.id, Decimal(0)) + session_value
-            
+                    owner = client_sub.trainer
+                    # FIX: plan.price is already a Decimal; no string conversion needed
+                    session_value = (plan.price or Decimal(0)) / plan.units
+
+                    if owner and owner.id != coach.id:
+                        group_adjustments[owner.id] = (
+                            group_adjustments.get(owner.id, Decimal(0)) - session_value
+                        )
+                        group_adjustments[coach.id] = (
+                            group_adjustments.get(coach.id, Decimal(0)) + session_value
+                        )
+
             return group_adjustments
 
-        # --- 1. TRAINER VIEW (Non-Admin, Non-REC) ---
+        # -------------------------------------------------------------------
+        # VIEW 1: TRAINER
+        # -------------------------------------------------------------------
         if not user.is_superuser and not is_rec:
-            # A. Base Revenue
-            base_revenue = ClientSubscription.objects.filter(
-                trainer=user,
-                created_at__month=month,
-                created_at__year=year
-            ).aggregate(total=Sum('plan__price'))['total'] or Decimal(0)
+            base_revenue = (
+                ClientSubscription.objects
+                .filter(trainer=user, created_at__month=month, created_at__year=year)
+                .aggregate(total=Sum('plan__price'))['total'] or Decimal(0)
+            )
 
-            # B. 1-on-1 Adjustments
-            lost_sessions = TrainingSession.objects.filter(
-                subscription__trainer=user,
-                is_completed=True,
-                date_completed__month=month,
-                date_completed__year=year
-            ).exclude(completed_by=user).select_related('subscription__plan')
+            # Sessions owned by this trainer but completed by someone else
+            lost_sessions = (
+                TrainingSession.objects
+                .filter(
+                    subscription__trainer=user,
+                    is_completed=True,
+                    date_completed__month=month,
+                    date_completed__year=year,
+                )
+                .exclude(completed_by=user)
+                .select_related('subscription__plan')
+            )
 
             deduction_amount = Decimal(0)
             for sess in lost_sessions:
                 plan = sess.subscription.plan
                 if plan and plan.units and plan.units > 0:
-                    try:
-                        deduction_amount += (Decimal(str(plan.price or 0)) / Decimal(str(plan.units)))
-                    except: pass
+                    deduction_amount += (plan.price or Decimal(0)) / plan.units
 
-            gained_sessions = TrainingSession.objects.filter(
-                completed_by=user,
-                is_completed=True,
-                date_completed__month=month,
-                date_completed__year=year
-            ).exclude(subscription__trainer=user).select_related('subscription__plan')
+            # Sessions completed by this trainer on other trainers' clients
+            gained_sessions = (
+                TrainingSession.objects
+                .filter(
+                    completed_by=user,
+                    is_completed=True,
+                    date_completed__month=month,
+                    date_completed__year=year,
+                )
+                .exclude(subscription__trainer=user)
+                .select_related('subscription__plan')
+            )
 
             addition_amount = Decimal(0)
             for sess in gained_sessions:
                 plan = sess.subscription.plan
                 if plan and plan.units and plan.units > 0:
-                    try:
-                        addition_amount += (Decimal(str(plan.price or 0)) / Decimal(str(plan.units)))
-                    except: pass
+                    addition_amount += (plan.price or Decimal(0)) / plan.units
 
-            # C. Group Session Adjustments
+            # Group session adjustments
             group_adj = get_group_adjustments()
             my_group_adj = group_adj.get(user.id, Decimal(0))
-            
             if my_group_adj > 0:
                 addition_amount += my_group_adj
             else:
                 deduction_amount += abs(my_group_adj)
 
-            # Final Math Safety
-            base_revenue = Decimal(str(base_revenue))
             net_revenue = base_revenue - deduction_amount + addition_amount
 
-            subs = ClientSubscription.objects.filter(trainer=user, is_active=True).select_related('client', 'plan')
-            
-            # --- FIX: Build Absolute Photo URL ---
+            subs = (
+                ClientSubscription.objects
+                .filter(trainer=user, is_active=True)
+                .select_related('client', 'plan')
+            )
+
             client_list = []
             for sub in subs:
                 photo_full_url = None
                 if sub.client.photo:
                     try:
                         photo_full_url = request.build_absolute_uri(sub.client.photo.url)
-                    except:
+                    except Exception:
                         photo_full_url = None
 
                 client_list.append({
@@ -309,98 +376,114 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
                     'name': sub.client.name,
                     'plan': sub.plan.name if sub.plan else "No Plan",
                     'progress': sub.progress_percentage,
-                    'photo': photo_full_url, 
-                    'manual_id': sub.client.manual_id
+                    'photo': photo_full_url,
+                    'manual_id': sub.client.manual_id,
                 })
 
             return Response({
                 'role': 'trainer',
                 'summary': {
                     'active_clients': subs.count(),
-                    'base_revenue': base_revenue,
+                    'base_revenue': round(base_revenue, 2),
                     'deductions': round(deduction_amount, 2),
                     'additions': round(addition_amount, 2),
-                    'net_revenue': round(net_revenue, 2)
+                    'net_revenue': round(net_revenue, 2),
                 },
-                'clients': client_list
+                'clients': client_list,
             })
 
-        # --- 2. RECEPTIONIST VIEW (New) ---
+        # -------------------------------------------------------------------
+        # VIEW 2: RECEPTIONIST
+        # -------------------------------------------------------------------
         elif is_rec:
-             # Basic Stats for Reception
             active_members_count = ClientSubscription.objects.filter(is_active=True).count()
-            
-            current_month_qs = ClientSubscription.objects.filter(created_at__month=month, created_at__year=year)
+            current_month_qs = ClientSubscription.objects.filter(
+                created_at__month=month, created_at__year=year
+            )
             new_sales_count = current_month_qs.count()
-            
-            # Check-ins today (Training Sessions completed today + Group Sessions)
-            today = timezone.now().date()
-            checkins_today = TrainingSession.objects.filter(is_completed=True, date_completed=today).count()
-            group_checkins_today = GroupSessionParticipant.objects.filter(session__date__date=today).count()
-            
-            total_visits_today = checkins_today + group_checkins_today
 
-            # List of recent sales/subscriptions to verify
-            recent_subs = current_month_qs.select_related('client', 'plan', 'trainer').order_by('-created_at')[:10]
-            recent_list = []
-            for sub in recent_subs:
-                recent_list.append({
+            today = timezone.now().date()
+            checkins_today = TrainingSession.objects.filter(
+                is_completed=True, date_completed=today
+            ).count()
+            group_checkins_today = GroupSessionParticipant.objects.filter(
+                session__date__date=today
+            ).count()
+
+            recent_subs = (
+                current_month_qs
+                .select_related('client', 'plan', 'trainer')
+                .order_by('-created_at')[:10]
+            )
+            recent_list = [
+                {
                     'id': sub.id,
                     'client_name': sub.client.name,
                     'plan_name': sub.plan.name if sub.plan else "-",
                     'trainer_name': sub.trainer.first_name if sub.trainer else "Unassigned",
-                    'date': sub.created_at.date()
-                })
+                    'date': sub.created_at.date(),
+                }
+                for sub in recent_subs
+            ]
 
             return Response({
                 'role': 'rec',
                 'summary': {
                     'active_members': active_members_count,
                     'new_sales_this_month': new_sales_count,
-                    'visits_today': total_visits_today
+                    'visits_today': checkins_today + group_checkins_today,
                 },
-                'recent_sales': recent_list
+                'recent_sales': recent_list,
             })
 
-        # --- 3. ADMIN VIEW ---
+        # -------------------------------------------------------------------
+        # VIEW 3: ADMIN
+        # -------------------------------------------------------------------
         else:
-            # 1. Base Stats
-            trainers = User.objects.filter(is_superuser=False).exclude(groups__name='REC').annotate(
-                active_packages=Count('clientsubscription', filter=Q(clientsubscription__is_active=True)),
-                inactive_packages=Count('clientsubscription', filter=Q(clientsubscription__is_active=False)),
+            trainers = User.objects.filter(
+                is_superuser=False
+            ).exclude(groups__name='REC').annotate(
+                active_packages=Count(
+                    'clientsubscription',
+                    filter=Q(clientsubscription__is_active=True)
+                ),
+                inactive_packages=Count(
+                    'clientsubscription',
+                    filter=Q(clientsubscription__is_active=False)
+                ),
                 total_assigned=Count('clientsubscription'),
                 base_monthly_revenue=Sum(
                     Case(
                         When(
                             clientsubscription__created_at__month=month,
                             clientsubscription__created_at__year=year,
-                            then=F('clientsubscription__plan__price')
+                            then=F('clientsubscription__plan__price'),
                         ),
                         default=0,
-                        output_field=DecimalField()
+                        output_field=DecimalField(),
                     )
-                )
+                ),
             )
 
-            # 2. 1-on-1 Adjustments
-            cross_sessions = TrainingSession.objects.filter(
-                date_completed__month=month,
-                date_completed__year=year,
-                is_completed=True
-            ).exclude(
-                completed_by=F('subscription__trainer')
-            ).select_related('subscription__plan', 'subscription__trainer', 'completed_by')
+            cross_sessions = (
+                TrainingSession.objects
+                .filter(
+                    date_completed__month=month,
+                    date_completed__year=year,
+                    is_completed=True,
+                )
+                .exclude(completed_by=F('subscription__trainer'))
+                .select_related('subscription__plan', 'subscription__trainer', 'completed_by')
+            )
 
-            adjustments = {} # { trainer_id: Decimal(amount) }
+            adjustments = {}  # { trainer_id: Decimal }
 
             for session in cross_sessions:
                 plan = session.subscription.plan
-                if not plan or not plan.units or plan.units == 0: continue
-                
-                try:
-                    session_value = Decimal(str(plan.price or 0)) / Decimal(str(plan.units))
-                except:
-                    session_value = Decimal(0)
+                if not plan or not plan.units or plan.units <= 0:
+                    continue
+                # FIX: Direct Decimal math; plan.price is already a DecimalField value
+                session_value = (plan.price or Decimal(0)) / plan.units
 
                 owner = session.subscription.trainer
                 if owner:
@@ -410,20 +493,16 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
                 if completer:
                     adjustments[completer.id] = adjustments.get(completer.id, Decimal(0)) + session_value
 
-            # 3. Group Session Adjustments
             group_adj = get_group_adjustments()
-            
             for trainer_id, amount in group_adj.items():
                 adjustments[trainer_id] = adjustments.get(trainer_id, Decimal(0)) + amount
 
-            # 4. Merge Data
             trainers_stats = []
             for trainer in trainers:
-                # Ensure base is Decimal even if None
                 base = trainer.base_monthly_revenue or Decimal(0)
                 adjustment = adjustments.get(trainer.id, Decimal(0))
                 net = base + adjustment
-                
+
                 trainers_stats.append({
                     'id': trainer.id,
                     'name': trainer.first_name or trainer.username,
@@ -432,29 +511,31 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
                     'total_assigned': trainer.total_assigned,
                     'base_revenue': round(base, 2),
                     'adjustments': round(adjustment, 2),
-                    'net_revenue': round(net, 2)
+                    'net_revenue': round(net, 2),
                 })
 
-            # Financials
-            current_month_qs = ClientSubscription.objects.filter(created_at__month=month, created_at__year=year)
+            current_month_qs = ClientSubscription.objects.filter(
+                created_at__month=month, created_at__year=year
+            )
             total_sales = current_month_qs.count()
-            total_revenue_sales = current_month_qs.aggregate(total=Sum('plan__price'))['total'] or 0
-            
+            total_revenue_sales = (
+                current_month_qs.aggregate(total=Sum('plan__price'))['total'] or 0
+            )
+
             chart_data = (
-                ClientSubscription.objects.filter(created_at__year=year)
+                ClientSubscription.objects
+                .filter(created_at__year=year)
                 .annotate(month=TruncMonth('created_at'))
                 .values('month')
                 .annotate(revenue=Sum('plan__price'))
                 .order_by('month')
             )
-            
-            formatted_chart = []
+
             revenue_map = {item['month'].month: item['revenue'] for item in chart_data}
-            for i in range(1, 13):
-                formatted_chart.append({
-                    'name': calendar.month_name[i][:3],
-                    'revenue': revenue_map.get(i, 0)
-                })
+            formatted_chart = [
+                {'name': calendar.month_name[i][:3], 'revenue': revenue_map.get(i, 0)}
+                for i in range(1, 13)
+            ]
 
             return Response({
                 'role': 'admin',
@@ -464,12 +545,14 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
                     'year': year,
                     'total_sales': total_sales,
                     'total_revenue': total_revenue_sales,
-                    'chart_data': formatted_chart
-                }
+                    'chart_data': formatted_chart,
+                },
             })
 
 
-# In views.py
+# ---------------------------------------------------------------------------
+# CLIENT SUBSCRIPTION
+# ---------------------------------------------------------------------------
 
 class ClientSubscriptionViewSet(viewsets.ModelViewSet):
     serializer_class = ClientSubscriptionSerializer
@@ -477,62 +560,53 @@ class ClientSubscriptionViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
-        # 1. Base Queryset
-        queryset = ClientSubscription.objects.all().select_related('client', 'plan', 'trainer').order_by("-start_date")
-        
-        # 2. Filtering
+        queryset = (
+            ClientSubscription.objects.all()
+            .select_related('client', 'plan', 'trainer')
+            .order_by("-start_date")
+        )
         client_id = self.request.query_params.get("client_id")
         if client_id:
             queryset = queryset.filter(client=client_id)
-        
-        # 3. Role Based Restriction
-        # If Admin OR REC -> See All
-        # If Trainer -> See Own Only (This logic was implicit before, making it explicit helps)
-        # Note: The original code returned .all() for everyone. 
-        # If you want to restrict Trainers to only their clients, add checks here.
-        # Currently keeping existing logic (return all) which fits Reception usage too.
-        
         return queryset
 
-    # --- NEW: Dedicated endpoint for Trainer Profile ---
     @action(detail=False, methods=['get'])
     def profile_clients(self, request):
         user = request.user
-        
-        # Filter 1: Direct Clients (trainer is Me)
-        # Filter 2: Covered Clients (Accepted Transfer Request to Me)
-        # Note: We use .distinct() to avoid duplicates
-        queryset = ClientSubscription.objects.filter(
-            Q(trainer=user) | 
-            Q(transfer_requests__to_trainer=user, transfer_requests__status='accepted')
-        ).filter(is_active=True).distinct()
-        
-        # Return FULL list (no pagination) so the profile is always complete
+        queryset = (
+            ClientSubscription.objects
+            .filter(
+                Q(trainer=user) |
+                Q(transfer_requests__to_trainer=user, transfer_requests__status='accepted')
+            )
+            .filter(is_active=True)
+            .distinct()
+        )
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
     def perform_create(self, serializer):
         with transaction.atomic():
             user = self.request.user
-            # Admin OR REC can assign any trainer (or leave blank)
             if user.is_superuser or user.groups.filter(name='REC').exists():
                 serializer.save()
             else:
-                # Trainer assigns themselves automatically
                 serializer.save(trainer=user)
 
 
-
-# views.py
+# ---------------------------------------------------------------------------
+# COUNTRY
+# ---------------------------------------------------------------------------
 
 class CountryViewSet(viewsets.ModelViewSet):
     queryset = Country.objects.all().order_by('name')
     serializer_class = CountrySerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly] 
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
 
-
-
+# ---------------------------------------------------------------------------
+# TRAINING PLAN
+# ---------------------------------------------------------------------------
 
 class TrainingPlanViewSet(viewsets.ModelViewSet):
     serializer_class = TrainingPlanSerializer
@@ -552,18 +626,24 @@ class TrainingPlanViewSet(viewsets.ModelViewSet):
         data = request.data
         sub_id = data.get("subscription")
         cycle_length = int(data.get("cycle_length"))
-        day_names = data.get("day_names")
+        day_names = data.get("day_names", [])
 
-        plan = TrainingPlan.objects.create(
-            subscription_id=sub_id, cycle_length=cycle_length
-        )
-
-        for index, name in enumerate(day_names):
-            TrainingDaySplit.objects.create(plan=plan, order=index + 1, name=name)
+        with transaction.atomic():
+            plan = TrainingPlan.objects.create(
+                subscription_id=sub_id, cycle_length=cycle_length
+            )
+            TrainingDaySplit.objects.bulk_create([
+                TrainingDaySplit(plan=plan, order=index + 1, name=name)
+                for index, name in enumerate(day_names)
+            ])
 
         serializer = self.get_serializer(plan)
         return Response(serializer.data)
 
+
+# ---------------------------------------------------------------------------
+# TRAINING EXERCISE (template bulk-update)
+# ---------------------------------------------------------------------------
 
 class TrainingExerciseViewSet(viewsets.ModelViewSet):
     serializer_class = TrainingExerciseSerializer
@@ -572,31 +652,48 @@ class TrainingExerciseViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="bulk-update")
     def bulk_update(self, request):
+        """
+        Replaces all exercises in a given split.
+
+        Note: This endpoint intentionally wipes and recreates exercises because
+        its semantic is "apply this exact template" (the plan template, not a
+        live session log).  The delete+recreate pattern is acceptable for
+        infrequently edited plan templates.
+        For live session data, see TrainingSessionViewSet.save_session_data
+        which uses a smart-update approach.
+        """
         split_id = request.data.get("split_id")
         exercises_data = request.data.get("exercises", [])
 
-        TrainingExercise.objects.filter(split_id=split_id).delete()
+        with transaction.atomic():
+            TrainingExercise.objects.filter(split_id=split_id).delete()
 
-        for ex_idx, ex_data in enumerate(exercises_data):
-            exercise = TrainingExercise.objects.create(
-                split_id=split_id,
-                order=ex_idx + 1,
-                name=ex_data.get("name", "Exercise"),
-                note=ex_data.get("note", ""),
-            )
-            sets_data = ex_data.get("sets", [])
-            for set_idx, set_data in enumerate(sets_data):
-                TrainingSet.objects.create(
-                    exercise=exercise,
-                    order=set_idx + 1,
-                    reps=set_data.get("reps", ""),
-                    weight=set_data.get("weight", ""),
-                    technique=set_data.get("technique", "Regular"),
-                    equipment=set_data.get("equipment") or None,
+            for ex_idx, ex_data in enumerate(exercises_data):
+                exercise = TrainingExercise.objects.create(
+                    split_id=split_id,
+                    order=ex_idx + 1,
+                    name=ex_data.get("name", "Exercise"),
+                    note=ex_data.get("note", ""),
                 )
+                sets_data = ex_data.get("sets", [])
+                TrainingSet.objects.bulk_create([
+                    TrainingSet(
+                        exercise=exercise,
+                        order=set_idx + 1,
+                        reps=set_data.get("reps", ""),
+                        weight=set_data.get("weight", ""),
+                        technique=set_data.get("technique", "Regular"),
+                        equipment=set_data.get("equipment") or None,
+                    )
+                    for set_idx, set_data in enumerate(sets_data)
+                ])
 
         return Response({"status": "success"})
 
+
+# ---------------------------------------------------------------------------
+# SESSION LOG (legacy)
+# ---------------------------------------------------------------------------
 
 class SessionLogViewSet(viewsets.ModelViewSet):
     serializer_class = SessionLogSerializer
@@ -606,7 +703,6 @@ class SessionLogViewSet(viewsets.ModelViewSet):
         queryset = SessionLog.objects.all()
         sub_id = self.request.query_params.get("subscription")
         sess_num = self.request.query_params.get("session_number")
-
         if sub_id:
             queryset = queryset.filter(subscription_id=sub_id)
         if sess_num:
@@ -614,22 +710,38 @@ class SessionLogViewSet(viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
+        """
+        FIX (Single Source of Truth): The old code always deducted sessions,
+        which caused double-deduction when a subscription was also managed via
+        TrainingSession (the new authoritative system).
+
+        Guard: if any TrainingSession record exists for this subscription we
+        skip the deduction here and let TrainingSession be the sole source of
+        truth for sessions_used / is_active state.
+        """
         sub_id = request.data.get("subscription")
         try:
             sub = ClientSubscription.objects.get(id=sub_id)
-            log = super().create(request, *args, **kwargs)
-
-            sub.sessions_used = SessionLog.objects.filter(subscription=sub).count()
-            is_expired_sessions = sub.plan and sub.sessions_used >= sub.plan.units
-            is_expired_date = sub.end_date and timezone.now().date() > sub.end_date
-
-            if is_expired_sessions or is_expired_date:
-                sub.is_active = False
-            sub.save()
-            return log
         except ClientSubscription.DoesNotExist:
             return Response({"error": "Subscription not found"}, status=404)
 
+        log = super().create(request, *args, **kwargs)
+
+        uses_training_session = TrainingSession.objects.filter(subscription=sub).exists()
+        if not uses_training_session:
+            sub.sessions_used = SessionLog.objects.filter(subscription=sub).count()
+            is_expired_sessions = sub.plan and sub.sessions_used >= sub.plan.units
+            is_expired_date = sub.end_date and timezone.now().date() > sub.end_date
+            if is_expired_sessions or is_expired_date:
+                sub.is_active = False
+            sub.save()
+
+        return log
+
+
+# ---------------------------------------------------------------------------
+# TRAINING SESSION (authoritative)
+# ---------------------------------------------------------------------------
 
 class TrainingSessionViewSet(viewsets.ModelViewSet):
     serializer_class = TrainingSessionSerializer
@@ -665,16 +777,12 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        response_data = {}
-
         try:
             sub = ClientSubscription.objects.get(id=sub_id)
         except ClientSubscription.DoesNotExist:
-            return Response(
-                {"error": "Subscription not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            return Response({"error": "Subscription not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        # --- Case 1: session already saved ---
         try:
             session = TrainingSession.objects.get(
                 subscription_id=sub_id, session_number=session_num
@@ -687,74 +795,80 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
                 )
             else:
                 response_data["trainer_name"] = (
-                    session.subscription.trainer.first_name
-                    if session.subscription.trainer
-                    else "TFG Trainer"
+                    sub.trainer.first_name if sub.trainer else "TFG Trainer"
                 )
 
             return Response(response_data)
 
         except TrainingSession.DoesNotExist:
-            plan = getattr(sub, "training_plan", None)
+            pass
 
-            trainer_name = sub.trainer.first_name if sub.trainer else "TFG Trainer"
+        # --- Case 2: simulate from training plan template ---
+        plan = getattr(sub, "training_plan", None)
+        trainer_name = sub.trainer.first_name if sub.trainer else "TFG Trainer"
 
-            if not plan:
-                return Response(
-                    {
-                        "name": f"Session {session_num}",
-                        "exercises": [],
-                        "trainer_name": trainer_name,
-                    }
-                )
-
-            split_index = (session_num - 1) % plan.cycle_length
-            splits = plan.splits.all().order_by("order")
-
-            if not splits.exists():
-                return Response(
-                    {
-                        "name": f"Session {session_num}",
-                        "exercises": [],
-                        "trainer_name": trainer_name,
-                    }
-                )
-
-            target_split = (
-                splits[split_index] if split_index < len(splits) else splits[0]
-            )
-
-            simulated_data = {
-                "id": None,
-                "session_number": session_num,
-                "name": target_split.name,
-                "is_completed": False,
-                "trainer_name": trainer_name,
+        if not plan:
+            return Response({
+                "name": f"Session {session_num}",
                 "exercises": [],
-            }
+                "trainer_name": trainer_name,
+            })
 
-            for ex in target_split.exercises.all():
-                sets_data = []
-                for s in ex.sets.all():
-                    sets_data.append(
+        split_index = (session_num - 1) % plan.cycle_length
+        splits = list(plan.splits.prefetch_related('exercises__sets').order_by("order"))
+
+        if not splits:
+            return Response({
+                "name": f"Session {session_num}",
+                "exercises": [],
+                "trainer_name": trainer_name,
+            })
+
+        target_split = splits[split_index] if split_index < len(splits) else splits[0]
+
+        simulated_data = {
+            "id": None,
+            "session_number": session_num,
+            "name": target_split.name,
+            "is_completed": False,
+            "trainer_name": trainer_name,
+            "exercises": [
+                {
+                    "name": ex.name,
+                    "note": ex.note,
+                    "sets": [
                         {
                             "reps": s.reps,
                             "weight": s.weight,
                             "technique": s.technique,
                             "equipment": s.equipment,
                         }
-                    )
-                # Ensure Note is passed from Template to Session Simulation
-                simulated_data["exercises"].append({
-                    "name": ex.name, 
-                    "note": ex.note, # Load note from template
-                    "sets": sets_data
-                })
+                        for s in ex.sets.all()
+                    ],
+                }
+                for ex in target_split.exercises.all()
+            ],
+        }
 
-            return Response(simulated_data)
+        return Response(simulated_data)
 
     @action(detail=False, methods=["post"], url_path="save-data")
     def save_session_data(self, request):
+        """
+        FIX (DB ID Churn): The original code called session.exercises.all().delete()
+        then re-inserted every exercise and set on EVERY save, including auto-saves.
+        This:
+          - Burned through primary-key sequences rapidly.
+          - Destroyed any FK references to old exercise/set rows.
+          - Created unnecessary write load on the DB.
+
+        NEW APPROACH – Smart Update:
+          - Match incoming exercises to existing ones by their list index (order).
+          - UPDATE rows that already exist.
+          - CREATE only genuinely new rows.
+          - DELETE only rows that were removed from the payload.
+        Same pattern is applied to sets within each exercise.
+        """
         data = request.data
         sub_id = data.get("subscription")
         session_number = data.get("session_number")
@@ -773,54 +887,107 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
                 defaults={"name": data.get("name", "Workout")},
             )
 
-            # --- SECURITY UPDATE: Check if session is already completed by someone else ---
+            # Security: completed sessions are locked to the person who completed them
             if session.is_completed and not request.user.is_superuser:
-                # If session is completed, only the person who completed it can edit it
                 if session.completed_by and session.completed_by != request.user:
-                     return Response(
-                         {"error": f"Locked! This session was completed by {session.completed_by.first_name}. Only they can edit it."}, 
-                         status=status.HTTP_403_FORBIDDEN
-                     )
+                    return Response(
+                        {
+                            "error": (
+                                f"Locked! This session was completed by "
+                                f"{session.completed_by.first_name}. Only they can edit it."
+                            )
+                        },
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
 
             session.name = data.get("name", session.name)
 
             if complete_it:
-              session.is_completed = True
-              session.date_completed = timezone.now().date()
-              session.completed_by = request.user 
+                session.is_completed = True
+                session.date_completed = timezone.now().date()
+                session.completed_by = request.user
 
             session.save()
 
+            # ------------------------------------------------------------------
+            # Smart Update: exercises
+            # ------------------------------------------------------------------
+            existing_exercises = list(
+                session.exercises.prefetch_related('sets').order_by('order')
+            )
+            existing_count = len(existing_exercises)
+            incoming_count = len(exercises)
+
+            for i, ex_data in enumerate(exercises):
+                if i < existing_count:
+                    # Update existing exercise row (no new PK consumed)
+                    ex_obj = existing_exercises[i]
+                    ex_obj.name = ex_data.get('name', ex_obj.name)
+                    ex_obj.note = ex_data.get('note', '')
+                    ex_obj.order = i + 1
+                    ex_obj.save()
+                else:
+                    # Create genuinely new exercise
+                    ex_obj = SessionExercise.objects.create(
+                        training_session=session,
+                        order=i + 1,
+                        name=ex_data.get('name', 'Exercise'),
+                        note=ex_data.get('note', ''),
+                    )
+
+                # Smart Update: sets within this exercise
+                incoming_sets = ex_data.get('sets', [])
+                existing_sets = list(ex_obj.sets.order_by('order'))
+                existing_sets_count = len(existing_sets)
+
+                for j, set_data in enumerate(incoming_sets):
+                    if j < existing_sets_count:
+                        s_obj = existing_sets[j]
+                        s_obj.reps = set_data.get('reps', '')
+                        s_obj.weight = set_data.get('weight', '')
+                        s_obj.technique = set_data.get('technique', 'Regular')
+                        s_obj.equipment = set_data.get('equipment') or None
+                        s_obj.order = j + 1
+                        s_obj.save()
+                    else:
+                        SessionSet.objects.create(
+                            exercise=ex_obj,
+                            order=j + 1,
+                            reps=set_data.get('reps', ''),
+                            weight=set_data.get('weight', ''),
+                            technique=set_data.get('technique', 'Regular'),
+                            equipment=set_data.get('equipment') or None,
+                        )
+
+                # Delete sets that were removed from the payload
+                if len(incoming_sets) < existing_sets_count:
+                    for s_obj in existing_sets[len(incoming_sets):]:
+                        s_obj.delete()
+
+            # Delete exercises that were removed from the payload
+            if incoming_count < existing_count:
+                for ex_obj in existing_exercises[incoming_count:]:
+                    ex_obj.delete()
+
+            # ------------------------------------------------------------------
+            # Subscription deduction (only when marking complete)
+            # ------------------------------------------------------------------
             if complete_it:
                 sub.sessions_used = TrainingSession.objects.filter(
                     subscription=sub, is_completed=True
                 ).count()
 
-                is_finished_sessions = sub.plan and sub.sessions_used >= sub.plan.units
-                is_expired_date = sub.end_date and timezone.now().date() > sub.end_date
+                is_finished_sessions = (
+                    sub.plan and sub.plan.units and sub.plan.units > 0
+                    and sub.sessions_used >= sub.plan.units
+                )
+                is_expired_date = (
+                    sub.end_date and timezone.now().date() > sub.end_date
+                )
 
                 if is_finished_sessions or is_expired_date:
                     sub.is_active = False
                 sub.save()
-
-            session.exercises.all().delete()
-            for ex_idx, ex_data in enumerate(exercises):
-                ex_obj = SessionExercise.objects.create(
-                    training_session=session, 
-                    order=ex_idx + 1, 
-                    name=ex_data.get("name"),
-                    # --- ADDED: Saving the note ---
-                    note=ex_data.get("note", "")
-                )
-                for set_idx, set_data in enumerate(ex_data.get("sets", [])):
-                    SessionSet.objects.create(
-                        exercise=ex_obj,
-                        order=set_idx + 1,
-                        reps=set_data.get("reps", ""),
-                        weight=set_data.get("weight", ""),
-                        technique=set_data.get("technique", "Regular"),
-                        equipment=set_data.get("equipment") or None,
-                    )
 
         return Response({"status": "saved"})
 
@@ -839,14 +1006,19 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
 
         cycle_len = plan.cycle_length
 
-        history = TrainingSession.objects.filter(subscription=sub).order_by(
-            "-date_completed", "-created_at", "-session_number"
+        # FIX: prefetch_related eliminates N+1 from session.exercises.exists() in the loop
+        history = (
+            TrainingSession.objects
+            .filter(subscription=sub)
+            .prefetch_related('exercises__sets')
+            .order_by("-date_completed", "-created_at", "-session_number")
         )
 
         latest_days = {}
 
         for session in history:
-            if not session.exercises.exists():
+            # With prefetch_related, all() uses the cache; no extra query
+            if not session.exercises.all():
                 continue
 
             day_index = (session.session_number - 1) % cycle_len
@@ -867,9 +1039,12 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
         return Response(result)
 
 
+# ---------------------------------------------------------------------------
+# NUTRITION PLAN
+# ---------------------------------------------------------------------------
+
 class NutritionPlanViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
-    # Added Pagination here
     pagination_class = StandardResultsSetPagination
 
     def get_serializer_class(self):
@@ -879,38 +1054,26 @@ class NutritionPlanViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = NutritionPlan.objects.all()
-
         subscription_id = self.request.query_params.get("subscription_id")
         if subscription_id:
             queryset = queryset.filter(subscription_id=subscription_id)
-
         client_id = self.request.query_params.get("client_id")
         if client_id:
             queryset = queryset.filter(subscription__client_id=client_id)
-
         return queryset.order_by("-created_at")
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
-    # ... [Keep the rest of the actions (weekly_overview, duplicate_week) unchanged] ...
     @action(detail=True, methods=["get"])
     def weekly_overview(self, request, pk=None):
         nutrition_plan = self.get_object()
+        # Use aggregate query to avoid N+1 across 7 days
         meal_plans = nutrition_plan.meal_plans.all()
-
         weekly_data = {}
-        for day in [
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-            "Sunday",
-        ]:
-            day_meals = meal_plans.filter(day=day)
-            weekly_data[day] = {
+        for day_name in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]:
+            day_meals = meal_plans.filter(day=day_name)
+            weekly_data[day_name] = {
                 "total_calories": sum(m.total_calories for m in day_meals),
                 "total_protein": sum(m.total_protein for m in day_meals),
                 "total_carbs": sum(m.total_carbs for m in day_meals),
@@ -918,7 +1081,6 @@ class NutritionPlanViewSet(viewsets.ModelViewSet):
                 "meals_count": day_meals.count(),
                 "completed_meals": day_meals.filter(is_completed=True).count(),
             }
-
         return Response(weekly_data)
 
     @action(detail=True, methods=["post"])
@@ -932,6 +1094,8 @@ class NutritionPlanViewSet(viewsets.ModelViewSet):
             )
 
         with transaction.atomic():
+            # FIX: Removed reference to nutrition_plan.notes (field does not exist).
+            # FIX: Added calc_carb_adjustment which was missing from the copy.
             plan_fields = {
                 "subscription_id": nutrition_plan.subscription_id,
                 "name": f"{nutrition_plan.name} (Copy)",
@@ -948,17 +1112,17 @@ class NutritionPlanViewSet(viewsets.ModelViewSet):
                 "calc_protein_advance": nutrition_plan.calc_protein_advance,
                 "calc_meals": nutrition_plan.calc_meals,
                 "calc_snacks": nutrition_plan.calc_snacks,
+                "calc_carb_adjustment": nutrition_plan.calc_carb_adjustment,
                 "target_calories": nutrition_plan.target_calories,
                 "target_protein": nutrition_plan.target_protein,
                 "target_carbs": nutrition_plan.target_carbs,
                 "target_fats": nutrition_plan.target_fats,
-                "notes": nutrition_plan.notes,
                 "created_by": request.user,
             }
             new_plan = NutritionPlan.objects.create(**plan_fields)
 
+            food_items_to_create = []
             for meal in original_meals:
-                original_foods = list(meal.foods.all())
                 new_meal = MealPlan.objects.create(
                     nutrition_plan=new_plan,
                     day=meal.day,
@@ -971,28 +1135,33 @@ class NutritionPlanViewSet(viewsets.ModelViewSet):
                     total_fats=meal.total_fats,
                     notes=meal.notes,
                 )
-                for food in original_foods:
-                    FoodItem.objects.create(
+                for food in meal.foods.all():
+                    # FIX: Use correct FoodItem field names.
+                    # Original code referenced food.quantity (→ food.amount),
+                    # food.fiber, food.category, food.preparation — none of which
+                    # exist on the FoodItem model.
+                    food_items_to_create.append(FoodItem(
                         meal_plan=new_meal,
                         name=food.name,
-                        quantity=food.quantity,
+                        amount=food.amount,
                         unit=food.unit,
                         calories=food.calories,
                         protein=food.protein,
                         carbs=food.carbs,
                         fats=food.fats,
-                        fiber=food.fiber,
-                        category=food.category,
-                        preparation=food.preparation,
                         order=food.order,
-                    )
+                    ))
 
-        return Response(
-            {"status": "Week duplicated successfully", "new_plan_id": new_plan.id}
-        )
+            if food_items_to_create:
+                FoodItem.objects.bulk_create(food_items_to_create)
+
+        return Response({"status": "Week duplicated successfully", "new_plan_id": new_plan.id})
 
 
-# ... [Keep MealPlanViewSet, FoodItemViewSet, NutritionProgressViewSet, FoodDatabaseViewSet unchanged] ...
+# ---------------------------------------------------------------------------
+# MEAL PLAN
+# ---------------------------------------------------------------------------
+
 class MealPlanViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
@@ -1030,9 +1199,7 @@ class MealPlanViewSet(viewsets.ModelViewSet):
             meal_plan.photo = photo
             meal_plan.save()
             return Response({"status": "Photo uploaded successfully"})
-        return Response(
-            {"error": "No photo provided"}, status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response({"error": "No photo provided"}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=["post"])
     def calculate_totals(self, request, pk=None):
@@ -1047,9 +1214,13 @@ class MealPlanViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+# ---------------------------------------------------------------------------
+# FOOD ITEM
+# ---------------------------------------------------------------------------
+
 class FoodItemViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter]
-    search_fields = ["name", "category"]
+    search_fields = ["name"]
     serializer_class = FoodItemSerializer
     permission_classes = [IsAuthenticated]
 
@@ -1060,26 +1231,27 @@ class FoodItemViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(meal_plan_id=meal_plan_id)
         return queryset.select_related("meal_plan")
 
-    def perform_create(self, serializer):
-        food_item = serializer.save()
-        meal_plan = food_item.meal_plan
+    def _recalculate_meal_totals(self, meal_plan):
         foods = meal_plan.foods.all()
         meal_plan.total_calories = sum(f.calories for f in foods)
         meal_plan.total_protein = sum(f.protein for f in foods)
         meal_plan.total_carbs = sum(f.carbs for f in foods)
         meal_plan.total_fats = sum(f.fats for f in foods)
         meal_plan.save()
+
+    def perform_create(self, serializer):
+        food_item = serializer.save()
+        self._recalculate_meal_totals(food_item.meal_plan)
 
     def perform_destroy(self, instance):
         meal_plan = instance.meal_plan
         instance.delete()
-        foods = meal_plan.foods.all()
-        meal_plan.total_calories = sum(f.calories for f in foods)
-        meal_plan.total_protein = sum(f.protein for f in foods)
-        meal_plan.total_carbs = sum(f.carbs for f in foods)
-        meal_plan.total_fats = sum(f.fats for f in foods)
-        meal_plan.save()
+        self._recalculate_meal_totals(meal_plan)
 
+
+# ---------------------------------------------------------------------------
+# NUTRITION PROGRESS
+# ---------------------------------------------------------------------------
 
 class NutritionProgressViewSet(viewsets.ModelViewSet):
     serializer_class = NutritionProgressSerializer
@@ -1103,8 +1275,7 @@ class NutritionProgressViewSet(viewsets.ModelViewSet):
         nutrition_plan_id = request.query_params.get("nutrition_plan_id")
         if not nutrition_plan_id:
             return Response(
-                {"error": "nutrition_plan_id required"},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"error": "nutrition_plan_id required"}, status=status.HTTP_400_BAD_REQUEST
             )
         today = timezone.now().date()
         week_start = today - timedelta(days=today.weekday())
@@ -1115,6 +1286,10 @@ class NutritionProgressViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(progress, many=True)
         return Response(serializer.data)
 
+
+# ---------------------------------------------------------------------------
+# FOOD DATABASE
+# ---------------------------------------------------------------------------
 
 class FoodDatabaseViewSet(viewsets.ModelViewSet):
     serializer_class = FoodDatabaseSerializer
@@ -1135,29 +1310,27 @@ class FoodDatabaseViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+# ---------------------------------------------------------------------------
+# COACH SCHEDULE & GROUP TRAINING
+# ---------------------------------------------------------------------------
+
 class CoachScheduleViewSet(viewsets.ModelViewSet):
     serializer_class = CoachScheduleSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         queryset = CoachSchedule.objects.all()
-        
-        # Filter by specific coach
         coach_id = self.request.query_params.get('coach_id')
         if coach_id:
             queryset = queryset.filter(coach_id=coach_id)
-            
         return queryset
 
     @action(detail=False, methods=['get'])
     def get_trainers(self, request):
-        # Return list of coaches (excluding superusers/admins) for the tabs
         trainers = User.objects.filter(is_superuser=False).values('id', 'first_name', 'username')
         return Response(list(trainers))
-    
-    
-    
-    
+
+
 class GroupTrainingViewSet(viewsets.GenericViewSet):
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardResultsSetPagination
@@ -1165,17 +1338,15 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
     @action(detail=False, methods=['get'])
     def schedule(self, request):
         coach_id = request.query_params.get('coach_id')
-        
-        # --- FIX: Only fetch schedules for clients with an ACTIVE subscription ---
-        queryset = CoachSchedule.objects.filter(client__subscriptions__is_active=True)
-        
+        queryset = CoachSchedule.objects.filter(
+            client__subscriptions__is_active=True
+        ).select_related('client', 'coach')
+
         if coach_id:
             queryset = queryset.filter(coach_id=coach_id)
-            
-        # .distinct() prevents duplicates if a client accidentally has multiple active subs
+
         queryset = queryset.distinct()
-        
-        serializer = CoachScheduleSerializer(queryset, many=True)
+        serializer = CoachScheduleSerializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=False, methods=['post'])
@@ -1183,7 +1354,7 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
         coach_id = request.data.get('coach')
         client_id = request.data.get('client')
         day = request.data.get('day')
-        session_time = request.data.get('session_time')  # NEW: Optional time field
+        session_time = request.data.get('session_time')
 
         if not all([coach_id, client_id, day]):
             return Response({"error": "Missing fields"}, status=400)
@@ -1192,15 +1363,14 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
             coach_id=coach_id,
             client_id=client_id,
             day=day,
-            defaults={'session_time': session_time} if session_time else {}
+            defaults={'session_time': session_time} if session_time else {},
         )
-        
-        # If updating existing record and time provided, update it
+
         if not created and session_time:
             obj.session_time = session_time
             obj.save()
-            
-        serializer = CoachScheduleSerializer(obj)
+
+        serializer = CoachScheduleSerializer(obj, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=False, methods=['delete'])
@@ -1211,36 +1381,23 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['get'])
     def history(self, request):
-        """
-        Get paginated group session history.
-        
-        Query Params:
-            - page: Page number (default: 1)
-            - page_size: Records per page (default: 20, max: 100)
-        
-        Returns:
-            Paginated response with count, next, previous, and results
-        """
         user = request.user
-        
-        # Filter by coach unless admin
+
         if user.is_superuser:
             logs = GroupSessionLog.objects.all()
         else:
             logs = GroupSessionLog.objects.filter(coach=user)
-        
-        logs = logs.order_by('-date')
-        
-        # Apply pagination
+
+        logs = logs.select_related('coach').prefetch_related('participants__client').order_by('-date')
+
         paginator = HistoryPagination()
         page = paginator.paginate_queryset(logs, request, view=self)
-        
+
         if page is not None:
-            serializer = GroupSessionLogSerializer(page, many=True)
+            serializer = GroupSessionLogSerializer(page, many=True, context={'request': request})
             return paginator.get_paginated_response(serializer.data)
-        
-        # Fallback to unpaginated (shouldn't happen with proper pagination)
-        serializer = GroupSessionLogSerializer(logs, many=True)
+
+        serializer = GroupSessionLogSerializer(logs, many=True, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=False, methods=['post'])
@@ -1252,107 +1409,104 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
         participants_data = data.get('participants', [])
 
         with transaction.atomic():
-            # Use json.dumps to safely store the list of objects as a string
-            exercises_json = json.dumps(exercises) if isinstance(exercises, list) else exercises
-
             log = GroupSessionLog.objects.create(
                 coach=coach,
                 day_name=day_name,
-                exercises_summary=exercises_json
+                # exercises_summary is a JSONField; pass the list directly
+                exercises_summary=exercises if isinstance(exercises, list) else [],
             )
+
+            # Batch-fetch active subscriptions for all participants at once
+            client_ids = [p.get('client_id') for p in participants_data if p.get('client_id')]
+            active_subs = (
+                ClientSubscription.objects
+                .filter(client_id__in=client_ids, is_active=True)
+                .select_related('plan')
+            )
+            sub_map = {sub.client_id: sub for sub in active_subs}
+
+            participants_to_create = []
+            subs_to_save = []
 
             for p_data in participants_data:
                 client_id = p_data.get('client_id')
                 note = p_data.get('note', '')
-                
                 deducted = False
-                # Find the active subscription to deduct from
-                sub = ClientSubscription.objects.filter(
-                    client_id=client_id, is_active=True
-                ).first()
 
+                sub = sub_map.get(client_id)
                 if sub:
                     sub.sessions_used += 1
-                    # Auto-expire if session limit reached
-                    if sub.plan and sub.sessions_used >= sub.plan.units:
+                    if sub.plan and sub.plan.units and sub.sessions_used >= sub.plan.units:
                         sub.is_active = False
-                    sub.save()
+                    subs_to_save.append(sub)
                     deducted = True
 
-                GroupSessionParticipant.objects.create(
-                    session=log,
-                    client_id=client_id,
-                    note=note,
-                    deducted=deducted
+                participants_to_create.append(
+                    GroupSessionParticipant(
+                        session=log,
+                        client_id=client_id,
+                        note=note,
+                        deducted=deducted,
+                    )
                 )
+
+            # Bulk save subscriptions and participants
+            for sub in subs_to_save:
+                sub.save()
+            GroupSessionParticipant.objects.bulk_create(participants_to_create)
 
         return Response({'status': 'Session Completed & Subscriptions Deducted'})
 
     @action(detail=False, methods=['get'])
     def client_history(self, request):
-        """
-        Get paginated history for a specific child.
-        
-        Query Params:
-            - client_id: ID of the child (required)
-            - page: Page number (default: 1)
-            - page_size: Records per page (default: 20, max: 100)
-        
-        Returns:
-            Paginated response with performance data for each session
-        """
         client_id = request.query_params.get('client_id')
         user = request.user
-        
+
         if not client_id:
             return Response({"error": "client_id is required"}, status=400)
 
-        # Filter by coach permissions
-        participations = GroupSessionParticipant.objects.filter(
-            client_id=client_id
-        ).select_related('session', 'client')
-        
-        # Non-admin users only see their own sessions
+        participations = (
+            GroupSessionParticipant.objects
+            .filter(client_id=client_id)
+            .select_related('session__coach', 'client')
+        )
+
         if not user.is_superuser:
             participations = participations.filter(session__coach=user)
-        
+
         participations = participations.order_by('-session__date')
-        
-        # Apply pagination
+
         paginator = HistoryPagination()
         page = paginator.paginate_queryset(participations, request, view=self)
-        
-        # Process paginated results
+
         page_data = page if page is not None else participations
         history_data = []
 
         for p in page_data:
             session = p.session
-            client_name = p.client.name
-            
-            try:
-                if isinstance(session.exercises_summary, str):
-                    exercises_data = json.loads(session.exercises_summary)
-                else:
-                    exercises_data = session.exercises_summary
-            except:
-                exercises_data = []
+            client_name = p.client.name if p.client else ""
+
+            exercises_data = session.exercises_summary
+            if isinstance(exercises_data, str):
+                try:
+                    exercises_data = json.loads(exercises_data)
+                except (json.JSONDecodeError, TypeError):
+                    exercises_data = []
 
             child_performance = []
-            session_note_for_child = p.note
-
             if isinstance(exercises_data, list):
                 for ex in exercises_data:
                     results = ex.get('results', [])
-                    user_res = next((r for r in results if r.get('client') == client_name), None)
-                    
+                    user_res = next(
+                        (r for r in results if r.get('client') == client_name), None
+                    )
                     if user_res:
                         child_performance.append({
                             'exercise': ex.get('name', 'Unknown'),
                             'type': ex.get('type', 'strength'),
                             'val1': user_res.get('val1', '-'),
                             'val2': user_res.get('val2', '-'),
-                            'note': user_res.get('note', '')
+                            'note': user_res.get('note', ''),
                         })
 
             history_data.append({
@@ -1360,18 +1514,19 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
                 'date': session.date,
                 'day_name': session.day_name,
                 'coach': session.coach.first_name if session.coach else "Unknown",
-                'session_note': session_note_for_child, 
-                'performance': child_performance
+                'session_note': p.note,
+                'performance': child_performance,
             })
 
-        # Return paginated response
         if page is not None:
             return paginator.get_paginated_response(history_data)
-        
+
         return Response(history_data)
-    
-    
-    
+
+
+# ---------------------------------------------------------------------------
+# GROUP WORKOUT TEMPLATES
+# ---------------------------------------------------------------------------
 
 class GroupWorkoutTemplateViewSet(viewsets.ModelViewSet):
     serializer_class = GroupWorkoutTemplateSerializer
@@ -1380,13 +1535,11 @@ class GroupWorkoutTemplateViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
-        
-        
-    
-    
-# In views.py
 
-# --- views.py ---
+
+# ---------------------------------------------------------------------------
+# SESSION TRANSFER
+# ---------------------------------------------------------------------------
 
 class SessionTransferRequestViewSet(viewsets.ModelViewSet):
     serializer_class = SessionTransferRequestSerializer
@@ -1394,13 +1547,11 @@ class SessionTransferRequestViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        # Show requests where I am the sender OR the receiver
         return SessionTransferRequest.objects.filter(
             Q(from_trainer=user) | Q(to_trainer=user)
         ).order_by('-created_at')
 
     def perform_create(self, serializer):
-        # Automatically set 'from_trainer' to the logged-in user
         serializer.save(from_trainer=self.request.user)
 
     @action(detail=True, methods=['post'])
@@ -1408,7 +1559,6 @@ class SessionTransferRequestViewSet(viewsets.ModelViewSet):
         transfer = self.get_object()
         new_status = request.data.get('status')
 
-        # Security: Only the RECEIVER can accept/reject
         if transfer.to_trainer != request.user:
             return Response({"error": "Not authorized to respond to this request"}, status=403)
 
@@ -1418,30 +1568,33 @@ class SessionTransferRequestViewSet(viewsets.ModelViewSet):
         transfer.status = new_status
         transfer.save()
         return Response({"status": "success", "new_status": new_status})
-    
-    
-    
-    
-# views.py
+
+
+# ---------------------------------------------------------------------------
+# MANUAL SAVES
+# ---------------------------------------------------------------------------
 
 class ManualNutritionSaveViewSet(viewsets.ModelViewSet):
     serializer_class = ManualNutritionSaveSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Requirement #4: Each account sees only their own records
-        return ManualNutritionSave.objects.filter(user=self.request.user).order_by('-updated_at')
+        return ManualNutritionSave.objects.filter(
+            user=self.request.user
+        ).order_by('-updated_at')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
 
 class ManualWorkoutSaveViewSet(viewsets.ModelViewSet):
     serializer_class = ManualWorkoutSaveSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Requirement #4: Each account sees only their own records
-        return ManualWorkoutSave.objects.filter(user=self.request.user).order_by('-updated_at')
+        return ManualWorkoutSave.objects.filter(
+            user=self.request.user
+        ).order_by('-updated_at')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

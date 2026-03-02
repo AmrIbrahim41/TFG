@@ -24,15 +24,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = "django-insecure-1rsao6n1ojub8!sld9(5=n@#6-fyuv8nj9r5o3atk3^$v@1nsr"
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
+# يمكنك إضافة الدومين الحقيقي الخاص بك هنا مستقبلاً
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '*']
 
 
 # Application definition
 
 INSTALLED_APPS = [
-   "unfold",  # <--- Must be first
+    "unfold",  # <--- Must be first
     "unfold.contrib.filters",  # Optional: Advanced filters
     "unfold.contrib.forms",    # Optional: Pretty forms
     "unfold.contrib.import_export",  # Optional: Import/Export support
@@ -41,16 +42,17 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
+    "whitenoise.runserver_nostatic", # <--- أضفنا هذه لدعم WhiteNoise في بيئة التطوير أيضاً
     "django.contrib.staticfiles",
     'rest_framework',
     'corsheaders',
     'clients',
-    
 ]
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware", # <--- يجب أن تكون مباشرة بعد SecurityMiddleware
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -58,8 +60,6 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
-
-
 
 UNFOLD = {
     "SITE_TITLE": "Gym Pro Management",
@@ -169,6 +169,17 @@ STATIC_URL = "static/"
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# إعدادات التخزين الحديثة في Django لضغط الملفات الثابتة عبر WhiteNoise
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
 CORS_ALLOW_ALL_ORIGINS = True  # For development only
 
 REST_FRAMEWORK = {
@@ -177,9 +188,8 @@ REST_FRAMEWORK = {
     )
 }
 
-
 from datetime import timedelta
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=1), # User stays logged in for 1 day
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=2), # User stays logged in for 1 day
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 }

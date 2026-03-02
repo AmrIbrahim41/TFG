@@ -1,40 +1,76 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { 
-    Utensils, Calendar, User, Activity, 
-    Save, ArrowLeft, Target, Trash2, Plus, 
-    Flame, Droplets, Wheat, Beef, AlertTriangle, 
-    Leaf, FileText, Zap, Mars, Venus, Loader2, 
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import {
+    Utensils, Calendar, User, Activity,
+    Save, ArrowLeft, Target, Trash2, Plus,
+    Flame, Droplets, Wheat, Beef, AlertTriangle,
+    Leaf, FileText, Zap, Mars, Venus, Loader2,
     ChevronLeft, ChevronRight, Download, Scale,
-    Check, ChevronDown, X, Type 
+    Check, ChevronDown, X, Type, AlertCircle
 } from 'lucide-react';
-import api from '../../api'; // تأكد من مسار api الصحيح لديك
-import { PDFDownloadLink } from '@react-pdf/renderer'; 
+import api from '../../api';
+import { PDFDownloadLink } from '@react-pdf/renderer';
+import NutritionPDF_EN from '../../utils/NutritionPDF_EN';
+import NutritionPDF_AR from '../../utils/NutritionPDF_AR';
 
-// --- IMPORT SEPARATE PDF FILES ---
-// تأكد من صحة مسارات الملفات التالية
-import NutritionPDF_EN from '../../utils/NutritionPDF_EN'; 
-import NutritionPDF_AR from '../../utils/NutritionPDF_AR'; 
+// --- TOAST ---
+const Toast = ({ message, type = 'success', onDismiss }) => {
+    useEffect(() => {
+        const t = setTimeout(onDismiss, 4000);
+        return () => clearTimeout(t);
+    }, [onDismiss]);
+
+    return (
+        <div className={`fixed bottom-6 right-6 z-[200] flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border text-sm font-bold animate-in slide-in-from-bottom-4 duration-300
+            ${type === 'error'
+                ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700 text-red-700 dark:text-red-300'
+                : 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700 text-green-700 dark:text-green-300'
+            }`}
+        >
+            <AlertCircle size={16} className="shrink-0" />
+            {message}
+            <button onClick={onDismiss} className="ml-2 text-current opacity-60 hover:opacity-100 transition-opacity"><X size={14} /></button>
+        </div>
+    );
+};
+
+// --- DELETE CONFIRMATION MODAL ---
+const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, isLoading }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+            <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 max-w-sm w-full border border-zinc-200 dark:border-zinc-800 shadow-2xl animate-in zoom-in-95 duration-200">
+                <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <Trash2 size={24} className="text-red-600 dark:text-red-500" />
+                </div>
+                <h3 className="text-lg font-black text-zinc-900 dark:text-white text-center mb-2">{title}</h3>
+                <p className="text-zinc-500 text-sm text-center mb-6">{message}</p>
+                <div className="flex gap-3">
+                    <button onClick={onCancel} className="flex-1 py-3 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold text-sm hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
+                        Cancel
+                    </button>
+                    <button onClick={onConfirm} disabled={isLoading} className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-colors">
+                        {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 // --- PAGINATION ---
 const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => {
     const totalPages = Math.ceil(totalItems / itemsPerPage);
     if (totalPages <= 1) return null;
-
     return (
         <div className="flex items-center justify-center gap-2 mt-8 pb-8">
-            <button
-                onClick={() => onPageChange(currentPage - 1)}
-                disabled={currentPage === 1}
-                className="w-10 h-10 flex items-center justify-center rounded-xl bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white disabled:opacity-30 disabled:hover:text-zinc-500 transition-all"
-            >
+            <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1}
+                className="w-10 h-10 flex items-center justify-center rounded-xl bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white disabled:opacity-30 transition-all">
                 <ChevronLeft size={18} />
             </button>
             <span className="text-xs font-bold text-zinc-500 px-4">Page {currentPage} of {totalPages}</span>
-            <button
-                onClick={() => onPageChange(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                className="w-10 h-10 flex items-center justify-center rounded-xl bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white disabled:opacity-30 disabled:hover:text-zinc-500 transition-all"
-            >
+            <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages}
+                className="w-10 h-10 flex items-center justify-center rounded-xl bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white disabled:opacity-30 transition-all">
                 <ChevronRight size={18} />
             </button>
         </div>
@@ -44,100 +80,86 @@ const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => 
 // --- LOGIC ENGINE ---
 const calculateNutrition = (inputs) => {
     const {
-        gender = 'male', age = 25, heightCm = 170, weightKg = 80, 
-        activityLevel = 'moderate', deficitSurplus = 0, 
-        fatPercentage = 25, proteinPerLb = 1.0, 
+        gender = 'male', age = 25, heightCm = 170, weightKg = 80,
+        activityLevel = 'moderate', deficitSurplus = 0,
+        fatPercentage = 25, proteinPerLb = 1.0,
         mealsCount = 4
     } = inputs;
 
     const safeWeight = Math.max(0, parseFloat(weightKg) || 0);
     const safeHeight = Math.max(0, parseFloat(heightCm) || 0);
-    const safeAge = Math.max(0, parseInt(age) || 0);
-    const safeMeals = Math.max(1, parseInt(mealsCount) || 1); 
+    const safeAge    = Math.max(0, parseInt(age)        || 0);
+    const safeMeals  = Math.max(1, parseInt(mealsCount) || 1);
+    const weightLbs  = safeWeight * 2.20462;
 
-    const weightLbs = safeWeight * 2.20462;
-    
     let bmr = (10 * safeWeight) + (6.25 * safeHeight) - (5 * safeAge);
     bmr += (gender === 'male' ? 5 : -161);
 
-    const multipliers = { 'sedentary': 1.2, 'light': 1.375, 'moderate': 1.55, 'active': 1.725, 'very_active': 1.9 };
+    const multipliers = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 };
     const tdee = Math.round(bmr * (multipliers[activityLevel] || 1.2));
     const targetCalories = tdee + parseInt(deficitSurplus || 0);
-    
+
     const proteinGrams = Math.round(weightLbs * parseFloat(proteinPerLb || 1));
-    const proteinCals = proteinGrams * 4;
-    
-    let fatCals = Math.round(targetCalories * (parseFloat(fatPercentage || 25) / 100));
-    let fatGrams = Math.round(fatCals / 9);
+    const proteinCals  = proteinGrams * 4;
+    const fatCals      = Math.round(targetCalories * (parseFloat(fatPercentage || 25) / 100));
+    const fatGrams     = Math.round(fatCals / 9);
 
     const usedCals = proteinCals + fatCals;
     let remainingCals = targetCalories - usedCals;
     let warning = null;
+    if (remainingCals < 0) { warning = 'Check Macros! (Over Limit)'; remainingCals = 0; }
 
-    if (remainingCals < 0) {
-        warning = "Check Macros! (Over Limit)";
-        remainingCals = 0; 
-    }
-
-    const carbGrams = Math.round(remainingCals / 4);
+    const carbGrams  = Math.round(remainingCals / 4);
     const fiberGrams = Math.round((targetCalories / 1000) * 14);
 
     return {
-        tdee, targetCalories, warning, 
+        tdee, targetCalories, warning,
         macros: {
-            protein: { grams: proteinGrams, cals: proteinCals, pct: Math.round((proteinCals/targetCalories)*100) || 0 },
-            fats: { grams: fatGrams, cals: fatCals, pct: Math.round((fatCals/targetCalories)*100) || 0 },
-            carbs: { grams: carbGrams, cals: remainingCals, pct: Math.round((remainingCals/targetCalories)*100) || 0 },
-            fiber: { grams: fiberGrams } 
+            protein: { grams: proteinGrams, cals: proteinCals, pct: Math.round((proteinCals / targetCalories) * 100) || 0 },
+            fats:    { grams: fatGrams,     cals: fatCals,     pct: Math.round((fatCals     / targetCalories) * 100) || 0 },
+            carbs:   { grams: carbGrams,    cals: remainingCals, pct: Math.round((remainingCals / targetCalories) * 100) || 0 },
+            fiber:   { grams: fiberGrams },
         },
         perMeal: {
-            proteinCals: Math.round(proteinCals / safeMeals),
-            carbsCals: Math.round(remainingCals / safeMeals),
-            fatsCals: Math.round(fatCals / safeMeals),
-            proteinGrams: Math.round(proteinGrams / safeMeals),
-            carbsGrams: Math.round(carbGrams / safeMeals),
-            fatsGrams: Math.round(fatGrams / safeMeals),
-        }
+            proteinCals:  Math.round(proteinCals   / safeMeals),
+            carbsCals:    Math.round(remainingCals / safeMeals),
+            fatsCals:     Math.round(fatCals       / safeMeals),
+            proteinGrams: Math.round(proteinGrams  / safeMeals),
+            carbsGrams:   Math.round(carbGrams     / safeMeals),
+            fatsGrams:    Math.round(fatGrams      / safeMeals),
+        },
     };
 };
 
-// --- MODERN SELECT COMPONENT ---
+// --- CUSTOM SELECT ---
 const CustomSelect = ({ label, value, options, onChange, disabled }) => {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef(null);
 
     useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (containerRef.current && !containerRef.current.contains(event.target)) {
-                setIsOpen(false);
-            }
+        const handleClickOutside = (e) => {
+            if (containerRef.current && !containerRef.current.contains(e.target)) setIsOpen(false);
         };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
     const selectedLabel = options.find(o => o.val === value)?.lbl || value;
 
     return (
         <div ref={containerRef} className={`relative w-full ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
-            <div 
+            <div
                 onClick={() => !disabled && setIsOpen(!isOpen)}
-                className={`
-                    bg-zinc-200 dark:bg-zinc-900/50 border p-3.5 rounded-2xl cursor-pointer transition-all duration-200 group relative
+                className={`bg-zinc-200 dark:bg-zinc-900/50 border p-3.5 rounded-2xl cursor-pointer transition-all duration-200 group relative
                     ${isOpen ? 'border-orange-500 ring-1 ring-orange-500/20 bg-zinc-100 dark:bg-zinc-900' : 'border-zinc-300 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-900'}
                 `}
             >
-                <label className="text-[10px] uppercase font-bold text-zinc-600 dark:text-zinc-500 mb-1 block group-hover:text-zinc-500 dark:group-hover:text-zinc-400 transition-colors">
+                <label className="text-[10px] uppercase font-bold text-zinc-600 dark:text-zinc-500 mb-1 block group-hover:text-zinc-500 dark:group-hover:text-zinc-400 transition-colors pointer-events-none">
                     {label}
                 </label>
                 <div className="flex justify-between items-center">
-                    <span className="text-zinc-900 dark:text-white font-bold text-sm md:text-base truncate pr-2">
-                        {selectedLabel}
-                    </span>
-                    <ChevronDown 
-                        size={16} 
-                        className={`text-zinc-500 transition-transform duration-300 ${isOpen ? 'rotate-180 text-orange-500' : ''}`} 
-                    />
+                    <span className="text-zinc-900 dark:text-white font-bold text-sm md:text-base truncate pr-2">{selectedLabel}</span>
+                    <ChevronDown size={16} className={`text-zinc-500 transition-transform duration-300 shrink-0 ${isOpen ? 'rotate-180 text-orange-500' : ''}`} />
                 </div>
             </div>
 
@@ -145,16 +167,15 @@ const CustomSelect = ({ label, value, options, onChange, disabled }) => {
                 <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-50 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-800 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top">
                     <div className="max-h-[240px] overflow-y-auto custom-scrollbar">
                         {options.map((opt) => (
-                            <div 
+                            <div
                                 key={opt.val}
                                 onClick={() => { onChange(opt.val); setIsOpen(false); }}
-                                className={`
-                                    px-4 py-3 flex items-center justify-between cursor-pointer transition-colors border-b border-zinc-300 dark:border-zinc-800/50 last:border-0
+                                className={`px-4 py-3 flex items-center justify-between cursor-pointer transition-colors border-b border-zinc-300 dark:border-zinc-800/50 last:border-0
                                     ${opt.val === value ? 'bg-orange-500/10 text-orange-600 dark:text-orange-500' : 'text-zinc-800 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-800 hover:text-black dark:hover:text-white'}
                                 `}
                             >
                                 <span className="font-bold text-sm">{opt.lbl}</span>
-                                {opt.val === value && <Check size={14} className="text-orange-600 dark:text-orange-500" />}
+                                {opt.val === value && <Check size={14} className="text-orange-600 dark:text-orange-500 shrink-0" />}
                             </div>
                         ))}
                     </div>
@@ -164,18 +185,12 @@ const CustomSelect = ({ label, value, options, onChange, disabled }) => {
     );
 };
 
-// --- UPDATED INPUT COMPONENT ---
-const ModernInput = ({ label, value, onChange, type="text", suffix, options, disabled=false, className="", min, placeholder }) => {
+// --- MODERN INPUT ---
+const ModernInput = ({ label, value, onChange, type = 'text', suffix, options, disabled = false, className = '', min, placeholder }) => {
     if (options) {
         return (
             <div className={className}>
-                <CustomSelect 
-                    label={label} 
-                    value={value} 
-                    options={options} 
-                    onChange={onChange} 
-                    disabled={disabled} 
-                />
+                <CustomSelect label={label} value={value} options={options} onChange={onChange} disabled={disabled} />
             </div>
         );
     }
@@ -183,39 +198,51 @@ const ModernInput = ({ label, value, onChange, type="text", suffix, options, dis
     return (
         <div className={`bg-zinc-200 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-800 p-3.5 rounded-2xl relative focus-within:ring-1 focus-within:ring-orange-500/50 focus-within:border-orange-500 focus-within:bg-zinc-100 dark:focus-within:bg-zinc-900 transition-all ${disabled ? 'opacity-50' : ''} ${className}`}>
             <label className="text-[10px] uppercase font-bold text-zinc-600 dark:text-zinc-500 mb-1 block">{label}</label>
-            <input 
-                disabled={disabled} 
-                type={type} 
+            <input
+                disabled={disabled}
+                type={type}
                 min={min}
                 value={value}
                 placeholder={placeholder}
+                inputMode={type === 'number' ? 'decimal' : undefined}
                 onChange={(e) => {
                     if (type === 'number' && min !== undefined) {
                         const val = parseFloat(e.target.value);
-                        if (val < min && e.target.value !== '') return; 
+                        if (val < min && e.target.value !== '') return;
                     }
-                    onChange(e.target.value)
-                }} 
-                className="w-full bg-transparent text-zinc-900 dark:text-white font-bold text-sm md:text-base outline-none placeholder-zinc-500 dark:placeholder-zinc-700" 
+                    onChange(e.target.value);
+                }}
+                className="w-full bg-transparent text-zinc-900 dark:text-white font-bold text-sm md:text-base outline-none placeholder-zinc-500 dark:placeholder-zinc-700"
             />
-            {suffix && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-500 dark:text-zinc-600">{suffix}</span>}
+            {suffix && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-500 dark:text-zinc-600 pointer-events-none">{suffix}</span>}
         </div>
     );
 };
 
+// --- MAIN COMPONENT ---
 const ClientNutritionTab = ({ subscriptions, clientData }) => {
-    const [view, setView] = useState('list'); 
+    const [view, setView] = useState('list');
     const [plans, setPlans] = useState([]);
     const [totalCount, setTotalCount] = useState(0);
     const [page, setPage] = useState(1);
     const [loading, setLoading] = useState(false);
-    
+    const [isSaving, setIsSaving] = useState(false);
+    const [isCreating, setIsCreating] = useState(false);
+
     const [activePlan, setActivePlan] = useState(null);
     const [foodDatabase, setFoodDatabase] = useState([]);
     const [newPlanName, setNewPlanName] = useState('');
     const [newPlanWeeks, setNewPlanWeeks] = useState(4);
-    
-    // --- POPUP STATES ---
+
+    // Delete confirmation state
+    const [deleteModal, setDeleteModal] = useState({ isOpen: false, planId: null, isLoading: false });
+
+    // Toast state
+    const [toast, setToast] = useState(null);
+    const showToast = useCallback((message, type = 'success') => setToast({ message, type }), []);
+    const dismissToast = useCallback(() => setToast(null), []);
+
+    // EN PDF modal
     const [showEnPdfModal, setShowEnPdfModal] = useState(false);
     const [customEnName, setCustomEnName] = useState('');
 
@@ -224,271 +251,244 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         activityLevel: 'moderate', deficitSurplus: -500,
         fatPercentage: 25, proteinPerLb: 1.0,
         mealsCount: 4, snacksCount: 0,
-        carbAdjustment: 0, 
-        brandText: 'TFG' 
+        carbAdjustment: 0,
+        brandText: 'TFG'
     });
 
     const [results, setResults] = useState(null);
     const [planNotes, setPlanNotes] = useState('');
 
-    const clientId = clientData?.id || (subscriptions && subscriptions[0] ? subscriptions[0].client : null);
-    const defaultSubId = subscriptions && subscriptions[0] ? subscriptions[0].id : null;
+    const clientId    = clientData?.id || subscriptions?.[0]?.client || null;
+    const defaultSubId = subscriptions?.[0]?.id || null;
+    const pdfClientName = activePlan?.client_name || clientData?.name || 'Athlete';
+    const trainerName   = activePlan?.created_by_name || 'Coach';
 
-    const pdfClientName = activePlan?.client_name || clientData?.name || "Athlete";
-    const trainerName = activePlan?.created_by_name || "Coach";
-
-    useEffect(() => { if (clientId) fetchPlans(page); }, [clientId, page]);
-    useEffect(() => { fetchFoodDatabase(); }, []);
-
-    useEffect(() => {
-        if (view === 'detail') {
-            const res = calculateNutrition(calcState);
-            setResults(res);
+    // --- DATA FETCHING ---
+    const fetchPlans = useCallback(async (pageNum = 1) => {
+        if (!clientId) return;
+        let cancelled = false;
+        setLoading(true);
+        try {
+            const res = await api.get(`/nutrition-plans/?client_id=${clientId}&page=${pageNum}`);
+            if (!cancelled) {
+                const data = res.data.results ?? res.data;
+                setPlans(data);
+                setTotalCount(res.data.count ?? data.length);
+            }
+        } catch (err) {
+            if (!cancelled) showToast('Failed to load nutrition plans.', 'error');
+        } finally {
+            if (!cancelled) setLoading(false);
         }
+        return () => { cancelled = true; };
+    }, [clientId, showToast]);
+
+    const fetchFoodDatabase = useCallback(async () => {
+        let cancelled = false;
+        try {
+            const res = await api.get('/food-database/');
+            if (!cancelled) setFoodDatabase(res.data);
+        } catch (err) {
+            console.error('Failed to load foods', err);
+        }
+        return () => { cancelled = true; };
+    }, []);
+
+    useEffect(() => { if (clientId) fetchPlans(page); }, [clientId, page, fetchPlans]);
+    useEffect(() => { fetchFoodDatabase(); }, [fetchFoodDatabase]);
+
+    // Recalculate nutrition on every calcState change when in detail view
+    useEffect(() => {
+        if (view === 'detail') setResults(calculateNutrition(calcState));
     }, [calcState, view]);
 
+    // Populate form from active plan
     useEffect(() => {
         if (activePlan) {
             setCalcState({
-                gender: activePlan.calc_gender || 'male',
-                age: activePlan.calc_age || 25,
-                heightCm: activePlan.calc_height || 170,
-                weightKg: activePlan.calc_weight || 80,
-                activityLevel: activePlan.calc_activity_level || 'moderate',
-                deficitSurplus: activePlan.calc_defer_cal || 0,
-                fatPercentage: activePlan.calc_fat_percent || 25,
-                proteinPerLb: activePlan.calc_protein_multiplier || 1.0,
-                mealsCount: activePlan.calc_meals || 4,
-                snacksCount: activePlan.calc_snacks || 0,
-                carbAdjustment: activePlan.calc_carb_adjustment || 0,
-                brandText: activePlan.pdf_brand_text || 'TFG'
+                gender:          activePlan.calc_gender            || 'male',
+                age:             activePlan.calc_age               || 25,
+                heightCm:        activePlan.calc_height            || 170,
+                weightKg:        activePlan.calc_weight            || 80,
+                activityLevel:   activePlan.calc_activity_level    || 'moderate',
+                deficitSurplus:  activePlan.calc_defer_cal         || 0,
+                fatPercentage:   activePlan.calc_fat_percent       || 25,
+                proteinPerLb:    activePlan.calc_protein_multiplier || 1.0,
+                mealsCount:      activePlan.calc_meals             || 4,
+                snacksCount:     activePlan.calc_snacks            || 0,
+                carbAdjustment:  activePlan.calc_carb_adjustment   || 0,
+                brandText:       activePlan.pdf_brand_text         || 'TFG',
             });
             setPlanNotes(activePlan.notes || '');
-            // Reset English Name when opening a plan
             setCustomEnName('');
         }
     }, [activePlan]);
 
-    const weightLbs = useMemo(() => {
-        return ((parseFloat(calcState.weightKg) || 0) * 2.20462).toFixed(1);
-    }, [calcState.weightKg]);
+    const weightLbs = useMemo(() => ((parseFloat(calcState.weightKg) || 0) * 2.20462).toFixed(1), [calcState.weightKg]);
 
     const currentPdfPlan = useMemo(() => {
         if (!activePlan) return null;
         return {
             ...activePlan,
-            calc_weight: calcState.weightKg,
+            calc_weight:         calcState.weightKg,
             calc_activity_level: calcState.activityLevel,
-            calc_meals: calcState.mealsCount,
-            calc_snacks: calcState.snacksCount,
+            calc_meals:          calcState.mealsCount,
+            calc_snacks:         calcState.snacksCount,
         };
     }, [activePlan, calcState]);
 
-
-    const fetchPlans = async (pageNum = 1) => {
-        if (!clientId) return;
-        setLoading(true);
-        try {
-            const res = await api.get(`/nutrition-plans/?client_id=${clientId}&page=${pageNum}`);
-            if (res.data.results) {
-                setPlans(res.data.results);
-                setTotalCount(res.data.count);
-            } else {
-                setPlans(res.data);
-                setTotalCount(res.data.length);
-            }
-        } catch (err) { console.error(err); } 
-        finally { setLoading(false); }
-    };
-
-    const fetchFoodDatabase = async () => {
-        try {
-            const res = await api.get('/food-database/');
-            setFoodDatabase(res.data);
-        } catch (err) { console.error("Failed to load foods", err); }
-    };
-
-    const handleCreatePlan = async () => {
-        if (!newPlanName || !defaultSubId) return alert("Enter name and ensure valid subscription");
+    // --- CRUD HANDLERS ---
+    const handleCreatePlan = useCallback(async () => {
+        if (!newPlanName.trim()) { showToast('Please enter a plan name.', 'error'); return; }
+        if (!defaultSubId) { showToast('No active subscription found.', 'error'); return; }
+        setIsCreating(true);
         try {
             const payload = { subscription: defaultSubId, name: newPlanName, duration_weeks: newPlanWeeks, target_calories: 2000 };
             const res = await api.post('/nutrition-plans/', payload);
-            fetchPlans(page);
+            await fetchPlans(page);
             setNewPlanName('');
-            setActivePlan(res.data); // الآن res.data يجب أن يحتوي على id بفضل تعديل الباك إند
+            setActivePlan(res.data);
             setView('detail');
-        } catch (err) { alert("Error creating plan."); }
-    };
-
-    const handleSavePlan = async () => {
-        // --- FIX: Check if ID exists to avoid 404/undefined error ---
-        if (!activePlan?.id) {
-            alert("خطأ: لم يتم التعرف على الخطة. يرجى تحديث الصفحة والمحاولة مرة أخرى.");
-            return;
+            showToast('Plan created successfully!');
+        } catch (err) {
+            showToast('Error creating plan.', 'error');
+        } finally {
+            setIsCreating(false);
         }
-        
+    }, [newPlanName, defaultSubId, newPlanWeeks, fetchPlans, page, showToast]);
+
+    const handleSavePlan = useCallback(async () => {
+        if (!activePlan?.id) { showToast('Plan ID missing. Please refresh.', 'error'); return; }
         if (!results) return;
-        
+        setIsSaving(true);
         try {
             const payload = {
-                calc_gender: calcState.gender,
-                calc_age: parseInt(calcState.age),
-                calc_height: parseFloat(calcState.heightCm),
-                calc_weight: parseFloat(calcState.weightKg),
-                calc_activity_level: calcState.activityLevel,
-                calc_defer_cal: parseInt(calcState.deficitSurplus),
-                calc_fat_percent: parseFloat(calcState.fatPercentage),
-                calc_protein_multiplier: parseFloat(calcState.proteinPerLb),
-                calc_meals: parseInt(calcState.mealsCount),
-                calc_snacks: parseInt(calcState.snacksCount),
-                
-                calc_carb_adjustment: parseInt(calcState.carbAdjustment),
-                pdf_brand_text: calcState.brandText,
-
-                calc_tdee: parseInt(results.tdee),
-                target_calories: parseInt(results.targetCalories),
-                target_protein: parseInt(results.macros.protein.grams),
-                target_carbs: parseInt(results.macros.carbs.grams),
-                target_fats: parseInt(results.macros.fats.grams),
-                notes: planNotes
+                calc_gender:              calcState.gender,
+                calc_age:                 parseInt(calcState.age),
+                calc_height:              parseFloat(calcState.heightCm),
+                calc_weight:              parseFloat(calcState.weightKg),
+                calc_activity_level:      calcState.activityLevel,
+                calc_defer_cal:           parseInt(calcState.deficitSurplus),
+                calc_fat_percent:         parseFloat(calcState.fatPercentage),
+                calc_protein_multiplier:  parseFloat(calcState.proteinPerLb),
+                calc_meals:               parseInt(calcState.mealsCount),
+                calc_snacks:              parseInt(calcState.snacksCount),
+                calc_carb_adjustment:     parseInt(calcState.carbAdjustment),
+                pdf_brand_text:           calcState.brandText,
+                calc_tdee:                parseInt(results.tdee),
+                target_calories:          parseInt(results.targetCalories),
+                target_protein:           parseInt(results.macros.protein.grams),
+                target_carbs:             parseInt(results.macros.carbs.grams),
+                target_fats:              parseInt(results.macros.fats.grams),
+                notes:                    planNotes,
             };
             const res = await api.patch(`/nutrition-plans/${activePlan.id}/`, payload);
             setActivePlan(res.data);
-            alert("✅ Targets & Notes Saved!");
+            showToast('Targets & Notes Saved!');
             fetchPlans(page);
-        } catch (err) { 
-            console.error("Save Error:", err);
-            alert("Failed to save."); 
+        } catch (err) {
+            showToast('Failed to save plan.', 'error');
+        } finally {
+            setIsSaving(false);
         }
-    };
+    }, [activePlan, results, calcState, planNotes, fetchPlans, page, showToast]);
 
-    const handleDeletePlan = async (id, e) => {
-        e.stopPropagation();
-        if(!confirm("Delete this plan?")) return;
+    const handleDeletePlan = useCallback(async () => {
+        const { planId } = deleteModal;
+        if (!planId) return;
+        setDeleteModal(prev => ({ ...prev, isLoading: true }));
         try {
-            await api.delete(`/nutrition-plans/${id}/`);
+            await api.delete(`/nutrition-plans/${planId}/`);
+            setDeleteModal({ isOpen: false, planId: null, isLoading: false });
+            showToast('Plan deleted.');
             fetchPlans(page);
-            if(activePlan?.id === id) setView('list');
-        } catch (err) { alert("Error deleting."); }
-    };
+            if (activePlan?.id === planId) setView('list');
+        } catch (err) {
+            showToast('Error deleting plan.', 'error');
+            setDeleteModal(prev => ({ ...prev, isLoading: false }));
+        }
+    }, [deleteModal, activePlan, fetchPlans, page, showToast]);
 
-    const formatActivity = (str) => {
+    const formatActivity = useCallback((str) => {
         if (!str) return 'Moderate';
         return str.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-    };
+    }, []);
 
     const exchangeList = useMemo(() => {
         if (!results || !foodDatabase.length) return null;
-        const targets = results.perMeal; 
+        const targets = results.perMeal;
         const groups = {
-            'Protein Sources': { items: [], targetCals: targets.proteinCals, color: 'text-red-500', bg: 'bg-red-500/10' },
-            'Carbohydrates': { items: [], targetCals: targets.carbsCals, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-            'Fats': { items: [], targetCals: targets.fatsCals, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
+            'Protein Sources': { items: [], targetCals: targets.proteinCals, color: 'text-red-500',    bg: 'bg-red-500/10' },
+            'Carbohydrates':   { items: [], targetCals: targets.carbsCals,   color: 'text-blue-500',   bg: 'bg-blue-500/10' },
+            'Fats':            { items: [], targetCals: targets.fatsCals,    color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
         };
-
         const carbModifier = 1 + (parseFloat(calcState.carbAdjustment || 0) / 100);
 
         foodDatabase.forEach(food => {
             const cat = food.category?.toLowerCase() || '';
             let targetGroup = '';
-            
             if (cat === 'protein') targetGroup = 'Protein Sources';
             else if (cat === 'carbs') targetGroup = 'Carbohydrates';
             else if (cat === 'fats') targetGroup = 'Fats';
-            
+
             if (targetGroup && food.calories_per_100g > 0) {
                 const targetCals = groups[targetGroup].targetCals;
                 let requiredWeight = (targetCals / food.calories_per_100g) * 100;
-                
-                if (targetGroup === 'Carbohydrates') {
-                    requiredWeight = requiredWeight * carbModifier;
-                }
+                if (targetGroup === 'Carbohydrates') requiredWeight *= carbModifier;
 
-                const meta = {
-                    cals: Math.round((food.calories_per_100g * requiredWeight) / 100),
-                    pro: Math.round((food.protein_per_100g * requiredWeight) / 100),
-                    carbs: Math.round((food.carbs_per_100g * requiredWeight) / 100),
-                    fats: Math.round((food.fats_per_100g * requiredWeight) / 100),
-                };
-                
-                groups[targetGroup].items.push({ 
-                    name: food.name, 
-                    arabic_name: food.arabic_name, 
-                    weight: Math.round(requiredWeight), 
-                    unit: 'g', 
-                    meta: meta 
+                groups[targetGroup].items.push({
+                    name: food.name,
+                    arabic_name: food.arabic_name,
+                    weight: Math.round(requiredWeight),
+                    unit: 'g',
+                    meta: {
+                        cals:  Math.round((food.calories_per_100g * requiredWeight) / 100),
+                        pro:   Math.round((food.protein_per_100g  * requiredWeight) / 100),
+                        carbs: Math.round((food.carbs_per_100g    * requiredWeight) / 100),
+                        fats:  Math.round((food.fats_per_100g     * requiredWeight) / 100),
+                    },
                 });
             }
         });
         return groups;
     }, [results, foodDatabase, calcState.carbAdjustment]);
 
-    // --- RENDER MODAL ---
+    // --- EN PDF MODAL ---
     const renderEnPdfModal = () => {
         if (!showEnPdfModal) return null;
-        const nameToUse = customEnName.trim() ? customEnName : pdfClientName;
-
+        const nameToUse = customEnName.trim() || pdfClientName;
         return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm animate-in fade-in duration-200"
+                onClick={(e) => { if (e.target === e.currentTarget) setShowEnPdfModal(false); }}>
                 <div className="bg-white dark:bg-[#18181b] w-full max-w-md rounded-3xl p-6 shadow-2xl ring-1 ring-zinc-200 dark:ring-zinc-800 animate-in zoom-in-95 duration-200 relative">
-                    <button 
-                        onClick={() => setShowEnPdfModal(false)}
-                        className="absolute right-4 top-4 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-                    >
+                    <button onClick={() => setShowEnPdfModal(false)} className="absolute right-4 top-4 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
                         <X size={20} />
                     </button>
-
                     <div className="mb-6 text-center">
                         <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
                             <Type size={24} className="text-orange-600 dark:text-orange-500" />
                         </div>
                         <h3 className="text-lg font-black text-zinc-900 dark:text-white">English Name Required</h3>
-                        <p className="text-xs text-zinc-500 mt-1 max-w-[80%] mx-auto">
-                            Please enter the client's name in English for the PDF.
-                        </p>
+                        <p className="text-xs text-zinc-500 mt-1 max-w-[80%] mx-auto">Please enter the client's name in English for the PDF.</p>
                     </div>
-
                     <div className="space-y-4">
-                        <ModernInput 
-                            label="Client Name (English)" 
-                            value={customEnName}
-                            onChange={setCustomEnName}
-                            placeholder="e.g. John Doe"
-                            className="w-full"
-                        />
-
+                        <ModernInput label="Client Name (English)" value={customEnName} onChange={setCustomEnName} placeholder="e.g. John Doe" className="w-full" />
                         <div className="flex gap-3 mt-6">
-                            <button 
-                                onClick={() => setShowEnPdfModal(false)}
-                                className="flex-1 py-3 text-sm font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-colors"
-                            >
+                            <button onClick={() => setShowEnPdfModal(false)} className="flex-1 py-3 text-sm font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-colors">
                                 Cancel
                             </button>
-
                             <PDFDownloadLink
-                                document={
-                                    <NutritionPDF_EN 
-                                        plan={currentPdfPlan}
-                                        clientName={nameToUse} 
-                                        trainerName={trainerName} 
-                                        brandText={calcState.brandText} 
-                                        results={results} 
-                                        exchangeList={exchangeList} 
-                                        notes={planNotes} 
-                                    />
-                                }
+                                document={<NutritionPDF_EN plan={currentPdfPlan} clientName={nameToUse} trainerName={trainerName} brandText={calcState.brandText} results={results} exchangeList={exchangeList} notes={planNotes} />}
                                 fileName={`${activePlan?.name || 'Nutrition'}_EN.pdf`}
                                 className="flex-1"
                             >
                                 {({ loading: pdfLoading }) => (
-                                    <button 
-                                        disabled={pdfLoading || !customEnName.trim()} 
-                                        onClick={() => {
-                                            setTimeout(() => setShowEnPdfModal(false), 2000);
-                                        }}
+                                    <button
+                                        disabled={pdfLoading || !customEnName.trim()}
+                                        onClick={() => { setTimeout(() => setShowEnPdfModal(false), 2000); }}
                                         className="w-full py-3 bg-zinc-900 dark:bg-white text-white dark:text-black hover:bg-orange-600 dark:hover:bg-orange-500 hover:text-white dark:hover:text-white disabled:opacity-50 disabled:cursor-not-allowed font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all text-sm"
                                     >
-                                        {pdfLoading ? <Loader2 size={16} className="animate-spin"/> : <Download size={16} />}
+                                        {pdfLoading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
                                         Download PDF
                                     </button>
                                 )}
@@ -500,9 +500,21 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         );
     };
 
+    // ==================== LIST VIEW ====================
     if (view === 'list') {
         return (
             <div className="space-y-6 animate-in fade-in duration-500 p-2 md:p-4">
+                {toast && <Toast message={toast.message} type={toast.type} onDismiss={dismissToast} />}
+
+                <ConfirmModal
+                    isOpen={deleteModal.isOpen}
+                    title="Delete Nutrition Plan?"
+                    message="This action cannot be undone. All macros and food exchange data will be permanently removed."
+                    onConfirm={handleDeletePlan}
+                    onCancel={() => setDeleteModal({ isOpen: false, planId: null, isLoading: false })}
+                    isLoading={deleteModal.isLoading}
+                />
+
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         <div className="w-10 h-10 md:w-12 md:h-12 bg-orange-500 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/20 shrink-0">
@@ -515,33 +527,36 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                     </div>
                 </div>
 
+                {/* Create Plan Form */}
                 <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 p-4 md:p-6 rounded-3xl relative overflow-hidden">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end relative z-10">
                         <div className="md:col-span-2 space-y-2">
                             <label className="text-xs font-bold text-zinc-600 dark:text-zinc-500 uppercase ml-1">Plan Name</label>
-                            <input 
-                                placeholder="e.g. Cutting Phase 1" 
+                            <input
+                                placeholder="e.g. Cutting Phase 1"
                                 className="w-full bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3 text-zinc-900 dark:text-white font-bold outline-none focus:border-orange-500 transition-all text-sm"
-                                value={newPlanName} 
-                                onChange={e => setNewPlanName(e.target.value)} 
+                                value={newPlanName}
+                                onChange={e => setNewPlanName(e.target.value)}
+                                onKeyPress={(e) => { if (e.key === 'Enter') handleCreatePlan(); }}
                             />
                         </div>
                         <div className="md:col-span-1 space-y-2">
                             <label className="text-xs font-bold text-zinc-600 dark:text-zinc-500 uppercase ml-1">Weeks</label>
-                            <input 
-                                type="number" 
-                                placeholder="4" 
-                                className="w-full bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3 text-zinc-900 dark:text-white font-bold outline-none focus:border-orange-500 transition-all text-sm" 
-                                value={newPlanWeeks} 
-                                onChange={e => setNewPlanWeeks(e.target.value)} 
+                            <input
+                                type="number"
+                                min="1"
+                                placeholder="4"
+                                className="w-full bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3 text-zinc-900 dark:text-white font-bold outline-none focus:border-orange-500 transition-all text-sm"
+                                value={newPlanWeeks}
+                                onChange={e => setNewPlanWeeks(e.target.value)}
                             />
                         </div>
-                        <button 
-                            onClick={handleCreatePlan} 
-                            disabled={!newPlanName} 
-                            className="w-full py-3 bg-zinc-900 dark:bg-white text-white dark:text-black hover:bg-orange-600 dark:hover:bg-orange-500 hover:text-white dark:hover:text-white disabled:opacity-50 font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all text-sm"
+                        <button
+                            onClick={handleCreatePlan}
+                            disabled={!newPlanName.trim() || isCreating}
+                            className="w-full py-3 bg-zinc-900 dark:bg-white text-white dark:text-black hover:bg-orange-600 dark:hover:bg-orange-500 hover:text-white dark:hover:text-white disabled:opacity-50 disabled:cursor-not-allowed font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all text-sm"
                         >
-                            <Plus size={16} /> Create
+                            {isCreating ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Create
                         </button>
                     </div>
                 </div>
@@ -556,9 +571,9 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                                 const activity = formatActivity(plan.calc_activity_level);
 
                                 return (
-                                    <div 
-                                        key={plan.id} 
-                                        onClick={() => { setActivePlan(plan); setView('detail'); }} 
+                                    <div
+                                        key={plan.id}
+                                        onClick={() => { setActivePlan(plan); setView('detail'); }}
                                         className="group relative bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 rounded-3xl p-5 hover:border-orange-500/50 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col justify-between min-h-[180px]"
                                     >
                                         <div className="absolute -right-6 -bottom-6 text-zinc-200 dark:text-zinc-800/50 group-hover:text-orange-500/5 group-hover:scale-110 group-hover:-rotate-12 transition-all duration-500">
@@ -572,15 +587,17 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                                                         <Calendar size={10} /> {plan.duration_weeks}W
                                                     </span>
                                                     <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full border text-[10px] backdrop-blur-sm ${isMale ? 'bg-blue-500/10 border-blue-500/20 text-blue-600 dark:text-blue-400' : 'bg-pink-500/10 border-pink-500/20 text-pink-600 dark:text-pink-400'}`}>
-                                                        {isMale ? <Mars size={12}/> : <Venus size={12}/>}
+                                                        {isMale ? <Mars size={12} /> : <Venus size={12} />}
                                                     </span>
                                                 </div>
-
-                                                <button onClick={(e) => handleDeletePlan(plan.id, e)} className="w-8 h-8 flex items-center justify-center rounded-full text-zinc-400 dark:text-zinc-600 hover:bg-red-500/10 hover:text-red-500 transition-all z-20">
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setDeleteModal({ isOpen: true, planId: plan.id, isLoading: false }); }}
+                                                    className="w-8 h-8 flex items-center justify-center rounded-full text-zinc-400 dark:text-zinc-600 hover:bg-red-500/10 hover:text-red-500 transition-all z-20"
+                                                >
                                                     <Trash2 size={14} />
                                                 </button>
                                             </div>
-                                            
+
                                             <div>
                                                 <h3 className="text-lg font-black text-zinc-900 dark:text-white leading-tight mb-1 group-hover:text-orange-600 dark:group-hover:text-orange-500 transition-colors line-clamp-2">{plan.name}</h3>
                                                 <p className="text-[10px] text-zinc-500">Created {new Date(plan.created_at).toLocaleDateString()}</p>
@@ -591,7 +608,6 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                                                     <Zap size={12} className="text-emerald-600 dark:text-emerald-500 fill-emerald-500/20" />
                                                     <span className="text-[10px] font-bold uppercase">{activity}</span>
                                                 </div>
-
                                                 <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-200 dark:bg-zinc-950 rounded-lg border border-zinc-300 dark:border-zinc-800/50 group-hover:border-orange-500/20 transition-colors ml-auto">
                                                     <Flame size={12} className="text-orange-600 dark:text-orange-500 fill-orange-500/20" />
                                                     <span className="text-zinc-900 dark:text-white font-bold text-xs">{plan.target_calories || 0}</span>
@@ -601,11 +617,12 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                                     </div>
                                 );
                             })}
-                            
-                            {plans.length === 0 && (
+
+                            {plans.length === 0 && !loading && (
                                 <div className="col-span-full py-10 text-center border-2 border-dashed border-zinc-300 dark:border-zinc-800 rounded-3xl text-zinc-500">
                                     <Utensils size={32} className="mx-auto mb-2 opacity-20" />
                                     <p className="font-bold text-sm">No Nutrition Plans Found</p>
+                                    <p className="text-xs mt-1">Create the first plan above</p>
                                 </div>
                             )}
                         </div>
@@ -617,141 +634,148 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         );
     }
 
+    // ==================== DETAIL VIEW ====================
     if (view === 'detail' && results) {
         return (
             <div className="animate-in slide-in-from-bottom-4 duration-500 pb-20 p-1 md:p-2">
-                
                 {renderEnPdfModal()}
+                {toast && <Toast message={toast.message} type={toast.type} onDismiss={dismissToast} />}
 
                 <div className="flex flex-col gap-4 mb-6">
                     <div className="flex items-center gap-4">
-                        <button onClick={() => setView('list')} className="w-10 h-10 flex items-center justify-center bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white shrink-0"><ArrowLeft size={18} /></button>
+                        <button
+                            onClick={() => setView('list')}
+                            className="w-10 h-10 flex items-center justify-center bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white shrink-0 transition-colors"
+                        >
+                            <ArrowLeft size={18} />
+                        </button>
                         <div className="min-w-0">
                             <h2 className="text-xl font-black text-zinc-900 dark:text-white truncate">{activePlan.name}</h2>
                             <p className="text-xs text-zinc-500">Editing Mode</p>
                         </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
                         {results && activePlan && (
                             <>
-                                <button 
+                                <button
                                     onClick={() => setShowEnPdfModal(true)}
-                                    className="whitespace-nowrap px-4 py-2.5 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-200 font-bold rounded-xl border border-zinc-300 dark:border-zinc-700 text-xs flex items-center gap-2 transition-all disabled:opacity-50"
+                                    className="whitespace-nowrap px-4 py-2.5 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-200 font-bold rounded-xl border border-zinc-300 dark:border-zinc-700 text-xs flex items-center gap-2 transition-all"
                                 >
                                     <Download size={14} /> EN PDF
                                 </button>
 
                                 <PDFDownloadLink
-                                    document={
-                                        <NutritionPDF_AR 
-                                            plan={currentPdfPlan}
-                                            clientName={pdfClientName} 
-                                            trainerName={trainerName} 
-                                            brandText={calcState.brandText} 
-                                            carbAdjustment={calcState.carbAdjustment} 
-                                            results={results} 
-                                            exchangeList={exchangeList} 
-                                            notes={planNotes} 
-                                        />
-                                    }
+                                    document={<NutritionPDF_AR plan={currentPdfPlan} clientName={pdfClientName} trainerName={trainerName} brandText={calcState.brandText} carbAdjustment={calcState.carbAdjustment} results={results} exchangeList={exchangeList} notes={planNotes} />}
                                     fileName={`${activePlan.name}_AR.pdf`}
                                 >
                                     {({ loading: pdfLoading }) => (
                                         <button disabled={pdfLoading} className="whitespace-nowrap px-4 py-2.5 bg-emerald-100 dark:bg-emerald-900/50 hover:bg-emerald-200 dark:hover:bg-emerald-800 text-emerald-700 dark:text-emerald-400 font-bold rounded-xl border border-emerald-200 dark:border-emerald-800 text-xs flex items-center gap-2 transition-all disabled:opacity-50">
-                                            {pdfLoading ? <Loader2 size={14} className="animate-spin"/> : <Download size={14} />} عربي PDF
+                                            {pdfLoading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} عربي PDF
                                         </button>
                                     )}
                                 </PDFDownloadLink>
                             </>
                         )}
 
-                        <button onClick={handleSavePlan} className="whitespace-nowrap px-6 py-2.5 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl shadow-lg shadow-orange-900/20 text-xs flex items-center gap-2 ml-auto">
-                            <Save size={14} /> Save
+                        <button
+                            onClick={handleSavePlan}
+                            disabled={isSaving}
+                            className="whitespace-nowrap px-6 py-2.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-orange-900/20 text-xs flex items-center gap-2 ml-auto transition-colors"
+                        >
+                            {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
                         </button>
                     </div>
                 </div>
 
                 <div className="space-y-4 md:space-y-6 max-w-7xl mx-auto">
-                    
+
+                    {/* Body Metrics */}
                     <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 rounded-3xl p-4 md:p-6">
                         <h3 className="font-bold text-zinc-900 dark:text-white mb-4 flex items-center gap-2 text-sm md:text-base">
-                            <User size={16} className="text-orange-500"/> Body Metrics
+                            <User size={16} className="text-orange-500" /> Body Metrics
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 md:gap-4">
-                            <ModernInput label="Gender" value={calcState.gender} onChange={(v) => setCalcState({...calcState, gender: v})} options={[{val:'male', lbl:'Male'}, {val:'female', lbl:'Female'}]} />
-                            <ModernInput label="Age" value={calcState.age} onChange={(v) => setCalcState({...calcState, age: v})} type="number" min="0" />
-                            <ModernInput label="Height" value={calcState.heightCm} onChange={(v) => setCalcState({...calcState, heightCm: v})} type="number" suffix="cm" min="0" />
-                            <ModernInput label="Weight" value={calcState.weightKg} onChange={(v) => setCalcState({...calcState, weightKg: v})} type="number" suffix="kg" min="0" />
-                            
+                            <ModernInput label="Gender"   value={calcState.gender}        onChange={(v) => setCalcState(s => ({ ...s, gender: v }))}        options={[{val:'male', lbl:'Male'}, {val:'female', lbl:'Female'}]} />
+                            <ModernInput label="Age"      value={calcState.age}           onChange={(v) => setCalcState(s => ({ ...s, age: v }))}           type="number" min="0" />
+                            <ModernInput label="Height"   value={calcState.heightCm}      onChange={(v) => setCalcState(s => ({ ...s, heightCm: v }))}      type="number" suffix="cm" min="0" />
+                            <ModernInput label="Weight"   value={calcState.weightKg}      onChange={(v) => setCalcState(s => ({ ...s, weightKg: v }))}      type="number" suffix="kg" min="0" />
+
                             <div className="bg-zinc-200 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-800 p-3.5 rounded-2xl flex flex-col justify-center">
                                 <label className="text-[10px] uppercase font-bold text-zinc-600 dark:text-zinc-500 flex items-center gap-1"><Scale size={10} /> LBS</label>
                                 <span className="text-zinc-900 dark:text-white font-bold text-sm md:text-base">{weightLbs}</span>
                             </div>
 
                             <div className="sm:col-span-2 lg:col-span-1">
-                                <ModernInput label="Activity" value={calcState.activityLevel} onChange={(v) => setCalcState({...calcState, activityLevel: v})} options={[
-                                    {val:'sedentary', lbl:'Sedentary'}, {val:'light', lbl:'Light'}, {val:'moderate', lbl:'Moderate'}, {val:'active', lbl:'Active'}
+                                <ModernInput label="Activity" value={calcState.activityLevel} onChange={(v) => setCalcState(s => ({ ...s, activityLevel: v }))} options={[
+                                    {val:'sedentary', lbl:'Sedentary'}, {val:'light', lbl:'Light'}, {val:'moderate', lbl:'Moderate'}, {val:'active', lbl:'Active'},
                                 ]} />
                             </div>
                         </div>
                     </div>
 
+                    {/* Strategy */}
                     <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 rounded-3xl p-4 md:p-6">
                         <h3 className="font-bold text-zinc-900 dark:text-white mb-4 flex items-center gap-2 text-sm md:text-base">
-                            <Activity size={16} className="text-emerald-500"/> Strategy
+                            <Activity size={16} className="text-emerald-500" /> Strategy
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 md:gap-4">
-                            <ModernInput label="Calorie Goal (+/-)" value={calcState.deficitSurplus} onChange={(v) => setCalcState({...calcState, deficitSurplus: v})} type="number" suffix="kcal" />
-                            <ModernInput label="Protein Ratio" value={calcState.proteinPerLb} onChange={(v) => setCalcState({...calcState, proteinPerLb: v})} type="number" suffix="g/lb" min="0" />
-                            <ModernInput label="Fat Percentage" value={calcState.fatPercentage} onChange={(v) => setCalcState({...calcState, fatPercentage: v})} type="number" suffix="%" min="0" />
-                            <ModernInput label="Carb Mod" value={calcState.carbAdjustment} onChange={(v) => setCalcState({...calcState, carbAdjustment: v})} type="number" suffix="+/-" />
-                            <ModernInput label="Main Meals" value={calcState.mealsCount} onChange={(v) => setCalcState({...calcState, mealsCount: v})} type="number" min="1" />
-                            <ModernInput label="Snacks" value={calcState.snacksCount} onChange={(v) => setCalcState({...calcState, snacksCount: v})} type="number" suffix="#" min="0" />
+                            <ModernInput label="Calorie Goal (+/-)"  value={calcState.deficitSurplus}  onChange={(v) => setCalcState(s => ({ ...s, deficitSurplus: v }))}  type="number" suffix="kcal" />
+                            <ModernInput label="Protein Ratio"        value={calcState.proteinPerLb}   onChange={(v) => setCalcState(s => ({ ...s, proteinPerLb: v }))}   type="number" suffix="g/lb" min="0" />
+                            <ModernInput label="Fat Percentage"       value={calcState.fatPercentage}  onChange={(v) => setCalcState(s => ({ ...s, fatPercentage: v }))}  type="number" suffix="%" min="0" />
+                            <ModernInput label="Carb Mod"             value={calcState.carbAdjustment} onChange={(v) => setCalcState(s => ({ ...s, carbAdjustment: v }))} type="number" suffix="+/-" />
+                            <ModernInput label="Main Meals"           value={calcState.mealsCount}     onChange={(v) => setCalcState(s => ({ ...s, mealsCount: v }))}     type="number" min="1" />
+                            <ModernInput label="Snacks"               value={calcState.snacksCount}    onChange={(v) => setCalcState(s => ({ ...s, snacksCount: v }))}    type="number" suffix="#" min="0" />
                         </div>
                     </div>
 
+                    {/* PDF Branding */}
                     <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 rounded-3xl p-4 md:p-6">
                         <h3 className="font-bold text-zinc-900 dark:text-white mb-4 flex items-center gap-2 text-sm md:text-base">
-                            <FileText size={16} className="text-purple-500"/> PDF Branding
+                            <FileText size={16} className="text-purple-500" /> PDF Branding
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <ModernInput label="Logo Text" value={calcState.brandText} onChange={(v) => setCalcState({...calcState, brandText: v})} placeholder="e.g. IRON GYM" />
+                            <ModernInput label="Logo Text" value={calcState.brandText} onChange={(v) => setCalcState(s => ({ ...s, brandText: v }))} placeholder="e.g. IRON GYM" />
                         </div>
                     </div>
 
+                    {/* Warning */}
                     {results.warning && (
                         <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-2xl flex items-start gap-3">
-                            <AlertTriangle className="text-red-500 shrink-0" size={18} />
+                            <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={18} />
                             <p className="text-xs font-bold text-red-600 dark:text-red-400">{results.warning}</p>
                         </div>
                     )}
 
+                    {/* Results Summary */}
                     <div className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-3xl p-4 md:p-6 flex flex-col lg:flex-row items-center gap-6 md:gap-8">
                         <div className="text-center lg:text-left min-w-[150px]">
                             <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Daily Target</p>
                             <p className="text-4xl md:text-5xl font-black text-zinc-900 dark:text-white leading-none">{results.targetCalories}</p>
                             <span className="text-sm text-zinc-500 font-bold">kcal</span>
                         </div>
-                        
+
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 w-full">
                             {[
-                                { label: 'Protein', val: results.macros.protein.grams, sub: results.perMeal.proteinGrams, icon: Beef, color: 'text-red-500' },
-                                { label: 'Carbs', val: results.macros.carbs.grams, sub: results.perMeal.carbsGrams, icon: Wheat, color: 'text-blue-500' },
-                                { label: 'Fats', val: results.macros.fats.grams, sub: results.perMeal.fatsGrams, icon: Droplets, color: 'text-yellow-500' },
-                                { label: 'Fiber', val: results.macros.fiber.grams, sub: 'Min', icon: Leaf, color: 'text-emerald-500' },
+                                { label: 'Protein', val: results.macros.protein.grams, sub: results.perMeal.proteinGrams, icon: Beef,    color: 'text-red-500' },
+                                { label: 'Carbs',   val: results.macros.carbs.grams,   sub: results.perMeal.carbsGrams,   icon: Wheat,   color: 'text-blue-500' },
+                                { label: 'Fats',    val: results.macros.fats.grams,    sub: results.perMeal.fatsGrams,    icon: Droplets, color: 'text-yellow-500' },
+                                { label: 'Fiber',   val: results.macros.fiber.grams,   sub: 'Min',                        icon: Leaf,    color: 'text-emerald-500' },
                             ].map((m, i) => (
                                 <div key={i} className="bg-zinc-200 dark:bg-zinc-950 p-3 md:p-4 rounded-2xl border border-zinc-300 dark:border-zinc-800/50 flex flex-col items-center md:items-start text-center md:text-left">
                                     <span className="text-zinc-600 dark:text-zinc-500 flex items-center gap-1.5 text-[10px] uppercase font-bold mb-1">
-                                        <m.icon size={12} className={m.color}/> {m.label}
+                                        <m.icon size={12} className={m.color} /> {m.label}
                                     </span>
                                     <span className="text-zinc-900 dark:text-white font-black text-xl md:text-2xl">{m.val}g</span>
-                                    <div className="text-zinc-500 dark:text-zinc-600 text-[10px] font-bold mt-1">{m.sub === 'Min' ? 'Minimum' : `${m.sub}g / meal`}</div>
+                                    <div className="text-zinc-500 dark:text-zinc-600 text-[10px] font-bold mt-1">
+                                        {m.sub === 'Min' ? 'Minimum' : `${m.sub}g / meal`}
+                                    </div>
                                 </div>
                             ))}
                         </div>
                     </div>
 
+                    {/* Exchange Lists */}
                     <div className="space-y-4 md:space-y-6">
                         {exchangeList && Object.entries(exchangeList).map(([groupName, data]) => (
                             <div key={groupName} className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 rounded-3xl overflow-hidden">
@@ -768,50 +792,48 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                                         </div>
                                     </div>
                                 </div>
-                                <div>
-                                    <div className="grid grid-cols-1 divide-y divide-zinc-200 dark:divide-zinc-800/50 bg-zinc-100/50 dark:bg-zinc-800/20">
-                                        {data.items.length > 0 ? (
-                                            data.items.map((item, idx) => (
-                                                <div key={idx} className="bg-zinc-50 dark:bg-[#121214] p-3 md:p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex justify-between items-center">
-                                                    <div className="min-w-0 pr-2">
-                                                        <p className="font-bold text-zinc-800 dark:text-zinc-200 text-sm truncate">{item.name}</p>
-                                                        <p className="text-[10px] text-zinc-500">{Math.round(item.meta.cals)} kcal</p>
-                                                    </div>
-                                                    <div className="text-right shrink-0">
-                                                        <span className={`font-black text-base md:text-lg ${groupName === 'Carbohydrates' && calcState.carbAdjustment !== 0 ? 'text-blue-600 dark:text-blue-400' : 'text-zinc-900 dark:text-white'}`}>
-                                                            {item.weight}
-                                                        </span>
-                                                        <span className="text-zinc-500 text-[10px] font-bold ml-1">{item.unit}</span>
-                                                    </div>
+                                <div className="grid grid-cols-1 divide-y divide-zinc-200 dark:divide-zinc-800/50 bg-zinc-100/50 dark:bg-zinc-800/20">
+                                    {data.items.length > 0 ? (
+                                        data.items.map((item, idx) => (
+                                            <div key={idx} className="bg-zinc-50 dark:bg-[#121214] p-3 md:p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex justify-between items-center">
+                                                <div className="min-w-0 pr-2">
+                                                    <p className="font-bold text-zinc-800 dark:text-zinc-200 text-sm truncate">{item.name}</p>
+                                                    <p className="text-[10px] text-zinc-500">{Math.round(item.meta.cals)} kcal</p>
                                                 </div>
-                                            ))
-                                        ) : (
-                                            <div className="p-6 text-center text-zinc-500 text-xs">
-                                                No items found for this category.
+                                                <div className="text-right shrink-0">
+                                                    <span className={`font-black text-base md:text-lg ${groupName === 'Carbohydrates' && calcState.carbAdjustment !== 0 ? 'text-blue-600 dark:text-blue-400' : 'text-zinc-900 dark:text-white'}`}>
+                                                        {item.weight}
+                                                    </span>
+                                                    <span className="text-zinc-500 text-[10px] font-bold ml-1">{item.unit}</span>
+                                                </div>
                                             </div>
-                                        )}
-                                    </div>
+                                        ))
+                                    ) : (
+                                        <div className="p-6 text-center text-zinc-500 text-xs">No items found for this category.</div>
+                                    )}
                                 </div>
                             </div>
                         ))}
                     </div>
 
+                    {/* Notes */}
                     <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 rounded-3xl p-4 md:p-6">
                         <h3 className="font-bold text-zinc-900 dark:text-white mb-4 flex items-center gap-2 text-sm md:text-base">
-                            <FileText size={16} className="text-emerald-500"/> Notes & Instructions
+                            <FileText size={16} className="text-emerald-500" /> Notes & Instructions
                         </h3>
                         <textarea
                             value={planNotes}
                             onChange={(e) => setPlanNotes(e.target.value)}
                             placeholder="Supplements, grocery list, etc..."
                             className="w-full bg-zinc-200 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-800 rounded-2xl p-4 text-zinc-700 dark:text-zinc-300 font-medium outline-none focus:border-emerald-500/50 transition-colors resize-none text-sm min-h-[120px]"
-                        ></textarea>
+                        />
                     </div>
 
                 </div>
             </div>
         );
     }
+
     return null;
 };
 
