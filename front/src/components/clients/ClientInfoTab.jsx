@@ -1,430 +1,642 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { 
-    User, Hash, Calendar, Briefcase, MapPin, 
-    Activity, Heart, Moon, FileText, Cigarette, 
-    Check, Globe, Phone, Plus, X, Loader, MessageCircle
+// ClientInfoTab.jsx — Premium Refactor
+// Bento-grid layout · Zod validation · Custom hooks · Skeleton screens · Orange accent
+
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import {
+  User, Hash, Calendar, Briefcase, MapPin,
+  Activity, Heart, Moon, FileText, Cigarette,
+  Check, Globe, Phone, Plus, X, Loader2, MessageCircle,
+  AlertCircle
 } from 'lucide-react';
+import { z } from 'zod';
 import api from '../../api';
+import { useCountries, countrySchema } from '../../hooks/useCountries';
 
-// --- HELPER COMPONENTS ---
+// ─────────────────────────────────────────────
+// ZOD SCHEMA — Country form
+// ─────────────────────────────────────────────
 
-const InputGroup = ({ label, icon: Icon, children }) => (
-    <div className="space-y-2 group w-full">
-        <label className="text-[10px] font-bold text-zinc-600 dark:text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-1.5 group-focus-within:text-orange-500 transition-colors">
-            {Icon && <Icon size={12} />} {label}
-        </label>
-        {children}
+
+// ─────────────────────────────────────────────
+// CUSTOM HOOK — useCountries
+// ─────────────────────────────────────────────
+
+
+// ─────────────────────────────────────────────
+// TOAST
+// ─────────────────────────────────────────────
+
+const Toast = ({ message, type = 'error', onDismiss }) => {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 4000);
+    return () => clearTimeout(t);
+  }, [onDismiss]);
+
+  const isError = type === 'error';
+  return (
+    <div className={`fixed bottom-6 right-6 z-[200] flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl backdrop-blur-md border text-sm font-semibold
+      animate-in slide-in-from-bottom-4 duration-300
+      ${isError
+        ? 'bg-red-950/90 border-red-800/60 text-red-300'
+        : 'bg-emerald-950/90 border-emerald-800/60 text-emerald-300'
+      }`}
+    >
+      <AlertCircle size={15} className="shrink-0" />
+      {message}
+      <button onClick={onDismiss} className="ml-1 opacity-60 hover:opacity-100"><X size={13} /></button>
     </div>
-);
-
-const ModernInput = (props) => (
-    <input 
-        {...props}
-        className={`w-full bg-zinc-200 dark:bg-zinc-950/50 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white transition-all outline-none focus:bg-zinc-100 dark:focus:bg-zinc-950 focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 ${props.className || ''}`} 
-    />
-);
-
-// 1. Dynamic Country Selector
-const CountrySelector = ({ value, onChange, countries, onAddClick }) => {
-    return (
-        <InputGroup label="Nationality" icon={Globe}>
-            <div className="flex gap-2">
-                <div className="relative group flex-1">
-                    <select 
-                        name="country"
-                        value={value}
-                        onChange={onChange}
-                        className="w-full bg-zinc-200 dark:bg-zinc-950/50 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white outline-none focus:border-orange-500 appearance-none cursor-pointer hover:bg-zinc-300 dark:hover:bg-zinc-900 transition-colors"
-                    >
-                        <option value="">Select Country...</option>
-                        {countries.map(c => (
-                            <option key={c.id} value={c.name}>{c.name} ({c.code})</option>
-                        ))}
-                    </select>
-                </div>
-                <button 
-                    type="button"
-                    onClick={onAddClick}
-                    className="bg-orange-500/10 border border-orange-500/20 text-orange-600 dark:text-orange-500 hover:bg-orange-500 hover:text-white rounded-xl px-3 transition-all flex items-center justify-center"
-                    title="Add New Country"
-                >
-                    <Plus size={20} />
-                </button>
-            </div>
-        </InputGroup>
-    );
+  );
 };
 
-// 2. Phone Input with Country Code & WhatsApp
-const PhoneInputWithCountry = ({ label, value, name, onChange, defaultCountryName, countries }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const [selectedCountry, setSelectedCountry] = useState(null);
-    const wrapperRef = useRef(null);
+// ─────────────────────────────────────────────
+// SKELETON
+// ─────────────────────────────────────────────
 
-    // Sync selected country
-    useEffect(() => {
-        if (countries.length > 0) {
-            const match = countries.find(c => c.name === defaultCountryName);
-            setSelectedCountry(match || countries[0]);
-        }
-    }, [countries, defaultCountryName]);
+const Pulse = ({ className = '' }) => (
+  <div className={`animate-pulse rounded-xl bg-zinc-800/60 ${className}`} />
+);
 
-    // Close dropdown on click outside
-    useEffect(() => {
-        const handleClickOutside = (e) => {
-            if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setIsOpen(false);
-        };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
-
-    const currentCountry = selectedCountry || { code: '??', dial_code: '??' };
-
-    // WhatsApp Action
-    const handleWhatsApp = () => {
-        if (!value) return;
-        const cleanCode = currentCountry.dial_code ? currentCountry.dial_code.replace('+', '') : '';
-        const cleanNumber = value.replace(/^0+/, ''); // Remove leading zero
-        window.open(`https://wa.me/${cleanCode}${cleanNumber}`, '_blank');
-    };
-
-    return (
-        <div className="space-y-2 w-full" ref={wrapperRef}>
-             <label className="text-[10px] font-bold text-zinc-600 dark:text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-1.5">
-                <Phone size={12} /> {label}
-            </label>
-            <div className="flex gap-2 relative">
-                {/* Dial Code Button */}
-                <button 
-                    type="button"
-                    onClick={() => setIsOpen(!isOpen)}
-                    className="flex-shrink-0 w-[4.5rem] bg-zinc-200 dark:bg-zinc-950/50 border border-zinc-300 dark:border-zinc-800 rounded-xl flex flex-col items-center justify-center hover:bg-zinc-300 dark:hover:bg-zinc-900 transition-colors"
-                >
-                    <span className="text-sm font-black text-zinc-900 dark:text-white leading-none mb-0.5">{currentCountry.code}</span>
-                    <span className="text-[10px] font-mono text-zinc-600 dark:text-zinc-400 leading-none">{currentCountry.dial_code}</span>
-                </button>
-
-                {/* DROPDOWN MENU - Z-INDEX FIXED */}
-                {isOpen && (
-                    <div className="absolute top-full left-0 mt-2 w-56 bg-zinc-50 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-800 rounded-xl shadow-2xl z-[100] max-h-48 overflow-y-auto p-1">
-                        {countries.map(c => (
-                            <div 
-                                key={c.id}
-                                onClick={(e) => { 
-                                    e.stopPropagation(); 
-                                    setSelectedCountry(c); 
-                                    setIsOpen(false); 
-                                }}
-                                className="flex items-center gap-3 px-3 py-2 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg cursor-pointer transition-colors"
-                            >
-                                <span className="text-xs font-black bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-700 dark:text-zinc-300">{c.code}</span>
-                                <span className="text-sm text-zinc-800 dark:text-zinc-300 flex-1 text-left">{c.name}</span>
-                                <span className="text-xs text-zinc-500 font-mono">{c.dial_code}</span>
-                            </div>
-                        ))}
-                    </div>
-                )}
-
-                {/* Number Input */}
-                <input 
-                    type="tel"
-                    name={name}
-                    value={value}
-                    onChange={onChange}
-                    placeholder="10xxxxxxx"
-                    className="flex-1 min-w-0 bg-zinc-200 dark:bg-zinc-950/50 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 transition-all font-mono"
-                />
-
-                {/* WhatsApp Button */}
-                <button
-                    type="button"
-                    onClick={handleWhatsApp}
-                    disabled={!value}
-                    className={`px-3.5 rounded-xl border flex items-center justify-center transition-all duration-300
-                        ${value 
-                            ? 'bg-green-500/10 border-green-500/20 text-green-600 dark:text-green-500 hover:bg-green-500 hover:text-white cursor-pointer' 
-                            : 'bg-zinc-200 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed'
-                        }
-                    `}
-                    title="Open in WhatsApp"
-                >
-                    <MessageCircle size={20} />
-                </button>
-            </div>
+const FormSkeleton = () => (
+  <div className="space-y-5 animate-pulse">
+    {[1, 2, 3].map(n => (
+      <div key={n} className="bg-zinc-950/80 border border-zinc-800/70 rounded-2xl p-5">
+        <Pulse className="h-4 w-32 mb-5" />
+        <div className="grid grid-cols-2 gap-4">
+          <Pulse className="h-12" />
+          <Pulse className="h-12" />
+          <Pulse className="col-span-2 h-12" />
         </div>
-    );
+      </div>
+    ))}
+  </div>
+);
+
+// ─────────────────────────────────────────────
+// BENTO CARD
+// ─────────────────────────────────────────────
+
+const BentoCard = ({ children, className = '', glow = '' }) => (
+  <div className={`relative bg-zinc-950/80 border border-zinc-800/70 rounded-2xl p-5 backdrop-blur-sm overflow-hidden ${className}`}>
+    {glow && <div className={`absolute top-0 right-0 w-48 h-48 ${glow} blur-[90px] opacity-25 pointer-events-none`} />}
+    {children}
+  </div>
+);
+
+const SectionHeader = ({ icon: Icon, label, accent }) => (
+  <div className="flex items-center gap-2.5 mb-5">
+    <span className={`p-2 rounded-xl ${accent}`}><Icon size={16} /></span>
+    <h3 className="text-xs font-black text-zinc-300 uppercase tracking-widest">{label}</h3>
+  </div>
+);
+
+// ─────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────
+
+const FieldInput = ({ label, icon: Icon, className: cls = '', ...props }) => (
+  <div className="w-full space-y-1.5">
+    {label && (
+      <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ml-0.5 text-zinc-500
+        group-focus-within:text-orange-400 transition-colors">
+        {Icon && <Icon size={11} />}{label}
+      </label>
+    )}
+    <input
+      {...props}
+      className={`w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3.5 text-sm text-zinc-100 outline-none
+        placeholder:text-zinc-700 caret-orange-400 transition-all
+        focus:border-orange-500/60 focus:ring-1 focus:ring-orange-500/20
+        disabled:opacity-40 disabled:cursor-not-allowed ${cls}`}
+    />
+  </div>
+);
+
+// ─────────────────────────────────────────────
+// COUNTRY SELECTOR
+// ─────────────────────────────────────────────
+
+const CountrySelector = ({ value, onChange, countries, onAddClick }) => (
+  <div className="w-full space-y-1.5">
+    <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ml-0.5 text-zinc-500">
+      <Globe size={11} />Nationality
+    </label>
+    <div className="flex gap-2">
+      <select
+        name="country"
+        value={value}
+        onChange={onChange}
+        className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3.5 text-sm text-zinc-100 outline-none
+          focus:border-orange-500/60 focus:ring-1 focus:ring-orange-500/20 appearance-none cursor-pointer
+          hover:border-zinc-700 transition-all"
+      >
+        <option value="">Select country…</option>
+        {countries.map(c => <option key={c.id} value={c.name}>{c.name} ({c.code})</option>)}
+      </select>
+      <button
+        type="button"
+        onClick={onAddClick}
+        className="px-3 bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-xl
+          hover:bg-orange-500 hover:text-white transition-all active:scale-95"
+      >
+        <Plus size={18} />
+      </button>
+    </div>
+  </div>
+);
+
+// ─────────────────────────────────────────────
+// PHONE INPUT
+// ─────────────────────────────────────────────
+
+const PhoneInput = ({ label, name, value, onChange, defaultCountryName, countries }) => {
+  const [isOpen, setIsOpen]     = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [search, setSearch]     = useState('');
+  const ref                     = useRef(null);
+
+  useEffect(() => {
+    if (!countries.length) return;
+    const match = countries.find(c => c.name === defaultCountryName);
+    setSelected(prev => prev || match || countries[0]);
+  }, [countries, defaultCountryName]);
+
+  useEffect(() => {
+    const close = e => {
+      if (ref.current && !ref.current.contains(e.target)) { setIsOpen(false); setSearch(''); }
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  const filtered = useMemo(() =>
+    search ? countries.filter(c =>
+      c.name.toLowerCase().includes(search.toLowerCase()) || c.code.toLowerCase().includes(search.toLowerCase())
+    ) : countries,
+    [countries, search]
+  );
+
+  const handleWhatsApp = useCallback(() => {
+    if (!value || !selected) return;
+    const code   = (selected.dial_code || '').replace('+', '');
+    const number = value.replace(/^0+/, '');
+    window.open(`https://wa.me/${code}${number}`, '_blank', 'noopener,noreferrer');
+  }, [value, selected]);
+
+  const cur = selected || { code: '??', dial_code: '??' };
+
+  return (
+    <div className="w-full space-y-1.5" ref={ref}>
+      <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ml-0.5 text-zinc-500">
+        <Phone size={11} />{label}
+      </label>
+      <div className="flex gap-2">
+        {/* Code trigger */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setIsOpen(o => !o)}
+            className="w-[4.5rem] h-full bg-zinc-900 border border-zinc-800 rounded-xl flex flex-col items-center justify-center py-3.5 px-1
+              hover:border-zinc-700 transition-all"
+          >
+            <span className="text-xs font-black text-zinc-100 leading-none mb-0.5">{cur.code}</span>
+            <span className="text-[10px] font-mono text-zinc-500 leading-none">{cur.dial_code}</span>
+          </button>
+
+          {isOpen && (
+            <div className="absolute top-full left-0 mt-2 w-60 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-50
+              animate-in fade-in zoom-in-95 duration-150 origin-top-left overflow-hidden">
+              <div className="p-2 border-b border-zinc-800">
+                <input
+                  autoFocus
+                  placeholder="Search…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200
+                    outline-none focus:border-orange-500/50 placeholder:text-zinc-600"
+                />
+              </div>
+              <div className="max-h-44 overflow-y-auto p-1">
+                {filtered.map(c => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => { setSelected(c); setIsOpen(false); setSearch(''); }}
+                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800 transition-colors text-left"
+                  >
+                    <span className="text-[10px] font-black bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300 shrink-0">{c.code}</span>
+                    <span className="text-xs text-zinc-300 flex-1 truncate">{c.name}</span>
+                    <span className="text-[10px] font-mono text-zinc-600 shrink-0">{c.dial_code}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <input
+          type="tel"
+          name={name}
+          value={value}
+          onChange={onChange}
+          placeholder="1000000000"
+          inputMode="tel"
+          className="flex-1 min-w-0 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3.5 text-sm text-zinc-100 font-mono
+            outline-none focus:border-orange-500/60 focus:ring-1 focus:ring-orange-500/20 transition-all"
+        />
+
+        <button
+          type="button"
+          onClick={handleWhatsApp}
+          disabled={!value}
+          className={`px-3.5 rounded-xl border flex items-center justify-center transition-all duration-200
+            ${value
+              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white active:scale-95'
+              : 'bg-zinc-900 border-zinc-800 text-zinc-700 cursor-not-allowed'
+            }`}
+        >
+          <MessageCircle size={18} />
+        </button>
+      </div>
+    </div>
+  );
 };
 
-// --- MAIN COMPONENT ---
+// ─────────────────────────────────────────────
+// FLIP CARD — Age / Birth Date
+// ─────────────────────────────────────────────
+
+const AgeDateFlip = ({ displayAge, birthDate, onChangeDate }) => {
+  const [flipped, setFlipped] = useState(false);
+
+  return (
+    <div className="space-y-1.5">
+      <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ml-0.5 text-zinc-500">
+        <Calendar size={11} />Age / Birth Date
+      </label>
+      <div className="relative h-[54px] [perspective:1000px]">
+        <div className={`relative w-full h-full transition-all duration-700 [transform-style:preserve-3d] ${flipped ? '[transform:rotateY(180deg)]' : ''}`}>
+          {/* Front */}
+          <div
+            onClick={() => setFlipped(true)}
+            className="absolute inset-0 bg-zinc-900 border border-zinc-800 rounded-xl px-4 flex items-center justify-between
+              cursor-pointer hover:border-orange-500/40 [backface-visibility:hidden] transition-colors"
+          >
+            <span className={birthDate ? 'text-sm text-zinc-100 font-bold' : 'text-sm text-zinc-600'}>
+              {displayAge ? `${displayAge} Years Old` : 'Set Birth Date'}
+            </span>
+            <Calendar size={15} className="text-zinc-600" />
+          </div>
+          {/* Back */}
+          <div className="absolute inset-0 bg-zinc-900 border border-orange-500/60 rounded-xl px-3 flex items-center gap-2
+            [transform:rotateY(180deg)] [backface-visibility:hidden]">
+            <input
+              type="date"
+              name="birth_date"
+              value={birthDate || ''}
+              onChange={onChangeDate}
+              max={new Date().toISOString().split('T')[0]}
+              className="bg-transparent text-sm text-zinc-100 w-full outline-none [color-scheme:dark]"
+            />
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); setFlipped(false); }}
+              className="p-1.5 bg-orange-500 rounded-lg text-white hover:bg-orange-400 shrink-0"
+            >
+              <Check size={13} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────
+// MARITAL STATUS SELECTOR
+// ─────────────────────────────────────────────
+
+const STATUS_OPTIONS = [
+  { value: 'Single',   label: 'Single',   icon: User,   ring: 'ring-blue-500/60',   active: 'bg-blue-500/15 border-blue-600/50 text-blue-400' },
+  { value: 'Married',  label: 'Married',  icon: Heart,  ring: 'ring-rose-500/60',   active: 'bg-rose-500/15 border-rose-600/50 text-rose-400' },
+  { value: 'Divorced', label: 'Divorced', icon: User,   ring: 'ring-orange-500/60', active: 'bg-orange-500/15 border-orange-600/50 text-orange-400' },
+  { value: 'Widowed',  label: 'Widowed',  icon: User,   ring: 'ring-zinc-500/60',   active: 'bg-zinc-700/40 border-zinc-600/50 text-zinc-300' },
+];
+
+const MaritalSelector = ({ value, onChange }) => (
+  <div className="space-y-2">
+    <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ml-0.5 text-zinc-500">
+      <Heart size={11} />Marital Status
+    </label>
+    <div className="grid grid-cols-2 gap-2">
+      {STATUS_OPTIONS.map(opt => {
+        const isSelected = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange({ target: { name: 'status', value: opt.value } })}
+            className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 text-xs font-bold uppercase
+              transition-all duration-200 hover:scale-[1.02] active:scale-95
+              ${isSelected
+                ? `${opt.active} ring-1 ${opt.ring}`
+                : 'bg-zinc-900 border-zinc-800 text-zinc-600 hover:border-zinc-700 hover:text-zinc-400'
+              }`}
+          >
+            <opt.icon size={14} />
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  </div>
+);
+
+// ─────────────────────────────────────────────
+// SMOKING TOGGLE
+// ─────────────────────────────────────────────
+
+const SmokingToggle = ({ value, onChange }) => (
+  <div
+    onClick={() => onChange({ target: { name: 'smoking', type: 'checkbox', checked: !value } })}
+    className={`cursor-pointer rounded-2xl p-4 border transition-all duration-300 flex items-center justify-between
+      hover:scale-[1.01] active:scale-[0.99]
+      ${value
+        ? 'bg-red-500/10 border-red-700/50'
+        : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
+      }`}
+  >
+    <div className="flex items-center gap-3">
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors
+        ${value ? 'bg-red-500 text-white' : 'bg-zinc-800 text-zinc-500'}`}
+      >
+        <Cigarette size={18} />
+      </div>
+      <div>
+        <p className={`font-bold text-sm ${value ? 'text-red-400' : 'text-zinc-300'}`}>Smoking Habits</p>
+        <p className="text-xs text-zinc-600">{value ? 'Current Smoker' : 'Non-Smoker'}</p>
+      </div>
+    </div>
+    {/* Toggle pill */}
+    <div className={`w-11 h-6 rounded-full relative transition-colors ${value ? 'bg-red-500' : 'bg-zinc-700'}`}>
+      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-300 ${value ? 'left-6' : 'left-1'}`} />
+    </div>
+  </div>
+);
+
+// ─────────────────────────────────────────────
+// MAIN COMPONENT
+// ─────────────────────────────────────────────
 
 const ClientInfoTab = ({ formData, handleChange, clientAge, user }) => {
-    
-    // State
-    const [isFlipped, setIsFlipped] = useState(false);
-    const [countries, setCountries] = useState([]);
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [newCountry, setNewCountry] = useState({ name: '', code: '', dial_code: '' });
+  const { countries, isLoading: countriesLoading, addCountry } = useCountries();
 
-    // Fetch Countries
-    const fetchCountries = async () => {
-        try {
-            const res = await api.get('/countries/');
-            setCountries(res.data);
-        } catch (error) {
-            console.error("Failed to load countries", error);
-        }
-    };
+  const [isModalOpen, setIsModalOpen]       = useState(false);
+  const [isSubmitting, setIsSubmitting]     = useState(false);
+  const [newCountry, setNewCountry]         = useState({ name: '', code: '', dial_code: '' });
+  const [countryErrors, setCountryErrors]   = useState({});
+  const [toast, setToast]                   = useState(null);
 
-    useEffect(() => {
-        fetchCountries();
-    }, []);
+  const showToast    = useCallback((msg, type = 'error') => setToast({ message: msg, type }), []);
+  const dismissToast = useCallback(() => setToast(null), []);
 
-    // Save New Country
-    const handleSaveCountry = async (e) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-        try {
-            await api.post('/countries/', newCountry);
-            await fetchCountries();
-            setIsAddModalOpen(false);
-            setNewCountry({ name: '', code: '', dial_code: '' });
-        } catch (error) {
-            alert("Error adding country. Ensure code/name is unique.");
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
+  const closeModal = useCallback(() => {
+    setIsModalOpen(false);
+    setNewCountry({ name: '', code: '', dial_code: '' });
+    setCountryErrors({});
+  }, []);
 
-    const displayAge = useMemo(() => {
-        if (formData.birth_date) {
-            const today = new Date();
-            const birthDate = new Date(formData.birth_date);
-            let age = today.getFullYear() - birthDate.getFullYear();
-            const m = today.getMonth() - birthDate.getMonth();
-            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
-            return age;
-        }
-        return clientAge;
-    }, [formData.birth_date, clientAge]);
+  const handleCountryField = useCallback((field, val) => {
+    setNewCountry(prev => ({ ...prev, [field]: val }));
+    setCountryErrors(prev => ({ ...prev, [field]: undefined }));
+  }, []);
 
-    const statusOptions = [
-        { value: 'Single', label: 'Single', color: 'bg-blue-500', border: 'border-blue-500', text: 'text-blue-500', icon: User },
-        { value: 'Married', label: 'Married', color: 'bg-rose-500', border: 'border-rose-500', text: 'text-rose-500', icon: Heart },
-        { value: 'Divorced', label: 'Divorced', color: 'bg-orange-500', border: 'border-orange-500', text: 'text-orange-500', icon: User },
-        { value: 'Widowed', label: 'Widowed', color: 'bg-zinc-500', border: 'border-zinc-500', text: 'text-zinc-500', icon: User },
-    ];
+  const handleSaveCountry = useCallback(async (e) => {
+    e.preventDefault();
+    const parsed = countrySchema.safeParse(newCountry);
+    if (!parsed.success) {
+      const errs = {};
+      parsed.error.errors.forEach(err => { errs[err.path[0]] = err.message; });
+      setCountryErrors(errs);
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await addCountry(parsed.data);
+      closeModal();
+      showToast('Country added successfully!', 'success');
+    } catch {
+      showToast('Error adding country — code or name may already exist.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [newCountry, addCountry, closeModal, showToast]);
 
-    return (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
-            
-            {/* 1. Identity Section */}
-            <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800/60 rounded-3xl p-6 md:p-8 relative">
-                
-                {/* Isolated Background Layer */}
-                <div className="absolute inset-0 overflow-hidden rounded-3xl pointer-events-none">
-                     <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-[80px] rounded-full" />
-                </div>
-                
-                <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-6 flex items-center gap-2 relative z-10">
-                    <span className="p-2 bg-orange-500/10 rounded-lg text-orange-600 dark:text-orange-500"><User size={18} /></span>
-                    Identity
-                </h3>
+  const displayAge = useMemo(() => {
+    if (!formData.birth_date) return clientAge;
+    const today = new Date();
+    const birth = new Date(formData.birth_date);
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+    return age >= 0 ? age : clientAge;
+  }, [formData.birth_date, clientAge]);
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
-                    
-                    {/* Full Width Name */}
-                    <div className="md:col-span-2">
-                        <InputGroup label="Full Name" icon={User}>
-                            <ModernInput 
-                                name="name" 
-                                value={formData.name} 
-                                onChange={handleChange} 
-                                disabled={!user?.is_superuser}
-                                placeholder="Client Name"
-                            />
-                        </InputGroup>
-                    </div>
+  if (countriesLoading) return <FormSkeleton />;
 
-                    {/* Country - New */}
-                    <CountrySelector 
-                        value={formData.country} 
-                        onChange={handleChange} 
-                        countries={countries}
-                        onAddClick={() => setIsAddModalOpen(true)}
-                    />
+  return (
+    <div className="space-y-5 animate-in fade-in slide-in-from-bottom-3 duration-500 relative">
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={dismissToast} />}
 
-                    {/* ID */}
-                    <InputGroup label="System ID" icon={Hash}>
-                        <ModernInput 
-                            name="manual_id" 
-                            value={formData.manual_id} 
-                            onChange={handleChange} 
-                            disabled={!user?.is_superuser}
-                            className="font-mono text-zinc-500 dark:text-zinc-400"
-                        />
-                    </InputGroup>
+      {/* ── IDENTITY ── */}
+      <BentoCard glow="bg-orange-500">
+        <SectionHeader icon={User} label="Identity" accent="text-orange-400 bg-orange-500/10" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* Full name — full width */}
+          <div className="md:col-span-2">
+            <FieldInput
+              label="Full Name"
+              icon={User}
+              name="name"
+              value={formData.name || ''}
+              onChange={handleChange}
+              disabled={!user?.is_superuser}
+              placeholder="Client full name"
+            />
+          </div>
 
-                    {/* Phone - Updated with Country & WhatsApp - Full Width Row */}
-                    <div className="md:col-span-2">
-                        <PhoneInputWithCountry 
-                            label="WhatsApp Number"
-                            name="phone"
-                            value={formData.phone}
-                            onChange={handleChange}
-                            defaultCountryName={formData.country}
-                            countries={countries}
-                        />
-                    </div>
-                </div>
-            </div>
+          <CountrySelector
+            value={formData.country || ''}
+            onChange={handleChange}
+            countries={countries}
+            onAddClick={() => setIsModalOpen(true)}
+          />
 
-            {/* 2. Personal & Bio Section */}
-            <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800/60 rounded-3xl p-6 md:p-8 relative">
-                
-                <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-6 flex items-center gap-2 relative z-10">
-                    <span className="p-2 bg-blue-500/10 rounded-lg text-blue-600 dark:text-blue-500"><Briefcase size={18} /></span>
-                    Personal Details
-                </h3>
+          <FieldInput
+            label="System ID"
+            icon={Hash}
+            name="manual_id"
+            value={formData.manual_id || ''}
+            onChange={handleChange}
+            disabled={!user?.is_superuser}
+            className="font-mono text-zinc-500 tracking-widest"
+          />
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
-                    
-                    {/* --- FLIP CARD FOR AGE / DATE --- */}
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-zinc-600 dark:text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-1.5">
-                            <Calendar size={12} /> Age / Birth Date
-                        </label>
-                        
-                        <div className="relative w-full h-[54px] perspective-1000 group">
-                            <div className={`relative w-full h-full transition-all duration-700 [transform-style:preserve-3d] ${isFlipped ? '[transform:rotateY(180deg)]' : ''}`}>
-                                {/* FRONT: Display Age */}
-                                <div onClick={() => setIsFlipped(true)} className="absolute inset-0 w-full h-full bg-zinc-200 dark:bg-zinc-950/50 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 flex items-center justify-between cursor-pointer hover:border-orange-500/50 [backface-visibility:hidden]">
-                                    <span className={formData.birth_date ? "text-zinc-900 dark:text-white font-bold" : "text-zinc-500 dark:text-zinc-600"}>
-                                        {displayAge ? `${displayAge} Years Old` : "Set Birth Date"}
-                                    </span>
-                                    <Calendar size={16} className="text-zinc-500" />
-                                </div>
-                                {/* BACK: Date Input */}
-                                <div className="absolute inset-0 w-full h-full bg-zinc-200 dark:bg-zinc-950 border border-orange-500 rounded-xl px-2 flex items-center gap-2 [transform:rotateY(180deg)] [backface-visibility:hidden]">
-                                    <input type="date" name="birth_date" value={formData.birth_date || ''} onChange={handleChange} className="bg-transparent text-zinc-900 dark:text-white w-full outline-none [color-scheme:light] dark:[color-scheme:dark] text-sm" />
-                                    <button type="button" onClick={(e) => { e.stopPropagation(); setIsFlipped(false); }} className="p-1.5 bg-orange-500 rounded-lg text-white hover:bg-orange-600">
-                                        <Check size={14} />
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <InputGroup label="Nature of Work" icon={Briefcase}>
-                        <ModernInput name="nature_of_work" value={formData.nature_of_work} onChange={handleChange} placeholder="e.g. Accountant..." />
-                    </InputGroup>
-
-                    <div className="md:col-span-2">
-                        <InputGroup label="Address" icon={MapPin}>
-                            <ModernInput name="address" value={formData.address} onChange={handleChange} placeholder="Home Address" />
-                        </InputGroup>
-                    </div>
-                </div>
-            </div>
-
-            {/* 3. Lifestyle */}
-            <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800/60 rounded-3xl p-6 md:p-8 relative">
-                <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-6 flex items-center gap-2">
-                    <span className="p-2 bg-rose-500/10 rounded-lg text-rose-600 dark:text-rose-500"><Activity size={18} /></span>
-                    Lifestyle
-                </h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-3">
-                        <label className="text-[10px] font-bold text-zinc-600 dark:text-zinc-500 uppercase tracking-widest ml-1">Marital Status</label>
-                        <div className="grid grid-cols-2 gap-2">
-                            {statusOptions.map((option) => {
-                                const isSelected = formData.status === option.value;
-                                return (
-                                    <button
-                                        key={option.value}
-                                        onClick={() => handleChange({ target: { name: 'status', value: option.value } })}
-                                        className={`relative flex items-center justify-center gap-2 py-3 rounded-xl border-2 transition-all duration-300 ${isSelected ? `${option.border} ${option.color}/10 text-zinc-900 dark:text-white shadow-lg` : 'border-zinc-300 dark:border-zinc-800 bg-zinc-200 dark:bg-zinc-900/30 text-zinc-500 hover:bg-zinc-300 dark:hover:bg-zinc-900 hover:border-zinc-400 dark:hover:border-zinc-700'}`}
-                                    >
-                                        <option.icon size={16} className={isSelected ? option.text : 'opacity-50'} />
-                                        <span className="text-xs font-bold uppercase">{option.label}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    <div className="space-y-6">
-                        <InputGroup label="Daily Sleep (Hours)" icon={Moon}>
-                            <ModernInput type="number" name="sleep_hours" value={formData.sleep_hours} onChange={handleChange} />
-                        </InputGroup>
-
-                        <div 
-                            onClick={() => handleChange({ target: { name: 'smoking', type: 'checkbox', checked: !formData.smoking } })}
-                            className={`cursor-pointer group relative overflow-hidden rounded-2xl p-4 border transition-all duration-300 flex items-center justify-between ${formData.smoking ? 'bg-red-500/10 border-red-500/50' : 'bg-green-500/5 border-zinc-300 dark:border-zinc-800 hover:border-green-500/30'}`}
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${formData.smoking ? 'bg-red-500 text-white' : 'bg-zinc-300 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-500 group-hover:bg-zinc-400 dark:group-hover:bg-zinc-700'}`}>
-                                    <Cigarette size={20} />
-                                </div>
-                                <div>
-                                    <p className={`font-bold text-sm ${formData.smoking ? 'text-red-500 dark:text-red-400' : 'text-zinc-700 dark:text-zinc-300'}`}>Smoking Habits</p>
-                                    <p className="text-xs text-zinc-500">{formData.smoking ? 'Current Smoker' : 'Non-Smoker'}</p>
-                                </div>
-                            </div>
-                            <div className={`w-12 h-6 rounded-full relative transition-colors ${formData.smoking ? 'bg-red-500' : 'bg-zinc-400 dark:bg-zinc-700'}`}>
-                                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all duration-300 ${formData.smoking ? 'left-7' : 'left-1'}`} />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-             {/* Notes */}
-             <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800/60 rounded-3xl p-6 md:p-8 relative">
-                <InputGroup label="General Notes & Medical History" icon={FileText}>
-                    <textarea name="notes" value={formData.notes} onChange={handleChange} rows={4} className="w-full bg-zinc-200 dark:bg-zinc-950/50 border border-zinc-300 dark:border-zinc-800 focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 rounded-xl p-4 text-zinc-900 dark:text-white resize-none transition-all outline-none placeholder:text-zinc-500 dark:placeholder:text-zinc-700 leading-relaxed" placeholder="Write any important details about the client here..." />
-                </InputGroup>
-            </div>
-
-            {/* --- ADD COUNTRY MODAL --- */}
-            {isAddModalOpen && (
-                <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                    <div className="bg-zinc-50 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-800 w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in zoom-in-95">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-lg font-black text-zinc-900 dark:text-white flex items-center gap-2">
-                                <Globe className="text-blue-500" size={20}/> Add Country
-                            </h3>
-                            <button onClick={() => setIsAddModalOpen(false)} className="text-zinc-500 hover:text-zinc-900 dark:hover:text-white"><X size={20} /></button>
-                        </div>
-
-                        <form onSubmit={handleSaveCountry} className="space-y-4">
-                            <div>
-                                <label className="text-xs font-bold text-zinc-600 dark:text-zinc-500 uppercase ml-1">Country Name</label>
-                                <input required placeholder="e.g. Bahrain" className="w-full bg-zinc-200 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3 text-zinc-900 dark:text-white outline-none focus:border-blue-500 mt-1"
-                                    value={newCountry.name} onChange={e => setNewCountry({...newCountry, name: e.target.value})} />
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-xs font-bold text-zinc-600 dark:text-zinc-500 uppercase ml-1">ISO Code</label>
-                                    <input required placeholder="BH" maxLength={2} className="w-full bg-zinc-200 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3 text-zinc-900 dark:text-white outline-none focus:border-blue-500 mt-1 uppercase"
-                                        value={newCountry.code} onChange={e => setNewCountry({...newCountry, code: e.target.value.toUpperCase()})} />
-                                </div>
-                                <div>
-                                    <label className="text-xs font-bold text-zinc-600 dark:text-zinc-500 uppercase ml-1">Dial Code</label>
-                                    <input required placeholder="+973" className="w-full bg-zinc-200 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3 text-zinc-900 dark:text-white outline-none focus:border-blue-500 mt-1"
-                                        value={newCountry.dial_code} onChange={e => setNewCountry({...newCountry, dial_code: e.target.value})} />
-                                </div>
-                            </div>
-                            <button disabled={isSubmitting} type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl shadow-lg mt-2 flex justify-center">
-                                {isSubmitting ? <Loader className="animate-spin" /> : 'Save Country'}
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            )}
+          <div className="md:col-span-2">
+            <PhoneInput
+              label="WhatsApp Number"
+              name="phone"
+              value={formData.phone || ''}
+              onChange={handleChange}
+              defaultCountryName={formData.country}
+              countries={countries}
+            />
+          </div>
         </div>
-    );
+      </BentoCard>
+
+      {/* ── PERSONAL DETAILS ── */}
+      <BentoCard glow="bg-blue-500">
+        <SectionHeader icon={Briefcase} label="Personal Details" accent="text-blue-400 bg-blue-500/10" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <AgeDateFlip
+            displayAge={displayAge}
+            birthDate={formData.birth_date}
+            onChangeDate={handleChange}
+          />
+
+          <FieldInput
+            label="Nature of Work"
+            icon={Briefcase}
+            name="nature_of_work"
+            value={formData.nature_of_work || ''}
+            onChange={handleChange}
+            placeholder="e.g. Accountant…"
+          />
+
+          <div className="md:col-span-2">
+            <FieldInput
+              label="Address"
+              icon={MapPin}
+              name="address"
+              value={formData.address || ''}
+              onChange={handleChange}
+              placeholder="Home address"
+            />
+          </div>
+        </div>
+      </BentoCard>
+
+      {/* ── LIFESTYLE ── */}
+      <BentoCard glow="bg-rose-500">
+        <SectionHeader icon={Activity} label="Lifestyle" accent="text-rose-400 bg-rose-500/10" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <MaritalSelector value={formData.status || ''} onChange={handleChange} />
+
+          <div className="space-y-5">
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ml-0.5 text-zinc-500">
+                <Moon size={11} />Daily Sleep (Hours)
+              </label>
+              <input
+                type="number"
+                name="sleep_hours"
+                value={formData.sleep_hours || ''}
+                onChange={handleChange}
+                min="0"
+                max="24"
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3.5 text-sm text-zinc-100 outline-none
+                  focus:border-orange-500/60 focus:ring-1 focus:ring-orange-500/20 transition-all"
+              />
+            </div>
+            <SmokingToggle value={!!formData.smoking} onChange={handleChange} />
+          </div>
+        </div>
+      </BentoCard>
+
+      {/* ── NOTES ── */}
+      <BentoCard>
+        <SectionHeader icon={FileText} label="Notes & Medical History" accent="text-zinc-400 bg-zinc-800/60" />
+        <textarea
+          name="notes"
+          value={formData.notes || ''}
+          onChange={handleChange}
+          rows={4}
+          placeholder="Write any important details about the client here…"
+          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3.5 text-sm text-zinc-200 resize-none outline-none
+            placeholder:text-zinc-700 focus:border-orange-500/40 focus:ring-1 focus:ring-orange-500/10 transition-all leading-relaxed"
+        />
+      </BentoCard>
+
+      {/* ── ADD COUNTRY MODAL ── */}
+      {isModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4
+            animate-in fade-in duration-200"
+          onClick={e => { if (e.target === e.currentTarget) closeModal(); }}
+        >
+          <div className="bg-zinc-950 border border-zinc-800 w-full max-w-sm rounded-2xl p-6 shadow-2xl
+            ring-1 ring-orange-500/10 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-base font-black text-zinc-100 flex items-center gap-2">
+                <Globe size={18} className="text-orange-400" />Add Country
+              </h3>
+              <button onClick={closeModal} className="text-zinc-600 hover:text-zinc-200 transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCountry} noValidate className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-0.5">Country Name</label>
+                <input
+                  placeholder="e.g. Bahrain"
+                  value={newCountry.name}
+                  onChange={e => handleCountryField('name', e.target.value)}
+                  className={`w-full mt-1.5 bg-zinc-900 border rounded-xl px-4 py-3 text-sm text-zinc-100 outline-none transition-all
+                    ${countryErrors.name ? 'border-red-600/60' : 'border-zinc-800 focus:border-orange-500/60'}`}
+                />
+                {countryErrors.name && <p className="text-[11px] text-red-400 mt-1">{countryErrors.name}</p>}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-0.5">ISO Code</label>
+                  <input
+                    placeholder="BH"
+                    maxLength={2}
+                    value={newCountry.code}
+                    onChange={e => handleCountryField('code', e.target.value.toUpperCase())}
+                    className={`w-full mt-1.5 bg-zinc-900 border rounded-xl px-4 py-3 text-sm text-zinc-100 uppercase font-mono outline-none transition-all
+                      ${countryErrors.code ? 'border-red-600/60' : 'border-zinc-800 focus:border-orange-500/60'}`}
+                  />
+                  {countryErrors.code && <p className="text-[11px] text-red-400 mt-1">{countryErrors.code}</p>}
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-0.5">Dial Code</label>
+                  <input
+                    placeholder="+973"
+                    value={newCountry.dial_code}
+                    onChange={e => handleCountryField('dial_code', e.target.value)}
+                    className={`w-full mt-1.5 bg-zinc-900 border rounded-xl px-4 py-3 text-sm text-zinc-100 font-mono outline-none transition-all
+                      ${countryErrors.dial_code ? 'border-red-600/60' : 'border-zinc-800 focus:border-orange-500/60'}`}
+                  />
+                  {countryErrors.dial_code && <p className="text-[11px] text-red-400 mt-1">{countryErrors.dial_code}</p>}
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full mt-2 py-3.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed
+                  text-white text-sm font-bold rounded-xl shadow-lg flex items-center justify-center gap-2
+                  transition-all active:scale-95"
+              >
+                {isSubmitting ? <><Loader2 size={15} className="animate-spin" />Saving…</> : 'Save Country'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default ClientInfoTab;

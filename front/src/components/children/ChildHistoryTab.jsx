@@ -1,45 +1,351 @@
+/**
+ * ChildHistoryTab.jsx
+ * ─────────────────────────────────────────────────────────────────────────────
+ * World-class child-specific session history tab.
+ *
+ * Key changes vs. original:
+ *  1. "Performance Breakdown" modal fully redesigned with Framer Motion.
+ *  2. Strength (weight/reps) vs. Cardio (distance/time) rendered with distinct
+ *     visual cues: colour-coded rings, large "hero" metric, per-metric stat cards.
+ *  3. Typography hierarchy: primary result = large bold mono; labels = muted xs.
+ *  4. Session cards carry mini exercise previews with type-colour coding.
+ *  5. Skeleton cards match real card shape.
+ *  6. Beautiful animated empty state with icon composition.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
 import React, { useEffect, useState } from 'react';
-import { Calendar, User, Activity, X, Loader2, StickyNote, Info, ChevronLeft, ChevronRight } from 'lucide-react';
-import api from '../../api'; 
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+    Calendar, User, Activity, X, Loader2, StickyNote, Info,
+    ChevronLeft, ChevronRight, Dumbbell, Timer, Zap, Target,
+    TrendingUp, Clock, ArrowRight,
+} from 'lucide-react';
+import api from '../../api';
+
+// ─── Constants & helpers ──────────────────────────────────────────────────────
+
+const PAGE_SIZE = 20;
+
+/** Exercise-type → display metadata. */
+const TYPE_META = {
+    strength: {
+        label:   'Strength',
+        accent:  'blue',
+        bg:      'bg-blue-500/10',
+        border:  'border-blue-500/20',
+        text:    'text-blue-500',
+        ring:    '#3b82f6',
+        icon:    Dumbbell,
+        metrics: ['Weight', 'Reps'],
+        units:   ['kg', 'reps'],
+    },
+    cardio: {
+        label:   'Cardio',
+        accent:  'orange',
+        bg:      'bg-orange-500/10',
+        border:  'border-orange-500/20',
+        text:    'text-orange-500',
+        ring:    '#f97316',
+        icon:    Activity,
+        metrics: ['Distance', 'Time'],
+        units:   ['km', 'min'],
+    },
+    time: {
+        label:   'Circuit',
+        accent:  'emerald',
+        bg:      'bg-emerald-500/10',
+        border:  'border-emerald-500/20',
+        text:    'text-emerald-500',
+        ring:    '#10b981',
+        icon:    Timer,
+        metrics: ['Duration', 'Reps'],
+        units:   ['min', 'reps'],
+    },
+};
+
+const getMeta = (type) => TYPE_META[(type || 'strength').toLowerCase()] || TYPE_META.strength;
+
+const formatDateFull = (ds) =>
+    new Date(ds).toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+const formatDateShort = (ds) =>
+    new Date(ds).toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' });
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+/** Skeleton card matching real session card shape. */
+const SkeletonCard = () => (
+    <div className="bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 animate-pulse">
+        <div className="flex justify-between items-start mb-4">
+            <div className="space-y-2">
+                <div className="h-5 w-28 bg-zinc-200 dark:bg-zinc-800 rounded" />
+                <div className="h-3 w-20 bg-zinc-200 dark:bg-zinc-800 rounded" />
+                <div className="h-3 w-24 bg-zinc-200 dark:bg-zinc-800 rounded" />
+            </div>
+            <div className="h-8 w-8 bg-zinc-200 dark:bg-zinc-800 rounded-full" />
+        </div>
+        <div className="border-t border-zinc-200 dark:border-zinc-800 pt-3 flex gap-2">
+            <div className="h-5 w-16 bg-zinc-200 dark:bg-zinc-800 rounded-full" />
+            <div className="h-5 w-20 bg-zinc-200 dark:bg-zinc-800 rounded-full" />
+        </div>
+    </div>
+);
+
+/**
+ * Single exercise performance card inside the modal.
+ * Shows a large "hero" primary metric with ring accent + secondary metric.
+ */
+const ExercisePerformanceCard = ({ perf, index }) => {
+    const meta    = getMeta(perf.type);
+    const Icon    = meta.icon;
+    const hasVal1 = perf.val1 && perf.val1 !== '-';
+    const hasVal2 = perf.val2 && perf.val2 !== '-';
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.06 }}
+            className={`rounded-2xl border p-4 ${meta.bg} ${meta.border}`}
+        >
+            {/* ── Header row ── */}
+            <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                    <div className={`flex items-center justify-center w-7 h-7 rounded-lg ${meta.bg} ${meta.border} border`}>
+                        <Icon size={13} className={meta.text} />
+                    </div>
+                    <div>
+                        <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100 leading-none">
+                            {perf.exercise}
+                        </p>
+                        <span className={`inline-block text-[10px] font-bold uppercase tracking-wider mt-0.5 ${meta.text}`}>
+                            {meta.label}
+                        </span>
+                    </div>
+                </div>
+                <span className="text-xs text-zinc-400 font-mono">#{String(index + 1).padStart(2, '0')}</span>
+            </div>
+
+            {/* ── Metric cards ── */}
+            <div className="grid grid-cols-2 gap-2">
+                {/* Primary metric */}
+                <div className="bg-white/60 dark:bg-zinc-900/60 rounded-xl p-3 border border-white/40 dark:border-zinc-700/30 text-center">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                        {meta.metrics[0]}
+                    </p>
+                    <p className={`text-2xl font-black font-mono leading-none ${hasVal1 ? 'text-zinc-900 dark:text-white' : 'text-zinc-300 dark:text-zinc-700'}`}>
+                        {hasVal1 ? perf.val1 : '—'}
+                    </p>
+                    {hasVal1 && (
+                        <p className={`text-xs font-semibold mt-0.5 ${meta.text}`}>{meta.units[0]}</p>
+                    )}
+                </div>
+
+                {/* Secondary metric */}
+                <div className="bg-white/60 dark:bg-zinc-900/60 rounded-xl p-3 border border-white/40 dark:border-zinc-700/30 text-center">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                        {meta.metrics[1]}
+                    </p>
+                    <p className={`text-2xl font-black font-mono leading-none ${hasVal2 ? 'text-zinc-900 dark:text-white' : 'text-zinc-300 dark:text-zinc-700'}`}>
+                        {hasVal2 ? perf.val2 : '—'}
+                    </p>
+                    {hasVal2 && (
+                        <p className={`text-xs font-semibold mt-0.5 ${meta.text}`}>{meta.units[1]}</p>
+                    )}
+                </div>
+            </div>
+
+            {/* Optional per-exercise note */}
+            {perf.note && (
+                <div className="mt-2.5 flex items-start gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                    <StickyNote size={11} className="mt-0.5 shrink-0" />
+                    <span className="italic">{perf.note}</span>
+                </div>
+            )}
+        </motion.div>
+    );
+};
+
+/**
+ * Performance Breakdown Modal.
+ * Framer Motion slide-up with backdrop blur.
+ */
+const PerformanceModal = ({ session, onClose }) => {
+    if (!session) return null;
+
+    const total         = session.performance.length;
+    const strengthCount = session.performance.filter(p => (p.type || 'strength').toLowerCase() === 'strength').length;
+    const cardioCount   = session.performance.filter(p => (p.type || '').toLowerCase() === 'cardio').length;
+
+    return (
+        <AnimatePresence>
+            {session && (
+                <>
+                    {/* Backdrop */}
+                    <motion.div
+                        key="modal-backdrop"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={onClose}
+                        className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
+                    />
+
+                    {/* Modal panel (slides up from bottom on mobile, centered on desktop) */}
+                    <motion.div
+                        key="modal-panel"
+                        initial={{ opacity: 0, y: 40, scale: 0.97 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 40, scale: 0.97 }}
+                        transition={{ type: 'spring', stiffness: 350, damping: 28 }}
+                        className="fixed inset-x-0 bottom-0 sm:inset-0 z-50 flex sm:items-center sm:justify-center sm:p-4"
+                    >
+                        <div className="w-full sm:max-w-lg max-h-[92vh] sm:max-h-[90vh] flex flex-col
+                                        bg-white dark:bg-[#0f0f11] rounded-t-3xl sm:rounded-3xl
+                                        border border-zinc-200 dark:border-zinc-800
+                                        shadow-2xl overflow-hidden">
+
+                            {/* ── MODAL HEADER ── */}
+                            <div className="flex-shrink-0 px-6 pt-6 pb-5 border-b border-zinc-200 dark:border-zinc-800
+                                            bg-zinc-50 dark:bg-zinc-900/60">
+                                {/* Drag handle (mobile) */}
+                                <div className="w-10 h-1 bg-zinc-300 dark:bg-zinc-700 rounded-full mx-auto mb-4 sm:hidden" />
+
+                                <div className="flex items-start justify-between">
+                                    <div>
+                                        <h3 className="text-xl font-black text-zinc-900 dark:text-white">
+                                            {session.day_name}
+                                        </h3>
+                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                                            <span className="flex items-center gap-1">
+                                                <Calendar size={11} />
+                                                {formatDateFull(session.date)}
+                                            </span>
+                                            <span className="flex items-center gap-1">
+                                                <User size={11} />
+                                                <span className="text-zinc-700 dark:text-zinc-300 font-semibold">
+                                                    {session.coach}
+                                                </span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={onClose}
+                                        className="p-2 rounded-xl text-zinc-400 hover:text-zinc-900 dark:hover:text-white
+                                                   hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
+                                    >
+                                        <X size={18} />
+                                    </button>
+                                </div>
+
+                                {/* Stat pills */}
+                                <div className="flex gap-2 mt-3 flex-wrap">
+                                    <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full
+                                                     bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700">
+                                        <Target size={10} /> {total} exercises
+                                    </span>
+                                    {strengthCount > 0 && (
+                                        <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full
+                                                         bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                                            <Dumbbell size={10} /> {strengthCount} strength
+                                        </span>
+                                    )}
+                                    {cardioCount > 0 && (
+                                        <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full
+                                                         bg-orange-500/10 text-orange-500 border border-orange-500/20">
+                                            <Activity size={10} /> {cardioCount} cardio
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* ── MODAL BODY ── */}
+                            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+
+                                {/* Coach note (if any) */}
+                                {session.session_note && (
+                                    <motion.div
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        className="flex gap-2.5 p-3.5 rounded-xl
+                                                   bg-blue-50 dark:bg-blue-500/10
+                                                   border border-blue-200 dark:border-blue-500/20"
+                                    >
+                                        <StickyNote size={14} className="text-blue-500 flex-shrink-0 mt-0.5" />
+                                        <div>
+                                            <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-0.5">
+                                                Coach Note
+                                            </p>
+                                            <p className="text-sm text-blue-800 dark:text-blue-300 italic leading-snug">
+                                                "{session.session_note}"
+                                            </p>
+                                        </div>
+                                    </motion.div>
+                                )}
+
+                                {/* Performance cards or empty state */}
+                                {session.performance.length === 0 ? (
+                                    <div className="text-center py-12">
+                                        <div className="relative mx-auto w-14 h-14 mb-4">
+                                            <div className="absolute inset-0 rounded-full bg-zinc-200 dark:bg-zinc-800 animate-pulse" />
+                                            <div className="relative flex items-center justify-center w-14 h-14 rounded-full">
+                                                <Activity size={24} className="text-zinc-400 dark:text-zinc-600" />
+                                            </div>
+                                        </div>
+                                        <p className="text-sm font-bold text-zinc-500 dark:text-zinc-400 mb-1">
+                                            Attended — No Performance Data
+                                        </p>
+                                        <p className="text-xs text-zinc-400 dark:text-zinc-600 max-w-xs mx-auto">
+                                            This athlete attended the session but no exercise results were logged.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {session.performance.map((p, i) => (
+                                            <ExercisePerformanceCard key={i} perf={p} index={i} />
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </motion.div>
+                </>
+            )}
+        </AnimatePresence>
+    );
+};
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 const ChildHistoryTab = ({ clientId }) => {
-    const [history, setHistory] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [history,         setHistory]         = useState([]);
+    const [loading,         setLoading]         = useState(true);
     const [selectedSession, setSelectedSession] = useState(null);
-    const [pagination, setPagination] = useState({
-        count: 0,
-        next: null,
-        previous: null,
-        currentPage: 1,
-        totalPages: 1
+    const [pagination,      setPagination]      = useState({
+        count: 0, next: null, previous: null, currentPage: 1, totalPages: 1,
     });
 
-    useEffect(() => {
-        fetchHistory(1);
-    }, [clientId]);
+    useEffect(() => { fetchHistory(1); }, [clientId]);
 
     const fetchHistory = async (page = 1) => {
         setLoading(true);
         try {
-            // Backend filters by coach permissions automatically
             const res = await api.get(`/group-training/client_history/?client_id=${clientId}&page=${page}`);
-            
-            // Handle paginated response structure
             if (res.data.results) {
                 setHistory(res.data.results);
                 setPagination({
-                    count: res.data.count,
-                    next: res.data.next,
-                    previous: res.data.previous,
+                    count:       res.data.count,
+                    next:        res.data.next,
+                    previous:    res.data.previous,
                     currentPage: page,
-                    totalPages: Math.ceil(res.data.count / 20) // 20 is the page_size from backend
+                    totalPages:  Math.ceil(res.data.count / PAGE_SIZE),
                 });
             } else {
-                // Fallback for unpaginated response (shouldn't happen)
                 setHistory(res.data);
             }
         } catch (err) {
-            console.error("Error fetching history", err);
+            console.error('Error fetching child history:', err);
         } finally {
             setLoading(false);
         }
@@ -50,265 +356,223 @@ const ChildHistoryTab = ({ clientId }) => {
         fetchHistory(newPage);
     };
 
-    const getUnits = (type) => {
-        if (type === 'cardio') return { u1: 'km', u2: 'min' };
-        if (type === 'time') return { u1: 'min', u2: 'kg' };
-        return { u1: 'kg', u2: '#' };
-    };
+    // ── Loading ────────────────────────────────────────────────────────────────
+    if (loading) {
+        return (
+            <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {[...Array(6)].map((_, i) => <SkeletonCard key={i} />)}
+                </div>
+            </div>
+        );
+    }
 
-    if (loading) return (
-        <div className="flex justify-center p-10">
-            <Loader2 className="animate-spin text-blue-500" />
-        </div>
-    );
+    // ── Empty ──────────────────────────────────────────────────────────────────
+    if (history.length === 0 && pagination.count === 0) {
+        return (
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="text-center py-24 border border-dashed border-zinc-300 dark:border-zinc-800 rounded-3xl"
+            >
+                {/* Layered icon composition */}
+                <div className="relative mx-auto w-20 h-20 mb-6">
+                    <div className="absolute inset-0 rounded-full bg-zinc-200 dark:bg-zinc-800/80" />
+                    <div className="absolute inset-2 rounded-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center">
+                        <Activity size={28} className="text-zinc-400 dark:text-zinc-500" />
+                    </div>
+                    <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-white dark:bg-zinc-800 border-2 border-zinc-100 dark:border-zinc-900 flex items-center justify-center">
+                        <Dumbbell size={13} className="text-zinc-400" />
+                    </div>
+                </div>
+                <h3 className="text-base font-bold text-zinc-600 dark:text-zinc-400 mb-2">
+                    No training records yet
+                </h3>
+                <p className="text-sm text-zinc-400 dark:text-zinc-600 max-w-xs mx-auto">
+                    This athlete hasn't participated in any recorded sessions, or you don't have permission to view them.
+                </p>
+            </motion.div>
+        );
+    }
 
-    if (history.length === 0 && pagination.count === 0) return (
-        <div className="text-center py-20 border border-dashed border-zinc-300 dark:border-zinc-800 rounded-3xl">
-            <Activity size={48} className="mx-auto mb-4 text-zinc-400 dark:text-zinc-600"/>
-            <p className="text-zinc-600 dark:text-zinc-500 font-bold mb-2">No training records yet</p>
-            <p className="text-xs text-zinc-500 dark:text-zinc-600 max-w-md mx-auto">
-                This child hasn't participated in any group sessions, or you don't have permission to view their history.
-            </p>
-        </div>
-    );
-
+    // ── Main render ────────────────────────────────────────────────────────────
     return (
-        <div className="space-y-4 animate-in fade-in duration-500">
-            {/* Info Banner */}
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-5"
+        >
+            {/* Info banner */}
             <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-xl p-4 flex gap-3">
-                <Info size={18} className="text-blue-600 dark:text-blue-500 flex-shrink-0 mt-0.5" />
+                <Info size={15} className="text-blue-500 flex-shrink-0 mt-0.5" />
                 <div className="text-xs text-blue-700 dark:text-blue-300">
-                    <p className="font-bold mb-1">Viewing Training History</p>
-                    <p>You can see all sessions you've conducted with this child. Admin users can view all records from all coaches.</p>
+                    <p className="font-bold mb-0.5">Training History</p>
+                    <p className="text-blue-600/80 dark:text-blue-400/80">
+                        Showing all group sessions for this athlete. Click any card to see the full performance breakdown.
+                    </p>
                 </div>
             </div>
 
-            {/* Pagination Info */}
+            {/* Count line */}
             {pagination.count > 0 && (
-                <div className="flex items-center justify-between text-sm text-zinc-600 dark:text-zinc-400">
-                    <span>
-                        <span className="font-bold text-zinc-900 dark:text-white">{pagination.count}</span> total sessions
-                    </span>
+                <div className="flex items-center justify-between text-sm">
+                    <p className="text-zinc-500 dark:text-zinc-400">
+                        <span className="font-bold text-zinc-900 dark:text-white">{pagination.count}</span> sessions
+                    </p>
                     {pagination.totalPages > 1 && (
-                        <span className="text-xs">
-                            Page {pagination.currentPage} of {pagination.totalPages}
-                        </span>
+                        <p className="text-xs text-zinc-400">
+                            Page {pagination.currentPage} / {pagination.totalPages}
+                        </p>
                     )}
                 </div>
             )}
 
-            {/* Timeline Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {history.map(session => (
-                    <div 
-                        key={session.id} 
-                        onClick={() => setSelectedSession(session)}
-                        className="bg-zinc-100 dark:bg-black/40 border border-zinc-300 dark:border-zinc-800 rounded-2xl p-5 hover:border-blue-500/30 hover:bg-zinc-200 dark:hover:bg-zinc-900/40 cursor-pointer transition-all group"
-                    >
-                        <div className="flex justify-between items-start mb-4">
-                            <div>
-                                <h4 className="text-zinc-900 dark:text-white font-bold text-lg group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                                    {session.day_name}
-                                </h4>
-                                <div className="flex items-center gap-2 text-xs text-zinc-500 mt-1">
-                                    <Calendar size={12}/> {new Date(session.date).toLocaleDateString()}
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-zinc-500 mt-1">
-                                    <User size={12}/> Coach {session.coach}
-                                </div>
-                            </div>
-                            <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-900 flex items-center justify-center text-zinc-400 dark:text-zinc-500 group-hover:bg-blue-600 group-hover:text-white transition-all">
-                                <Activity size={14}/>
-                            </div>
-                        </div>
+            {/* ── SESSIONS GRID ── */}
+            <motion.div
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                initial="hidden"
+                animate="visible"
+                variants={{ visible: { transition: { staggerChildren: 0.05 } } }}
+            >
+                {history.map(session => {
+                    const exerciseTypes = [...new Set(session.performance.map(p => (p.type || 'strength').toLowerCase()))];
 
-                        {/* Mini Preview */}
-                        <div className="space-y-1 mb-3">
-                            {session.performance.slice(0, 2).map((p, i) => {
-                                const units = getUnits(p.type || 'strength');
-                                return (
-                                    <div key={i} className="flex justify-between text-xs">
-                                        <span className="text-zinc-600 dark:text-zinc-400 truncate flex-1">
-                                            {p.exercise}
-                                        </span>
-                                        <span className="text-zinc-800 dark:text-zinc-600 font-mono ml-2">
-                                            {p.val1 && p.val1 !== '-' ? `${p.val1}${units.u1}` : '-'} / 
-                                            {p.val2 && p.val2 !== '-' ? `${p.val2}${units.u2}` : '-'}
-                                        </span>
+                    return (
+                        <motion.div
+                            key={session.id}
+                            variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } }}
+                            whileHover={{ y: -2, transition: { duration: 0.15 } }}
+                            onClick={() => setSelectedSession(session)}
+                            className="group relative cursor-pointer overflow-hidden rounded-2xl
+                                       bg-white dark:bg-zinc-900/50
+                                       border border-zinc-200 dark:border-zinc-800
+                                       hover:border-zinc-300 dark:hover:border-zinc-700
+                                       hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-black/30
+                                       transition-all duration-200"
+                        >
+                            {/* Hover shimmer */}
+                            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity
+                                            bg-gradient-to-br from-blue-500/5 to-transparent pointer-events-none" />
+
+                            <div className="relative p-5">
+                                <div className="flex items-start justify-between mb-4">
+                                    <div>
+                                        <h4 className="text-base font-bold text-zinc-900 dark:text-zinc-100 mb-1
+                                                       group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                            {session.day_name}
+                                        </h4>
+                                        <p className="flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400 mb-0.5">
+                                            <Calendar size={11} /> {formatDateShort(session.date)}
+                                        </p>
+                                        <p className="flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+                                            <User size={11} />
+                                            <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                                                {session.coach}
+                                            </span>
+                                        </p>
                                     </div>
-                                );
-                            })}
-                            {session.performance.length > 2 && (
-                                <p className="text-[10px] text-zinc-500 dark:text-zinc-600 italic">
-                                    +{session.performance.length - 2} more exercises
-                                </p>
-                            )}
-                        </div>
-                        
-                        {/* Note Preview */}
-                        {session.session_note && session.session_note !== 'Completed' && session.session_note !== 'Absent' && (
-                            <div className="bg-blue-500/10 border border-blue-500/10 rounded-lg p-2 flex gap-2 items-start">
-                                <StickyNote size={12} className="text-blue-600 dark:text-blue-500 mt-0.5 shrink-0"/>
-                                <p className="text-xs text-blue-700 dark:text-blue-200 line-clamp-1 italic">
-                                    {session.session_note}
-                                </p>
-                            </div>
-                        )}
-                    </div>
-                ))}
-            </div>
 
-            {/* Pagination Controls */}
+                                    {/* Activity icon (type indicator) */}
+                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all
+                                                    bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500
+                                                    group-hover:bg-blue-600 group-hover:text-white`}>
+                                        <TrendingUp size={15} />
+                                    </div>
+                                </div>
+
+                                {/* Exercise count + type badges */}
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                                        {session.performance.length} exercises
+                                    </span>
+                                    {exerciseTypes.map(t => {
+                                        const m = getMeta(t);
+                                        return (
+                                            <span key={t} className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase
+                                                                       tracking-wider px-2 py-0.5 rounded-full border ${m.bg} ${m.border} ${m.text}`}>
+                                                <m.icon size={9} /> {m.label}
+                                            </span>
+                                        );
+                                    })}
+                                    {session.performance.length === 0 && (
+                                        <span className="text-[10px] text-zinc-400 italic">Attended — no data</span>
+                                    )}
+                                </div>
+
+                                {/* "View" caret */}
+                                <div className="absolute bottom-4 right-4 flex items-center gap-1 text-xs text-blue-500
+                                                opacity-0 group-hover:opacity-100 translate-x-1 group-hover:translate-x-0 transition-all">
+                                    View <ArrowRight size={13} />
+                                </div>
+                            </div>
+                        </motion.div>
+                    );
+                })}
+            </motion.div>
+
+            {/* ── PAGINATION ── */}
             {pagination.totalPages > 1 && (
-                <div className="flex items-center justify-center gap-2 pt-4">
-                    {/* Previous Button */}
+                <div className="flex items-center justify-center gap-2 pt-2">
                     <button
                         onClick={() => handlePageChange(pagination.currentPage - 1)}
                         disabled={!pagination.previous}
-                        className="flex items-center gap-1 px-3 py-2 rounded-xl bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-bold hover:bg-zinc-300 dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                        className="flex items-center gap-1 px-3 py-2 rounded-xl text-sm font-bold
+                                   bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800
+                                   text-zinc-600 dark:text-zinc-400
+                                   hover:bg-zinc-200 dark:hover:bg-zinc-800
+                                   disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                     >
-                        <ChevronLeft size={16} />
-                        Prev
+                        <ChevronLeft size={15} /> Prev
                     </button>
 
-                    {/* Page Numbers (Compact) */}
                     <div className="flex items-center gap-1">
-                        {[...Array(Math.min(5, pagination.totalPages))].map((_, idx) => {
-                            let pageNum;
-                            if (pagination.totalPages <= 5) {
-                                pageNum = idx + 1;
-                            } else {
-                                // Show pages around current page
-                                const start = Math.max(1, pagination.currentPage - 2);
-                                pageNum = start + idx;
-                                if (pageNum > pagination.totalPages) return null;
-                            }
-
-                            return (
-                                <button
-                                    key={pageNum}
-                                    onClick={() => handlePageChange(pageNum)}
-                                    className={`min-w-[36px] h-9 rounded-lg text-sm font-bold transition-all ${
-                                        pageNum === pagination.currentPage
-                                            ? 'bg-blue-600 text-white'
-                                            : 'bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-800'
-                                    }`}
-                                >
-                                    {pageNum}
-                                </button>
-                            );
-                        })}
+                        {(() => {
+                            const { currentPage: cp, totalPages: tp } = pagination;
+                            const start = Math.max(1, cp - 1);
+                            return Array.from({ length: Math.min(5, tp) }, (_, i) => {
+                                const p = start + i;
+                                if (p > tp) return null;
+                                return (
+                                    <button
+                                        key={p}
+                                        onClick={() => handlePageChange(p)}
+                                        className={`min-w-[34px] h-9 rounded-xl text-sm font-bold transition-all ${
+                                            p === cp
+                                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
+                                                : 'bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800'
+                                        }`}
+                                    >
+                                        {p}
+                                    </button>
+                                );
+                            });
+                        })()}
                     </div>
 
-                    {/* Next Button */}
                     <button
                         onClick={() => handlePageChange(pagination.currentPage + 1)}
                         disabled={!pagination.next}
-                        className="flex items-center gap-1 px-3 py-2 rounded-xl bg-zinc-200 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-bold hover:bg-zinc-300 dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                        className="flex items-center gap-1 px-3 py-2 rounded-xl text-sm font-bold
+                                   bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800
+                                   text-zinc-600 dark:text-zinc-400
+                                   hover:bg-zinc-200 dark:hover:bg-zinc-800
+                                   disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                     >
-                        Next
-                        <ChevronRight size={16} />
+                        Next <ChevronRight size={15} />
                     </button>
                 </div>
             )}
 
-            {/* Detail Modal */}
-            {selectedSession && (
-                <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-                    <div className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 w-full max-w-2xl max-h-[90vh] rounded-3xl shadow-2xl animate-in zoom-in-95 flex flex-col">
-                        {/* Header */}
-                        <div className="p-6 border-b border-zinc-300 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/50 rounded-t-3xl flex-shrink-0">
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <h3 className="text-xl font-black text-zinc-900 dark:text-white">
-                                        {selectedSession.day_name}
-                                    </h3>
-                                    <p className="text-sm text-zinc-500 flex items-center gap-2 mt-1">
-                                        <Calendar size={14}/> {new Date(selectedSession.date).toDateString()}
-                                        <span className="text-zinc-400 dark:text-zinc-700">•</span>
-                                        <User size={14}/> Coach {selectedSession.coach}
-                                    </p>
-                                </div>
-                                <button 
-                                    onClick={() => setSelectedSession(null)} 
-                                    className="p-2 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors"
-                                >
-                                    <X size={20}/>
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Content */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                            {/* Session Note */}
-                            {selectedSession.session_note && (
-                                <div className="bg-zinc-200 dark:bg-zinc-900 border-l-4 border-blue-500 p-4 rounded-r-xl">
-                                    <h4 className="text-xs font-bold text-blue-600 dark:text-blue-500 uppercase mb-1 flex items-center gap-1">
-                                        <StickyNote size={12}/> Coach Note
-                                    </h4>
-                                    <p className="text-zinc-700 dark:text-zinc-300 text-sm italic">
-                                        "{selectedSession.session_note}"
-                                    </p>
-                                </div>
-                            )}
-
-                            {/* Exercises List */}
-                            {selectedSession.performance.length === 0 ? (
-                                <div className="text-center py-10 text-zinc-500">
-                                    <Activity size={32} className="mx-auto mb-2 opacity-30"/>
-                                    <p className="text-sm">Child attended but no performance data recorded.</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-3">
-                                    {selectedSession.performance.map((p, i) => {
-                                        const units = getUnits(p.type || 'strength');
-                                        return (
-                                            <div key={i} className="bg-zinc-100 dark:bg-black border border-zinc-300 dark:border-zinc-800 rounded-xl p-4 hover:border-blue-500/20 transition-colors">
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <h4 className="font-bold text-zinc-900 dark:text-white text-sm flex items-center gap-2">
-                                                        <span className="text-zinc-500 dark:text-zinc-600 text-xs">
-                                                            {String(i + 1).padStart(2, '0')}
-                                                        </span> 
-                                                        {p.exercise}
-                                                    </h4>
-                                                    <span className="text-[10px] font-bold uppercase bg-zinc-200 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-500 px-2 py-1 rounded">
-                                                        {p.type}
-                                                    </span>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <div className="flex-1 bg-zinc-200 dark:bg-zinc-900 rounded-lg p-3 text-center">
-                                                        <span className="block text-xs text-zinc-500 uppercase font-bold mb-1">
-                                                            {p.type === 'cardio' ? 'Distance' : 'Weight'}
-                                                        </span>
-                                                        <span className="text-lg font-mono font-bold text-zinc-900 dark:text-white">
-                                                            {p.val1 && p.val1 !== '-' ? `${p.val1} ${units.u1}` : '-'}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex-1 bg-zinc-200 dark:bg-zinc-900 rounded-lg p-3 text-center">
-                                                        <span className="block text-xs text-zinc-500 uppercase font-bold mb-1">
-                                                            {p.type === 'cardio' ? 'Time' : 'Reps'}
-                                                        </span>
-                                                        <span className="text-lg font-mono font-bold text-blue-600 dark:text-blue-400">
-                                                            {p.val2 && p.val2 !== '-' ? `${p.val2} ${units.u2}` : '-'}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                {/* Per-exercise note */}
-                                                {p.note && (
-                                                    <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-400 border-t border-zinc-300 dark:border-zinc-800 pt-2 italic">
-                                                        Note: {p.note}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
+            {/* ── PERFORMANCE MODAL ── */}
+            <AnimatePresence>
+                {selectedSession && (
+                    <PerformanceModal
+                        session={selectedSession}
+                        onClose={() => setSelectedSession(null)}
+                    />
+                )}
+            </AnimatePresence>
+        </motion.div>
     );
 };
 

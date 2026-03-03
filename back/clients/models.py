@@ -36,10 +36,6 @@ class Client(models.Model):
 
     @property
     def age(self):
-        """
-        FIX: Use timezone.now().date() instead of date.today() to ensure
-        time-zone consistency across different server environments.
-        """
         if self.birth_date:
             today = timezone.now().date()
             return (
@@ -55,12 +51,11 @@ class Client(models.Model):
 # ---------------------------------------------------------------------------
 
 class Country(models.Model):
-    name = models.CharField(max_length=100, unique=True)  # e.g. Egypt
-    code = models.CharField(max_length=5, unique=True)    # e.g. EG
-    dial_code = models.CharField(max_length=10)           # e.g. +20
+    name = models.CharField(max_length=100, unique=True)
+    code = models.CharField(max_length=5, unique=True)
+    dial_code = models.CharField(max_length=10)
 
     def __str__(self):
-        # FIX: Removed reference to self.flag which is not a model field.
         return f"{self.name} ({self.dial_code})"
 
 
@@ -69,7 +64,7 @@ class Country(models.Model):
 # ---------------------------------------------------------------------------
 
 class Subscription(models.Model):
-    name = models.CharField(max_length=100)  # e.g. "Gold Package"
+    name = models.CharField(max_length=100)
     units = models.IntegerField(help_text="Number of sessions/visits")
     duration_days = models.IntegerField(help_text="Duration in days (e.g. 30 for 1 month)")
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
@@ -94,7 +89,6 @@ class ClientSubscription(models.Model):
     is_active = models.BooleanField(default=True)
     sessions_used = models.IntegerField(default=0, help_text="Number of sessions attended")
 
-    # InBody Data
     inbody_height = models.FloatField(default=0.0)
     inbody_weight = models.FloatField(default=0.0)
     inbody_muscle = models.FloatField(default=0.0)
@@ -126,11 +120,6 @@ class ClientSubscription(models.Model):
 
     @property
     def progress_percentage(self):
-        """
-        FIX: Cap at 100 using min() so that if sessions_used somehow exceeds
-        plan.units (e.g. data migration, manual admin override) the admin UI
-        progress bar never overflows past 100%.
-        """
         if not self.plan or self.plan.units == 0:
             return 0
         raw = int((self.sessions_used / self.plan.units) * 100)
@@ -158,7 +147,7 @@ class TrainingPlan(models.Model):
 class TrainingDaySplit(models.Model):
     plan = models.ForeignKey(TrainingPlan, on_delete=models.CASCADE, related_name='splits')
     order = models.IntegerField(help_text="Day 1, Day 2, etc.")
-    name = models.CharField(max_length=100)  # e.g. "Push Day", "Legs", "Rest"
+    name = models.CharField(max_length=100)
 
     class Meta:
         ordering = ['order']
@@ -168,16 +157,10 @@ class TrainingDaySplit(models.Model):
 
 
 # ---------------------------------------------------------------------------
-# 6. SESSION LOG (legacy – single source of truth guard applied in views)
+# 6. SESSION LOG (legacy)
 # ---------------------------------------------------------------------------
 
 class SessionLog(models.Model):
-    """
-    Legacy session-completion tracker.  New subscriptions should use
-    TrainingSession instead.  The SessionLogViewSet.create() view now guards
-    against double-deduction when TrainingSession records already exist for a
-    given subscription.
-    """
     subscription = models.ForeignKey(
         ClientSubscription, on_delete=models.CASCADE, related_name='logs'
     )
@@ -349,7 +332,6 @@ class NutritionPlan(models.Model):
     name = models.CharField(max_length=200, default="Nutrition Plan")
     duration_weeks = models.IntegerField(default=1, help_text="How many weeks is this plan for?")
 
-    # Calculator inputs (stored for reference)
     calc_gender = models.CharField(max_length=10, default='male')
     calc_age = models.IntegerField(default=25)
     calc_height = models.FloatField(default=170.0, help_text="Height in cm")
@@ -364,12 +346,10 @@ class NutritionPlan(models.Model):
     calc_snacks = models.IntegerField(default=2)
     calc_carb_adjustment = models.CharField(max_length=50, default='moderate')
 
-    # PDF Branding
     pdf_brand_text = models.CharField(
         max_length=255, blank=True, null=True, help_text="Custom branding text for PDF export"
     )
 
-    # Target Macros (Results)
     target_calories = models.IntegerField(default=2000)
     target_protein = models.FloatField(default=150.0)
     target_carbs = models.FloatField(default=200.0)
@@ -387,24 +367,20 @@ class NutritionPlan(models.Model):
 
 
 class NutritionProgress(models.Model):
-    """Track daily nutrition progress/compliance."""
     nutrition_plan = models.ForeignKey(
         NutritionPlan, on_delete=models.CASCADE, related_name='progress_logs'
     )
     date = models.DateField(default=timezone.now)
 
-    # Actual intake
     actual_calories = models.IntegerField(default=0)
     actual_protein = models.FloatField(default=0.0)
     actual_carbs = models.FloatField(default=0.0)
     actual_fats = models.FloatField(default=0.0)
     actual_water = models.FloatField(default=0.0, help_text="Water intake in liters")
 
-    # Body measurements (optional)
     weight = models.FloatField(blank=True, null=True, help_text="Body weight in kg")
     body_fat = models.FloatField(blank=True, null=True, help_text="Body fat percentage")
 
-    # Compliance
     meals_completed = models.IntegerField(default=0, help_text="Number of meals completed")
     compliance_percentage = models.IntegerField(default=0, help_text="Overall compliance %")
 
@@ -427,7 +403,6 @@ class NutritionProgress(models.Model):
 # ---------------------------------------------------------------------------
 
 class FoodDatabase(models.Model):
-    """Database of common foods for quick selection."""
     name = models.CharField(max_length=200, unique=True)
     arabic_name = models.CharField(max_length=200, blank=True, null=True, help_text="Name in Arabic")
     category = models.CharField(max_length=50)
@@ -460,7 +435,7 @@ class FoodDatabase(models.Model):
 class CoachSchedule(models.Model):
     coach = models.ForeignKey(User, on_delete=models.CASCADE, related_name='schedules')
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='scheduled_days')
-    day = models.CharField(max_length=15)  # Monday, Tuesday...
+    day = models.CharField(max_length=15)
     session_time = models.TimeField(blank=True, null=True, help_text="Scheduled time for this group session")
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -472,7 +447,46 @@ class CoachSchedule(models.Model):
         return f"{self.coach.first_name} - {self.day} at {time_str}"
 
 
+# ---------------------------------------------------------------------------
+# EXERCISE CATEGORY CHOICES
+# Used in the exercises_summary JSONField of GroupSessionLog and GroupWorkoutTemplate.
+#
+# Each exercise object stored in JSON follows this schema:
+# {
+#   "name":       str,                    # e.g. "Barbell Squat"
+#   "category":   "weight"|"reps"|"time", # replaces legacy "type" / "target"
+#   "sets_count": int,                    # e.g. 4
+#   "results": [                          # per-participant performance
+#     {
+#       "client":   str,     # client name
+#       "client_id": int,    # client pk
+#       "val1":     str,     # Weight (kg) | Reps | Minutes
+#       "val2":     str,     # Reps       | —    | Seconds
+#       "note":     str
+#     }
+#   ]
+# }
+# ---------------------------------------------------------------------------
+
+EXERCISE_CATEGORY_WEIGHT = 'weight'   # وزن  – captures KG + Reps
+EXERCISE_CATEGORY_REPS   = 'reps'     # عدات – captures Reps only
+EXERCISE_CATEGORY_TIME   = 'time'     # وقت  – captures Minutes + Seconds
+
+EXERCISE_CATEGORY_CHOICES = [
+    (EXERCISE_CATEGORY_WEIGHT, 'Weight / وزن'),
+    (EXERCISE_CATEGORY_REPS,   'Reps / عدات'),
+    (EXERCISE_CATEGORY_TIME,   'Time / وقت'),
+]
+
+
 class GroupSessionLog(models.Model):
+    """
+    Records a completed group training session.
+
+    exercises_summary (JSONField) stores a list of exercise objects.
+    Each object uses the new category-based schema defined above.
+    Legacy records may still contain 'type'/'target' – the API handles both.
+    """
     coach = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     date = models.DateTimeField(default=timezone.now)
     day_name = models.CharField(max_length=20)
@@ -494,6 +508,12 @@ class GroupSessionParticipant(models.Model):
 
 
 class GroupWorkoutTemplate(models.Model):
+    """
+    Reusable exercise template.
+
+    exercises (JSONField) stores a list of exercise plan objects (no results):
+    [{"name": str, "category": "weight"|"reps"|"time", "sets_count": int}, ...]
+    """
     name = models.CharField(max_length=200)
     exercises = models.JSONField(default=list)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)

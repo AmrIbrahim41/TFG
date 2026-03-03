@@ -189,8 +189,8 @@ const AdminTrainers = () => {
     // Render
     // ---------------------------------------------------------------------------
     return (
-        <div className="min-h-screen bg-zinc-100 dark:bg-[#09090b] text-zinc-900 dark:text-white w-full p-6 lg:pl-72 pt-24 lg:pt-8 transition-colors duration-300">
-            <div className="max-w-[1600px] mx-auto space-y-12">
+        <div className="text-zinc-900 dark:text-white w-full py-6 lg:py-8 transition-colors duration-300">
+        <div className="max-w-[1600px] mx-auto space-y-12">
 
                 {/* Page Header */}
                 <div>

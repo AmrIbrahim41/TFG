@@ -25,7 +25,7 @@ const Toast = ({ message, type = 'success', onClose }) => (
 
 // ─── Loading Skeleton ─────────────────────────────────────────────────────────
 const LoadingSkeleton = () => (
-    <div className="min-h-screen bg-zinc-50 dark:bg-[#09090b] p-4 lg:p-6 transition-colors">
+    <div className="py-6 lg:py-8 transition-colors">
         <div className="max-w-7xl mx-auto grid grid-cols-1 xl:grid-cols-12 gap-6 lg:gap-8">
             <div className="xl:col-span-4">
                 <div className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800/60 rounded-3xl p-6 animate-pulse space-y-6">
@@ -268,7 +268,7 @@ const ChildDetails = () => {
 
     // ── Render ─────────────────────────────────────────────────────────────
     return (
-        <div className="min-h-screen bg-zinc-50 dark:bg-[#09090b] text-zinc-900 dark:text-white p-4 lg:p-6 pt-20 lg:pt-6 transition-all animate-in fade-in duration-500">
+        <div className="text-zinc-900 dark:text-white py-6 lg:py-8 transition-all animate-in fade-in duration-500">
 
             {/* Mobile back button */}
             <div className="lg:hidden flex items-center justify-between mb-6">

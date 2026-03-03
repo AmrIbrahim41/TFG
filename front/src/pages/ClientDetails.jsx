@@ -18,7 +18,7 @@ import toast from 'react-hot-toast';
 // Skeleton Loader
 // ---------------------------------------------------------------------------
 const ClientDetailsSkeleton = () => (
-    <div className="min-h-screen bg-zinc-100 dark:bg-[#09090b] p-4 lg:p-6 lg:pl-80 pt-20 lg:pt-6 transition-colors">
+    <div className="py-6 lg:py-8 transition-colors">
         <div className="max-w-7xl mx-auto grid grid-cols-1 xl:grid-cols-12 gap-6 lg:gap-8">
             {/* Left column skeleton */}
             <div className="xl:col-span-4 space-y-4">
@@ -308,7 +308,7 @@ const ClientDetails = () => {
     if (loading) return <ClientDetailsSkeleton />;
 
     return (
-        <div className="min-h-screen bg-zinc-100 dark:bg-[#09090b] text-zinc-900 dark:text-white p-4 lg:p-6 lg:pl-80 pt-20 lg:pt-6 transition-colors animate-in fade-in duration-500">
+        <div className="text-zinc-900 dark:text-white py-6 lg:py-8 transition-colors animate-in fade-in duration-500">
 
             {/* Mobile Header */}
             <div className="lg:hidden flex items-center justify-between mb-6">

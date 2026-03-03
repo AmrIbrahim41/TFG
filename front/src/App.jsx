@@ -37,7 +37,7 @@ const PrivateRoute = ({ children }) => {
         2. pt-24 lg:pt-0: Handles mobile header spacing.
         3. w-full: Ensures content takes full remaining width.
       */}
-      <main className="flex-1 w-full transition-all duration-300 pt-24 lg:pt-0 lg:pl-72">
+      <main className="flex-1 w-full transition-all duration-300 pt-24 lg:pt-0 lg:pl-72 px-4 md:px-6 lg:px-8">
         {children}
       </main>
     </>

@@ -30,7 +30,28 @@ export default {
       },
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
-      }
+      },
+      // 👇 الإضافات الجديدة الخاصة بالحركة (Animations)
+      animation: {
+        'fade-in': 'fadeIn 0.3s ease-out',
+        'slide-in-right':'slideInRight 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
+        'slide-up': 'slideUp 0.3s ease-out',
+      },
+      keyframes: {
+        fadeIn: {
+          from: { opacity: '0' },
+          to:   { opacity: '1' },
+        },
+        slideInRight: {
+          from: { transform: 'translateX(100%)' },
+          to:   { transform: 'translateX(0)' },
+        },
+        slideUp: {
+          from: { opacity: '0', transform: 'translateY(16px)' },
+          to:   { opacity: '1', transform: 'translateY(0)' },
+        },
+      },
+      // 👆 نهاية الإضافات
     },
   },
   plugins: [],

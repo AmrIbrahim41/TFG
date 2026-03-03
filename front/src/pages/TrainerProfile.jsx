@@ -384,7 +384,7 @@ const TrainerProfile = () => {
 
   // ── RENDER ──────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white p-4 md:p-6 lg:p-10 lg:pl-80 pt-24 lg:pt-10 transition-colors duration-300">
+    <div className="text-zinc-900 dark:text-white py-6 lg:py-8 transition-colors duration-300">
       <Toaster
         position="top-right"
         toastOptions={{ style: { background: '#18181b', color: '#fff', border: '1px solid #333' } }}

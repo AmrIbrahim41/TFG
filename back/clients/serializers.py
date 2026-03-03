@@ -414,10 +414,17 @@ class CoachScheduleSerializer(serializers.ModelSerializer):
 
 class GroupSessionParticipantSerializer(serializers.ModelSerializer):
     client_name = serializers.ReadOnlyField(source='client.name')
+    client_photo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = GroupSessionParticipant
-        fields = ['client_name', 'note', 'deducted']
+        fields = ['client_name', 'client_photo_url', 'note', 'deducted']
+
+    def get_client_photo_url(self, obj):
+        request = self.context.get('request')
+        if obj.client:
+            return _build_photo_url(request, obj.client.photo)
+        return None
 
 
 class GroupSessionLogSerializer(serializers.ModelSerializer):

@@ -1331,6 +1331,7 @@ class CoachScheduleViewSet(viewsets.ModelViewSet):
         return Response(list(trainers))
 
 
+
 class GroupTrainingViewSet(viewsets.GenericViewSet):
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardResultsSetPagination
@@ -1400,24 +1401,92 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
         serializer = GroupSessionLogSerializer(logs, many=True, context={'request': request})
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'])
+    def retrieve_session(self, request, pk=None):
+        """Return a single GroupSessionLog with full participant + exercise data."""
+        try:
+            log = (
+                GroupSessionLog.objects
+                .select_related('coach')
+                .prefetch_related('participants__client')
+                .get(pk=pk)
+            )
+        except GroupSessionLog.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+
+        serializer = GroupSessionLogSerializer(log, context={'request': request})
+        return Response(serializer.data)
+
     @action(detail=False, methods=['post'])
     def complete_session(self, request):
-        data = request.data
-        coach = request.user
-        day_name = data.get('day_name')
-        exercises = data.get('exercises', [])
+        """
+        Save a completed group session.
+
+        Payload (no timer/duration fields):
+        {
+            "day_name": "Leg Day",
+            "exercises": [
+                {
+                    "name":       "Barbell Squat",
+                    "category":   "weight",        // "weight" | "reps" | "time"
+                    "sets_count": 4,
+                    "results": [
+                        {
+                            "client":    "Ahmed Ali",
+                            "client_id": 12,
+                            "val1":      "80",     // kg | reps | minutes
+                            "val2":      "10",     // reps | "" | seconds
+                            "note":      ""
+                        }
+                    ]
+                }
+            ],
+            "participants": [
+                {"client_id": 12, "note": "Good session"}
+            ]
+        }
+
+        Returns: {"status": "Session Completed & Subscriptions Deducted", "id": <int>}
+        """
+        data              = request.data
+        coach             = request.user
+        day_name          = data.get('day_name', '')
+        exercises         = data.get('exercises', [])
         participants_data = data.get('participants', [])
+
+        if not day_name:
+            return Response({"error": "day_name is required"}, status=400)
+
+        # Normalise exercises: accept legacy 'type' field as fallback for 'category'
+        normalised_exercises = []
+        for ex in (exercises if isinstance(exercises, list) else []):
+            normalised_exercises.append({
+                'name':       str(ex.get('name', '')).strip(),
+                'category':   ex.get('category') or _legacy_type_to_category(ex.get('type', '')),
+                'sets_count': int(ex.get('sets_count') or 0),
+                'results':    [
+                    {
+                        'client':    str(r.get('client', '')),
+                        'client_id': r.get('client_id'),
+                        'val1':      str(r.get('val1', '')),
+                        'val2':      str(r.get('val2', '')),
+                        'note':      str(r.get('note', '')),
+                    }
+                    for r in (ex.get('results', []) if isinstance(ex.get('results'), list) else [])
+                ],
+            })
 
         with transaction.atomic():
             log = GroupSessionLog.objects.create(
                 coach=coach,
                 day_name=day_name,
-                # exercises_summary is a JSONField; pass the list directly
-                exercises_summary=exercises if isinstance(exercises, list) else [],
+                exercises_summary=normalised_exercises,
             )
 
-            # Batch-fetch active subscriptions for all participants at once
-            client_ids = [p.get('client_id') for p in participants_data if p.get('client_id')]
+            client_ids = [
+                p.get('client_id') for p in participants_data
+                if p.get('client_id') is not None
+            ]
             active_subs = (
                 ClientSubscription.objects
                 .filter(client_id__in=client_ids, is_active=True)
@@ -1430,10 +1499,13 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
 
             for p_data in participants_data:
                 client_id = p_data.get('client_id')
-                note = p_data.get('note', '')
-                deducted = False
+                if client_id is None:
+                    continue
 
-                sub = sub_map.get(client_id)
+                note      = str(p_data.get('note', '') or '')
+                deducted  = False
+                sub       = sub_map.get(client_id)
+
                 if sub:
                     sub.sessions_used += 1
                     if sub.plan and sub.plan.units and sub.sessions_used >= sub.plan.units:
@@ -1450,15 +1522,19 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
                     )
                 )
 
-            # Bulk save subscriptions and participants
             for sub in subs_to_save:
                 sub.save()
+
             GroupSessionParticipant.objects.bulk_create(participants_to_create)
 
-        return Response({'status': 'Session Completed & Subscriptions Deducted'})
+        return Response({
+            'status': 'Session Completed & Subscriptions Deducted',
+            'id':     log.id,
+        }, status=201)
 
     @action(detail=False, methods=['get'])
     def client_history(self, request):
+        """Return paginated session history for a specific child."""
         client_id = request.query_params.get('client_id')
         user = request.user
 
@@ -1498,24 +1574,25 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
                 for ex in exercises_data:
                     results = ex.get('results', [])
                     user_res = next(
-                        (r for r in results if r.get('client') == client_name), None
+                        (r for r in results if r.get('client') == client_name or str(r.get('client_id')) == str(client_id)), None
                     )
                     if user_res:
                         child_performance.append({
-                            'exercise': ex.get('name', 'Unknown'),
-                            'type': ex.get('type', 'strength'),
-                            'val1': user_res.get('val1', '-'),
-                            'val2': user_res.get('val2', '-'),
-                            'note': user_res.get('note', ''),
+                            'exercise':   ex.get('name', 'Unknown'),
+                            'category':   ex.get('category') or _legacy_type_to_category(ex.get('type', '')),
+                            'sets_count': ex.get('sets_count', 0),
+                            'val1':       user_res.get('val1', '-'),
+                            'val2':       user_res.get('val2', '-'),
+                            'note':       user_res.get('note', ''),
                         })
 
             history_data.append({
-                'id': session.id,
-                'date': session.date,
-                'day_name': session.day_name,
-                'coach': session.coach.first_name if session.coach else "Unknown",
+                'id':           session.id,
+                'date':         session.date,
+                'day_name':     session.day_name,
+                'coach':        session.coach.first_name if session.coach else "Unknown",
                 'session_note': p.note,
-                'performance': child_performance,
+                'performance':  child_performance,
             })
 
         if page is not None:
@@ -1523,10 +1600,109 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
 
         return Response(history_data)
 
+    @action(detail=False, methods=['post'])
+    def bulk_exercise_history(self, request):
+        """
+        Efficiently fetch the last recorded performance for multiple clients
+        across multiple exercises in a single request.
 
-# ---------------------------------------------------------------------------
-# GROUP WORKOUT TEMPLATES
-# ---------------------------------------------------------------------------
+        Request:
+        {
+            "day_name":       "Leg Day",
+            "exercise_names": ["Barbell Squat", "Leg Press"],
+            "client_ids":     [12, 34, 56]
+        }
+
+        Response:
+        {
+            "12": {
+                "Barbell Squat": {"found": true,  "category": "weight", "sets_count": 4, "val1": "80", "val2": "10"},
+                "Leg Press":     {"found": false}
+            },
+            "34": { ... }
+        }
+        """
+        day_name       = str(request.data.get('day_name', '') or '').strip()
+        exercise_names = request.data.get('exercise_names', [])
+        client_ids     = request.data.get('client_ids', [])
+        user           = request.user
+
+        if not (day_name and isinstance(exercise_names, list) and exercise_names and isinstance(client_ids, list) and client_ids):
+            return Response({})
+
+        ex_name_set = {str(n).strip().lower() for n in exercise_names}
+
+        participations = (
+            GroupSessionParticipant.objects
+            .filter(client_id__in=client_ids, session__day_name=day_name)
+            .select_related('session', 'client')
+            .order_by('-session__date')
+        )
+
+        if not user.is_superuser:
+            participations = participations.filter(session__coach=user)
+
+        result   = {str(cid): {ename: None for ename in exercise_names} for cid in client_ids}
+        resolved = {str(cid): set() for cid in client_ids}
+
+        for p in participations:
+            client_id_str = str(p.client_id)
+            client_name   = p.client.name if p.client else ""
+
+            if len(resolved.get(client_id_str, set())) == len(exercise_names):
+                continue
+
+            exercises_data = p.session.exercises_summary
+            if isinstance(exercises_data, str):
+                try:
+                    exercises_data = json.loads(exercises_data)
+                except Exception:
+                    exercises_data = []
+
+            for ex in (exercises_data if isinstance(exercises_data, list) else []):
+                ex_name = str(ex.get('name', '')).strip()
+                if ex_name.lower() not in ex_name_set:
+                    continue
+                if ex_name in resolved.get(client_id_str, set()):
+                    continue
+
+                results  = ex.get('results', []) if isinstance(ex.get('results'), list) else []
+                user_res = next(
+                    (r for r in results
+                     if r.get('client') == client_name or str(r.get('client_id')) == client_id_str),
+                    None,
+                )
+                if user_res:
+                    result[client_id_str][ex_name] = {
+                        'found':      True,
+                        'category':   ex.get('category') or _legacy_type_to_category(ex.get('type', '')),
+                        'sets_count': int(ex.get('sets_count') or 0),
+                        'val1':       str(user_res.get('val1', '')),
+                        'val2':       str(user_res.get('val2', '')),
+                        'note':       str(user_res.get('note', '')),
+                    }
+                    resolved.setdefault(client_id_str, set()).add(ex_name)
+
+        # Resolve unmatched entries to {"found": False}
+        for cid_str in result:
+            for ename in result[cid_str]:
+                if result[cid_str][ename] is None:
+                    result[cid_str][ename] = {'found': False}
+
+        return Response(result)
+
+
+def _legacy_type_to_category(type_str: str) -> str:
+    """Convert the old 'type' field value to the new category system."""
+    mapping = {
+        'strength': 'weight',
+        'cardio':   'time',
+        'time':     'time',
+        'weight':   'weight',
+        'reps':     'reps',
+    }
+    return mapping.get((type_str or '').lower(), 'weight')
+
 
 class GroupWorkoutTemplateViewSet(viewsets.ModelViewSet):
     serializer_class = GroupWorkoutTemplateSerializer
