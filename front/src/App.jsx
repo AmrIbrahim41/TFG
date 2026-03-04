@@ -17,7 +17,6 @@ const ManualNutritionPlan = lazy(() => import('./pages/ManualNutritionPlan'));
 const ManualTrainingPlan = lazy(() => import('./pages/ManualTrainingPlan'));
 const Children = lazy(() => import('./pages/childrens/Children'));
 const ChildDetails = lazy(() => import('./pages/childrens/ChildDetails'));
-const SessionDetail = lazy(() => import('./pages/SessionDetail'));
 const TrainerProfile = lazy(() => import('./pages/TrainerProfile'));
 
 // مكون بسيط يظهر أثناء تحميل الصفحة المطلوبة
@@ -71,7 +70,6 @@ function App() {
                 <Route path="/quick-workout" element={<PrivateRoute><ManualTrainingPlan /></PrivateRoute>} />
                 <Route path="/children" element={<PrivateRoute><Children /></PrivateRoute>} />
                 <Route path="/children/:id" element={<PrivateRoute><ChildDetails /></PrivateRoute>} />
-                <Route path="/children/history/:id" element={<SessionDetail />} />
               </Routes>
             </Suspense>
           </div>

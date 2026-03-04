@@ -1,24 +1,25 @@
 /**
- * ActiveGroupSession.jsx  — Premium Refactor
+ * ActiveGroupSession.jsx  — Premium Refactor (Light/Dark Mode Support)
  * ─────────────────────────────────────────────────────────────────────────────
  * Changes in this refactor:
- *   REMOVED:
- *     • Timer / Stopwatch entirely (state, ref, effect, UI)
+ * REMOVED:
+ * • Timer / Stopwatch entirely (state, ref, effect, UI)
  *
- *   PERFORMANCE:
- *     • AthleteCard extracted into a React.memo component
- *     • ExerciseBlock extracted and memoized
- *     • updatePerformance, toggleNote, toggleAttendance, toggleCard are all
- *       useCallback-stable so memoized children never re-render on parent state changes
+ * PERFORMANCE:
+ * • AthleteCard extracted into a React.memo component
+ * • ExerciseBlock extracted and memoized
+ * • updatePerformance, toggleNote, toggleAttendance, toggleCard are all
+ * useCallback-stable so memoized children never re-render on parent state changes
  *
- *   UI/UX:
- *     • Softer borders (zinc-800/50) and subtle shadows
- *     • Backdrop-blur fixed footers (backdrop-blur-md bg-zinc-950/80)
- *     • Elegant focus rings: focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500
- *     • History badge repositioned inline beneath inputs (integrated, not floating)
- *     • Accordion uses proper Framer Motion height animation (no snap)
- *     • Consistent typography scale: label → data → secondary
- *     • Generous breathing room without wasting viewport
+ * UI/UX:
+ * • Full Light/Dark Mode integration matching the system sidebar
+ * • Softer borders (zinc-200 dark:zinc-800/50) and subtle shadows
+ * • Backdrop-blur fixed footers (backdrop-blur-md bg-white/90 dark:bg-zinc-950/80)
+ * • Elegant focus rings: focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500
+ * • History badge repositioned inline beneath inputs (integrated, not floating)
+ * • Accordion uses proper Framer Motion height animation (no snap)
+ * • Consistent typography scale: label → data → secondary
+ * • Generous breathing room without wasting viewport
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -37,9 +38,9 @@ import api from '../../api';
 
 // ─── Category config ─────────────────────────────────────────────────────────
 const CATEGORIES = [
-    { value: 'weight', label: 'Weight',  labelAr: 'وزن',  icon: Dumbbell, color: 'text-blue-400',   bg: 'bg-blue-500/10',    ring: 'ring-blue-500/20' },
-    { value: 'reps',   label: 'Reps',    labelAr: 'عدات', icon: Repeat,   color: 'text-violet-400', bg: 'bg-violet-500/10',  ring: 'ring-violet-500/20' },
-    { value: 'time',   label: 'Time',    labelAr: 'وقت',  icon: Timer,    color: 'text-emerald-400', bg: 'bg-emerald-500/10', ring: 'ring-emerald-500/20' },
+    { value: 'weight', label: 'Weight',  labelAr: 'وزن',  icon: Dumbbell, color: 'text-blue-500 dark:text-blue-400',   bg: 'bg-blue-500/10',    ring: 'ring-blue-500/20' },
+    { value: 'reps',   label: 'Reps',    labelAr: 'عدات', icon: Repeat,   color: 'text-violet-500 dark:text-violet-400', bg: 'bg-violet-500/10',  ring: 'ring-violet-500/20' },
+    { value: 'time',   label: 'Time',    labelAr: 'وقت',  icon: Timer,    color: 'text-emerald-500 dark:text-emerald-400', bg: 'bg-emerald-500/10', ring: 'ring-emerald-500/20' },
 ];
 
 const getCategoryConfig = (cat) => CATEGORIES.find(c => c.value === cat) || CATEGORIES[0];
@@ -78,13 +79,13 @@ const Toast = memo(({ message, type = 'error', onClose }) => (
         exit={{ opacity: 0, y: 10, scale: 0.95 }}
         className={`fixed bottom-6 right-6 z-[400] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl border ${
             type === 'error'
-                ? 'bg-zinc-900 border-red-500/30 text-red-400'
-                : 'bg-zinc-900 border-green-500/30 text-green-400'
+                ? 'bg-white dark:bg-zinc-900 border-red-500/30 text-red-600 dark:text-red-400'
+                : 'bg-white dark:bg-zinc-900 border-green-500/30 text-green-600 dark:text-green-400'
         }`}
     >
         {type === 'error' ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
-        <span className="text-sm font-semibold text-zinc-100">{message}</span>
-        <button onClick={onClose} className="ml-1 text-zinc-500 hover:text-zinc-300 transition-colors">
+        <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{message}</span>
+        <button onClick={onClose} className="ml-1 text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300 transition-colors">
             <X size={14} />
         </button>
     </motion.div>
@@ -92,13 +93,13 @@ const Toast = memo(({ message, type = 'error', onClose }) => (
 
 // ─── Previous-performance badge ───────────────────────────────────────────────
 const PrevBadge = memo(({ prev, category, loading }) => {
-    if (loading) return <Loader2 size={10} className="animate-spin text-zinc-500 shrink-0" />;
+    if (loading) return <Loader2 size={10} className="animate-spin text-zinc-400 dark:text-zinc-500 shrink-0" />;
     if (!prev) return null;
 
     if (!prev.found) {
         return (
             <span className="inline-flex items-center gap-1 text-[10px] font-bold
-                             text-violet-400 bg-violet-500/10 border border-violet-500/20
+                             text-violet-600 dark:text-violet-400 bg-violet-500/10 border border-violet-500/20
                              px-2 py-0.5 rounded-full whitespace-nowrap">
                 <Sparkles size={8} /> New
             </span>
@@ -112,8 +113,8 @@ const PrevBadge = memo(({ prev, category, loading }) => {
     if (!parts.length) return null;
 
     return (
-        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-zinc-500
-                         bg-zinc-800/80 border border-zinc-700/50
+        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-zinc-600 dark:text-zinc-400
+                         bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/50
                          px-2 py-0.5 rounded-full font-mono whitespace-nowrap"
               title="Previous performance">
             <History size={8} /> {parts.join(' / ')}
@@ -129,13 +130,13 @@ const PerfInput = memo(({ value, onChange, placeholder, unit, inputMode }) => (
             value={value || ''}
             onChange={onChange}
             inputMode={inputMode}
-            className="w-full h-10 bg-zinc-900/60 border border-zinc-700/50 rounded-xl
-                       px-3 pr-8 text-center text-sm font-bold text-white
-                       placeholder-zinc-600
+            className="w-full h-10 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-700/50 rounded-xl
+                       px-3 pr-8 text-center text-sm font-bold text-zinc-900 dark:text-white
+                       placeholder-zinc-400 dark:placeholder-zinc-600
                        focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/60
                        transition-all duration-200"
         />
-        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-zinc-500 font-bold uppercase pointer-events-none">
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-zinc-400 dark:text-zinc-500 font-bold uppercase pointer-events-none">
             {unit}
         </span>
     </div>
@@ -158,17 +159,17 @@ const ExerciseBlock = memo(({
     const p       = perfData || {};
 
     return (
-        <div className="rounded-xl bg-zinc-900/40 border border-zinc-800/50
-                        hover:border-zinc-700/60 transition-colors duration-200">
+        <div className="rounded-xl bg-zinc-50/50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/50
+                        hover:border-zinc-300 dark:hover:border-zinc-700/60 transition-colors duration-200">
             {/* Exercise header */}
             <div className="flex items-center gap-2 px-3 pt-3 pb-2">
                 <span className={`p-1 rounded-md ${catCfg.bg} shrink-0`}>
                     <CatIcon size={11} className={catCfg.color} />
                 </span>
-                <span className="text-xs font-bold text-zinc-200 truncate flex-1">
+                <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate flex-1">
                     {ex.name}
                 </span>
-                <span className="text-[10px] text-zinc-600 font-mono shrink-0">
+                <span className="text-[10px] text-zinc-500 dark:text-zinc-600 font-mono shrink-0">
                     {ex.sets_count}×
                 </span>
             </div>
@@ -197,8 +198,8 @@ const ExerciseBlock = memo(({
                         onClick={() => onToggleNote(clientId, ex.id)}
                         className={`h-10 w-10 rounded-xl border flex items-center justify-center shrink-0 transition-all duration-200 ${
                             noteOpen
-                                ? 'bg-blue-600/20 border-blue-500/50 text-blue-400'
-                                : 'bg-zinc-900/60 border-zinc-700/50 text-zinc-600 hover:text-zinc-300 hover:border-zinc-600'
+                                ? 'bg-blue-50 dark:bg-blue-600/20 border-blue-200 dark:border-blue-500/50 text-blue-600 dark:text-blue-400'
+                                : 'bg-white dark:bg-zinc-900/60 border-zinc-200 dark:border-zinc-700/50 text-zinc-500 dark:text-zinc-600 hover:text-zinc-800 dark:hover:text-zinc-300 hover:border-zinc-400 dark:hover:border-zinc-600'
                         }`}
                     >
                         <MessageSquare size={13} />
@@ -225,8 +226,8 @@ const ExerciseBlock = memo(({
                                 placeholder="Note…"
                                 value={p.note || ''}
                                 onChange={e => onUpdatePerf(clientId, ex.id, 'note', e.target.value)}
-                                className="w-full h-9 bg-zinc-900/60 border border-zinc-700/50 rounded-xl px-3 text-xs
-                                           text-zinc-200 placeholder-zinc-600
+                                className="w-full h-9 bg-white dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-700/50 rounded-xl px-3 text-xs
+                                           text-zinc-900 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-600
                                            focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/60
                                            transition-all duration-200"
                             />
@@ -266,8 +267,8 @@ const AthleteCard = memo(({
             transition={{ duration: 0.22, ease: 'easeOut' }}
             className={`flex flex-col rounded-2xl border overflow-hidden transition-colors duration-300 ${
                 isPresent
-                    ? 'bg-[#111113] border-zinc-800/60 shadow-lg shadow-black/30'
-                    : 'bg-zinc-950 border-zinc-900/60'
+                    ? 'bg-white dark:bg-[#111113] border-zinc-200 dark:border-zinc-800/60 shadow-lg shadow-zinc-200/50 dark:shadow-black/30'
+                    : 'bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-900/60'
             }`}
         >
             {/* ── Card Header ── */}
@@ -280,7 +281,7 @@ const AthleteCard = memo(({
                                 transition-all duration-300 ${
                         isPresent
                             ? 'border-green-500/70 shadow-md shadow-green-500/20'
-                            : 'border-zinc-700/50'
+                            : 'border-zinc-300 dark:border-zinc-700/50'
                     }`}
                 >
                     {child.client_photo ? (
@@ -292,14 +293,14 @@ const AthleteCard = memo(({
                             }`}
                         />
                     ) : (
-                        <div className={`w-full h-full flex items-center justify-center font-black text-white text-sm transition-all duration-300 ${
-                            isPresent ? 'bg-blue-600' : 'bg-zinc-700 grayscale opacity-40'
+                        <div className={`w-full h-full flex items-center justify-center font-black text-sm transition-all duration-300 ${
+                            isPresent ? 'bg-blue-600 text-white' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 grayscale opacity-40'
                         }`}>
                             {child.client_name?.charAt(0).toUpperCase()}
                         </div>
                     )}
                     {isPresent && (
-                        <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border border-[#111113] flex items-center justify-center">
+                        <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border border-white dark:border-[#111113] flex items-center justify-center">
                             <CheckCircle2 size={9} className="text-white" strokeWidth={3} />
                         </div>
                     )}
@@ -307,13 +308,13 @@ const AthleteCard = memo(({
 
                 {/* Name + status */}
                 <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-sm text-white truncate leading-tight">
+                    <h3 className="font-bold text-sm text-zinc-900 dark:text-white truncate leading-tight">
                         {child.client_name}
                     </h3>
                     <span className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-md ${
                         isPresent
-                            ? 'text-green-500 bg-green-500/10'
-                            : 'text-zinc-600 bg-zinc-800/50'
+                            ? 'text-green-600 dark:text-green-500 bg-green-500/10'
+                            : 'text-zinc-500 dark:text-zinc-600 bg-zinc-200 dark:bg-zinc-800/50'
                     }`}>
                         {isPresent ? 'Present' : 'Absent'}
                     </span>
@@ -323,9 +324,9 @@ const AthleteCard = memo(({
                 <div className="flex gap-1.5 shrink-0">
                     <button
                         onClick={() => onViewHistory(child)}
-                        className="w-9 h-9 rounded-xl bg-zinc-800/60 hover:bg-zinc-700/80 text-zinc-500
-                                   hover:text-zinc-200 flex items-center justify-center transition-all
-                                   border border-zinc-700/40 hover:border-zinc-600/60"
+                        className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800/60 hover:bg-zinc-200 dark:hover:bg-zinc-700/80 text-zinc-600 dark:text-zinc-500
+                                   hover:text-zinc-900 dark:hover:text-zinc-200 flex items-center justify-center transition-all
+                                   border border-zinc-200 dark:border-zinc-700/40 hover:border-zinc-300 dark:hover:border-zinc-600/60"
                         title="View History"
                     >
                         <History size={15} />
@@ -333,9 +334,9 @@ const AthleteCard = memo(({
                     {/* Accordion toggle — all screens */}
                     <button
                         onClick={() => onToggleCard(child.client_id)}
-                        className="w-9 h-9 rounded-xl bg-zinc-800/60 hover:bg-zinc-700/80 text-zinc-500
-                                   hover:text-zinc-200 flex items-center justify-center transition-all
-                                   border border-zinc-700/40 hover:border-zinc-600/60"
+                        className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800/60 hover:bg-zinc-200 dark:hover:bg-zinc-700/80 text-zinc-600 dark:text-zinc-500
+                                   hover:text-zinc-900 dark:hover:text-zinc-200 flex items-center justify-center transition-all
+                                   border border-zinc-200 dark:border-zinc-700/40 hover:border-zinc-300 dark:hover:border-zinc-600/60"
                     >
                         <motion.div
                             animate={{ rotate: isExpanded ? 180 : 0 }}
@@ -358,7 +359,7 @@ const AthleteCard = memo(({
                         transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
                         className="overflow-hidden"
                     >
-                        <div className="px-3 pb-3 space-y-2 border-t border-zinc-800/40 pt-3">
+                        <div className="px-3 pb-3 space-y-2 border-t border-zinc-100 dark:border-zinc-800/40 pt-3">
                             {exercises
                                 .filter(e => e.name.trim())
                                 .map(ex => {
@@ -383,13 +384,13 @@ const AthleteCard = memo(({
                             {/* General session note */}
                             <div className="pt-1">
                                 <div className="relative">
-                                    <FileText size={12} className="absolute left-3 top-3 text-zinc-600 pointer-events-none" />
+                                    <FileText size={12} className="absolute left-3 top-3 text-zinc-400 dark:text-zinc-600 pointer-events-none" />
                                     <textarea
                                         placeholder="Session note…"
                                         value={sessionNote || ''}
                                         onChange={e => onUpdateSessionNote(child.client_id, e.target.value)}
-                                        className="w-full bg-zinc-900/40 border border-zinc-800/50 rounded-xl
-                                                   py-2.5 pl-8 pr-3 text-xs text-zinc-200 placeholder-zinc-600
+                                        className="w-full bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/50 rounded-xl
+                                                   py-2.5 pl-8 pr-3 text-xs text-zinc-900 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-600
                                                    focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/60
                                                    transition-all duration-200 resize-none h-14"
                                     />
@@ -645,19 +646,19 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
     // SETUP MODE
     // ─────────────────────────────────────────────────────────────────────
     if (mode === 'SETUP') return (
-        <div className="fixed inset-0 z-[200] bg-[#09090b] flex flex-col">
+        <div className="fixed inset-0 z-[200] bg-zinc-50 dark:bg-[#09090b] flex flex-col text-zinc-900 dark:text-white transition-colors duration-300">
             {/* Header */}
-            <div className="shrink-0 py-4 px-4 md:px-8 bg-[#111113] border-b border-zinc-800/60
-                            flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="shrink-0 py-4 px-4 md:px-8 bg-white dark:bg-[#111113] border-b border-zinc-200 dark:border-zinc-800/60
+                            flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-colors duration-300">
                 <div>
-                    <h1 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2.5">
-                        <span className="bg-blue-500/10 text-blue-400 p-2 rounded-xl border border-blue-500/20">
+                    <h1 className="text-xl md:text-2xl font-bold text-zinc-900 dark:text-white flex items-center gap-2.5">
+                        <span className="bg-blue-500/10 text-blue-500 dark:text-blue-400 p-2 rounded-xl border border-blue-500/20">
                             <Settings2 size={18} />
                         </span>
                         Session Planner
                     </h1>
-                    <p className="text-zinc-500 text-sm mt-1 ml-1">
-                        {day} · <span className="text-zinc-400 font-medium">{children.length} Athletes</span>
+                    <p className="text-zinc-500 dark:text-zinc-400 text-sm mt-1 ml-1">
+                        {day} · <span className="text-zinc-600 dark:text-zinc-300 font-medium">{children.length} Athletes</span>
                     </p>
                 </div>
                 <div className="flex gap-2 w-full md:w-auto">
@@ -667,16 +668,16 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                                     transition-all duration-200 flex items-center justify-center gap-2
                                     border ${
                             showTemplates
-                                ? 'bg-zinc-100 text-zinc-900 border-zinc-100'
-                                : 'bg-zinc-900 border-zinc-700/50 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600'
+                                ? 'bg-zinc-200 dark:bg-zinc-100 text-zinc-900 border-zinc-300 dark:border-zinc-100'
+                                : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700/50 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-600'
                         }`}
                     >
                         <LayoutTemplate size={15} /> Templates
                     </button>
                     <button
                         onClick={onClose}
-                        className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-700/50 text-zinc-500
-                                   hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-all duration-200"
+                        className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/50 text-zinc-500 dark:text-zinc-500
+                                   hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-500/30 transition-all duration-200"
                     >
                         <X size={18} />
                     </button>
@@ -699,30 +700,30 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0, y: -6, scale: 0.97 }}
                                         transition={{ duration: 0.2 }}
-                                        className="bg-[#111113] border border-zinc-800/60 rounded-2xl
-                                                   p-4 md:p-5 shadow-sm hover:border-zinc-700/70
+                                        className="bg-white dark:bg-[#111113] border border-zinc-200 dark:border-zinc-800/60 rounded-2xl
+                                                   p-4 md:p-5 shadow-sm dark:shadow-none hover:border-zinc-300 dark:hover:border-zinc-700/70
                                                    transition-colors duration-200 group"
                                     >
                                         <div className="flex items-center gap-3">
                                             {/* Index */}
                                             <span className="w-8 h-8 shrink-0 flex items-center justify-center rounded-xl
-                                                             bg-zinc-900 border border-zinc-800/60 text-zinc-500
-                                                             font-bold text-xs group-hover:border-zinc-700 transition-colors">
+                                                             bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800/60 text-zinc-500
+                                                             font-bold text-xs group-hover:border-zinc-300 dark:group-hover:border-zinc-700 transition-colors">
                                                 {idx + 1}
                                             </span>
 
                                             <div className="flex-1 grid grid-cols-2 md:grid-cols-12 gap-2 md:gap-3">
                                                 {/* Category */}
                                                 <div className="col-span-1 md:col-span-3">
-                                                    <label className="text-[10px] font-bold text-zinc-600 uppercase tracking-wider ml-0.5 mb-1.5 block">
+                                                    <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-600 uppercase tracking-wider ml-0.5 mb-1.5 block">
                                                         Category
                                                     </label>
                                                     <div className="relative">
                                                         <select
                                                             value={ex.category}
                                                             onChange={e => updateExercise(idx, 'category', e.target.value)}
-                                                            className="w-full h-10 bg-zinc-900/60 border border-zinc-700/50
-                                                                       rounded-xl pl-8 pr-3 font-semibold text-sm text-white
+                                                            className="w-full h-10 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-700/50
+                                                                       rounded-xl pl-8 pr-3 font-semibold text-sm text-zinc-900 dark:text-white
                                                                        appearance-none focus:outline-none focus:ring-2
                                                                        focus:ring-blue-500/20 focus:border-blue-500/60
                                                                        cursor-pointer transition-all duration-200"
@@ -739,7 +740,7 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
 
                                                 {/* Sets */}
                                                 <div className="col-span-1 md:col-span-2">
-                                                    <label className="text-[10px] font-bold text-zinc-600 uppercase tracking-wider ml-0.5 mb-1.5 block">
+                                                    <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-600 uppercase tracking-wider ml-0.5 mb-1.5 block">
                                                         Sets
                                                     </label>
                                                     <input
@@ -748,8 +749,8 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                                                         max="20"
                                                         value={ex.sets_count}
                                                         onChange={e => updateExercise(idx, 'sets_count', e.target.value)}
-                                                        className="w-full h-10 bg-zinc-900/60 border border-zinc-700/50
-                                                                   rounded-xl px-3 text-center font-bold text-white text-sm
+                                                        className="w-full h-10 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-700/50
+                                                                   rounded-xl px-3 text-center font-bold text-zinc-900 dark:text-white text-sm
                                                                    focus:outline-none focus:ring-2 focus:ring-blue-500/20
                                                                    focus:border-blue-500/60 transition-all duration-200"
                                                     />
@@ -757,16 +758,16 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
 
                                                 {/* Name */}
                                                 <div className="col-span-2 md:col-span-7">
-                                                    <label className="text-[10px] font-bold text-zinc-600 uppercase tracking-wider ml-0.5 mb-1.5 block">
+                                                    <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-600 uppercase tracking-wider ml-0.5 mb-1.5 block">
                                                         Exercise Name
                                                     </label>
                                                     <input
                                                         value={ex.name}
                                                         onChange={e => updateExercise(idx, 'name', e.target.value)}
                                                         placeholder="e.g. Barbell Squat"
-                                                        className="w-full h-10 bg-zinc-900/60 border border-zinc-700/50
-                                                                   rounded-xl px-4 text-sm font-semibold text-white
-                                                                   placeholder-zinc-600
+                                                        className="w-full h-10 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-700/50
+                                                                   rounded-xl px-4 text-sm font-semibold text-zinc-900 dark:text-white
+                                                                   placeholder-zinc-400 dark:placeholder-zinc-600
                                                                    focus:outline-none focus:ring-2 focus:ring-blue-500/20
                                                                    focus:border-blue-500/60 transition-all duration-200"
                                                     />
@@ -776,8 +777,8 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                                             {/* Delete */}
                                             <button
                                                 onClick={() => removeExercise(ex.id)}
-                                                className="p-2 rounded-xl bg-zinc-900 border border-zinc-800/60 text-zinc-600
-                                                           hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30
+                                                className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800/60 text-zinc-500 dark:text-zinc-600
+                                                           hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-500/30
                                                            transition-all duration-200 shrink-0 mt-5"
                                             >
                                                 <Trash2 size={15} />
@@ -791,13 +792,13 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                         {/* Add exercise */}
                         <button
                             onClick={addExercise}
-                            className="w-full h-14 border border-dashed border-zinc-800/80 rounded-2xl
-                                       text-zinc-600 font-semibold text-sm flex items-center justify-center gap-2.5
-                                       hover:bg-zinc-900/40 hover:border-zinc-700 hover:text-zinc-400
+                            className="w-full h-14 border border-dashed border-zinc-300 dark:border-zinc-800/80 rounded-2xl
+                                       text-zinc-500 dark:text-zinc-600 font-semibold text-sm flex items-center justify-center gap-2.5
+                                       hover:bg-zinc-100 dark:hover:bg-zinc-900/40 hover:border-zinc-400 dark:hover:border-zinc-700 hover:text-zinc-700 dark:hover:text-zinc-400
                                        transition-all duration-200"
                         >
-                            <span className="bg-zinc-800/60 p-1.5 rounded-lg">
-                                <Dumbbell size={14} className="text-zinc-500" />
+                            <span className="bg-zinc-100 dark:bg-zinc-800/60 p-1.5 rounded-lg">
+                                <Dumbbell size={14} className="text-zinc-400 dark:text-zinc-500" />
                             </span>
                             Add Exercise
                         </button>
@@ -814,22 +815,22 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                             exit={{ x: '100%', opacity: 0 }}
                             transition={{ type: 'spring', stiffness: 340, damping: 32 }}
                             className="absolute md:relative inset-0 md:inset-auto z-10 md:z-auto
-                                       w-full md:w-96 border-l border-zinc-800/60
-                                       bg-[#111113] p-6 flex flex-col"
+                                       w-full md:w-96 border-l border-zinc-200 dark:border-zinc-800/60
+                                       bg-white dark:bg-[#111113] p-6 flex flex-col transition-colors duration-300"
                         >
                             <div className="flex justify-between items-center mb-5">
-                                <h3 className="text-base font-bold text-white">Workout Templates</h3>
+                                <h3 className="text-base font-bold text-zinc-900 dark:text-white">Workout Templates</h3>
                                 <button
                                     onClick={() => setShowTemplates(false)}
-                                    className="p-1.5 rounded-lg bg-zinc-800 text-zinc-500 hover:text-zinc-200 transition-colors"
+                                    className="p-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
                                 >
                                     <X size={16} />
                                 </button>
                             </div>
 
                             {/* Save current */}
-                            <div className="bg-zinc-900/60 border border-zinc-800/60 p-4 rounded-xl mb-4">
-                                <label className="text-[10px] font-bold text-zinc-600 uppercase tracking-wider mb-2 block">
+                            <div className="bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 p-4 rounded-xl mb-4">
+                                <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-600 uppercase tracking-wider mb-2 block">
                                     Save Current Plan
                                 </label>
                                 <div className="flex gap-2">
@@ -837,8 +838,8 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                                         value={templateName}
                                         onChange={e => setTemplateName(e.target.value)}
                                         placeholder="Template name…"
-                                        className="flex-1 bg-zinc-900 border border-zinc-700/50 rounded-xl px-3 py-2.5
-                                                   text-sm text-white placeholder-zinc-600
+                                        className="flex-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/50 rounded-xl px-3 py-2.5
+                                                   text-sm text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-600
                                                    focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/60
                                                    transition-all duration-200"
                                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveTemplate(); } }}
@@ -854,7 +855,7 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
 
                             <div className="flex-1 overflow-y-auto space-y-2.5">
                                 {templates.length === 0 ? (
-                                    <p className="text-sm text-zinc-600 text-center py-10">No templates saved yet.</p>
+                                    <p className="text-sm text-zinc-500 dark:text-zinc-600 text-center py-10">No templates saved yet.</p>
                                 ) : templates.map(t => (
                                     <div
                                         key={t.id}
@@ -867,21 +868,21 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                                             })));
                                             setShowTemplates(false);
                                         }}
-                                        className="p-4 bg-zinc-900/50 border border-zinc-800/60 rounded-xl
-                                                   hover:border-zinc-700 hover:bg-zinc-900 cursor-pointer group
+                                        className="p-4 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800/60 rounded-xl
+                                                   hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer group
                                                    relative transition-all duration-200"
                                     >
                                         <div className="flex justify-between items-start pr-6">
-                                            <p className="font-semibold text-sm text-zinc-200 truncate">{t.name}</p>
-                                            <span className="text-[10px] bg-zinc-800 text-zinc-500 px-2 py-0.5 rounded-md shrink-0 ml-2">
+                                            <p className="font-semibold text-sm text-zinc-900 dark:text-zinc-200 truncate">{t.name}</p>
+                                            <span className="text-[10px] bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-500 px-2 py-0.5 rounded-md shrink-0 ml-2">
                                                 {t.exercises.length}
                                             </span>
                                         </div>
-                                        <p className="text-xs text-zinc-600 truncate mt-1">{t.exercises.map(e => e.name).join(', ')}</p>
+                                        <p className="text-xs text-zinc-500 dark:text-zinc-600 truncate mt-1">{t.exercises.map(e => e.name).join(', ')}</p>
                                         <button
                                             onClick={e => handleDeleteTemplate(t.id, e)}
-                                            className="absolute top-3 right-3 p-1.5 text-zinc-600 hover:text-red-400
-                                                       opacity-0 group-hover:opacity-100 transition-all bg-zinc-800 rounded-lg"
+                                            className="absolute top-3 right-3 p-1.5 text-zinc-500 dark:text-zinc-600 hover:text-red-600 dark:hover:text-red-400
+                                                       opacity-0 group-hover:opacity-100 transition-all bg-zinc-200 dark:bg-zinc-800 rounded-lg"
                                         >
                                             <Trash2 size={12} />
                                         </button>
@@ -894,8 +895,8 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
             </div>
 
             {/* Footer — backdrop blur */}
-            <div className="fixed bottom-0 left-0 right-0 z-[210] backdrop-blur-md bg-[#09090b]/90
-                            border-t border-zinc-800/60 flex items-center justify-end px-4 md:px-8 py-4">
+            <div className="fixed bottom-0 left-0 right-0 z-[210] backdrop-blur-md bg-white/90 dark:bg-[#09090b]/90
+                            border-t border-zinc-200 dark:border-zinc-800/60 flex items-center justify-end px-4 md:px-8 py-4">
                 <button
                     onClick={() => {
                         if (!validExercises.length) {
@@ -906,7 +907,7 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                         fetchBulkHistory(validExercises);
                     }}
                     className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white
-                               px-8 py-3 rounded-xl font-bold text-sm shadow-lg shadow-blue-900/30
+                               px-8 py-3 rounded-xl font-bold text-sm shadow-lg shadow-blue-500/20 dark:shadow-blue-900/30
                                flex items-center justify-center gap-2.5 active:scale-95
                                transition-all duration-200"
                 >
@@ -926,17 +927,17 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
     // LIVE MODE
     // ─────────────────────────────────────────────────────────────────────
     return (
-        <div className="fixed inset-0 z-[200] bg-[#09090b] flex flex-col text-white">
+        <div className="fixed inset-0 z-[200] bg-zinc-50 dark:bg-[#09090b] flex flex-col text-zinc-900 dark:text-white transition-colors duration-300">
 
             {/* Live Header */}
-            <div className="shrink-0 h-16 md:h-[4.5rem] bg-[#111113] border-b border-zinc-800/60
-                            flex items-center justify-between px-4 md:px-6 z-20 shadow-lg shadow-black/40">
+            <div className="shrink-0 h-16 md:h-[4.5rem] bg-white dark:bg-[#111113] border-b border-zinc-200 dark:border-zinc-800/60
+                            flex items-center justify-between px-4 md:px-6 z-20 shadow-lg shadow-zinc-200/50 dark:shadow-black/40">
                 <div className="flex items-center gap-3">
                     {/* Back to planner */}
                     <button
                         onClick={() => setMode('SETUP')}
-                        className="bg-zinc-900 border border-zinc-700/50 text-zinc-400
-                                   hover:text-zinc-200 hover:border-zinc-600
+                        className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/50 text-zinc-600 dark:text-zinc-400
+                                   hover:text-zinc-900 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-600
                                    p-2.5 md:px-4 md:py-2 rounded-xl flex items-center gap-2
                                    transition-all duration-200"
                     >
@@ -944,11 +945,11 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                         <span className="hidden md:inline text-xs font-bold uppercase tracking-wider">Edit Plan</span>
                     </button>
 
-                    <div className="w-px h-5 bg-zinc-800" />
+                    <div className="w-px h-5 bg-zinc-300 dark:bg-zinc-800" />
 
                     {/* Session info */}
                     <div>
-                        <span className="text-sm font-bold text-white">{day}</span>
+                        <span className="text-sm font-bold text-zinc-900 dark:text-white">{day}</span>
                         <span className="text-xs text-zinc-500 ml-2">{validExercises.length} exercises</span>
                     </div>
 
@@ -962,8 +963,8 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
 
                 <div className="flex items-center gap-2 md:gap-3">
                     {/* Present count badge */}
-                    <span className="hidden md:flex items-center gap-1.5 text-xs text-zinc-400
-                                     bg-zinc-900 border border-zinc-800/60 px-3 py-1.5 rounded-xl">
+                    <span className="hidden md:flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-400
+                                     bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800/60 px-3 py-1.5 rounded-xl">
                         <CheckCircle2 size={12} className="text-green-500" />
                         {presentCount} / {children.length}
                     </span>
@@ -972,7 +973,7 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                         onClick={() => setShowFinishConfirm(true)}
                         disabled={isSubmitting}
                         className="bg-green-600 hover:bg-green-500 text-white px-4 py-2.5 md:px-5 md:py-2.5
-                                   rounded-xl font-bold text-sm shadow-lg shadow-green-900/30
+                                   rounded-xl font-bold text-sm shadow-lg shadow-green-500/20 dark:shadow-green-900/30
                                    flex items-center gap-2 transition-all duration-200 active:scale-95
                                    disabled:opacity-60"
                     >
@@ -982,8 +983,8 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                     </button>
                     <button
                         onClick={onClose}
-                        className="p-2.5 bg-zinc-900 border border-zinc-700/50 rounded-xl text-zinc-500
-                                   hover:text-zinc-200 hover:border-zinc-600 transition-all duration-200"
+                        className="p-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/50 rounded-xl text-zinc-500
+                                   hover:text-zinc-900 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-600 transition-all duration-200"
                     >
                         <X size={16} />
                     </button>
@@ -1036,22 +1037,22 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                             className="fixed inset-0 z-[350] flex items-center justify-center p-4 pointer-events-none"
                         >
-                            <div className="bg-zinc-900 border border-zinc-700/60 w-full max-w-sm
+                            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/60 w-full max-w-sm
                                             rounded-2xl p-6 shadow-2xl text-center pointer-events-auto">
                                 <div className="w-14 h-14 mx-auto rounded-full bg-green-500/10 border border-green-500/20
                                                 flex items-center justify-center text-green-500 mb-4">
                                     <CheckCircle2 size={26} />
                                 </div>
-                                <h3 className="text-lg font-bold text-white mb-1.5">Finish Session?</h3>
-                                <p className="text-sm text-zinc-500 mb-6">
+                                <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-1.5">Finish Session?</h3>
+                                <p className="text-sm text-zinc-600 dark:text-zinc-500 mb-6">
                                     Saves session and deducts from subscriptions for{' '}
-                                    <span className="font-bold text-zinc-200">{presentCount}</span> attending athletes.
+                                    <span className="font-bold text-zinc-900 dark:text-zinc-200">{presentCount}</span> attending athletes.
                                 </p>
                                 <div className="grid grid-cols-2 gap-3">
                                     <button
                                         onClick={() => setShowFinishConfirm(false)}
-                                        className="py-3 rounded-xl font-semibold text-sm bg-zinc-800 text-zinc-400
-                                                   hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
+                                        className="py-3 rounded-xl font-semibold text-sm bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400
+                                                   hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
                                     >
                                         Cancel
                                     </button>
@@ -1088,21 +1089,21 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                             animate={{ x: 0 }}
                             exit={{ x: '100%' }}
                             transition={{ type: 'spring', stiffness: 340, damping: 32 }}
-                            className="fixed inset-y-0 right-0 z-[310] w-full max-w-md bg-[#111113]
-                                       border-l border-zinc-800/60 flex flex-col shadow-2xl"
+                            className="fixed inset-y-0 right-0 z-[310] w-full max-w-md bg-white dark:bg-[#111113]
+                                       border-l border-zinc-200 dark:border-zinc-800/60 flex flex-col shadow-2xl transition-colors duration-300"
                         >
                             {/* Drawer header */}
-                            <div className="px-5 py-4 border-b border-zinc-800/60 bg-[#111113] flex items-center justify-between">
+                            <div className="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800/60 flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-zinc-800 overflow-hidden border border-zinc-700/50
+                                    <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden border border-zinc-200 dark:border-zinc-700/50
                                                     flex items-center justify-center shrink-0">
                                         {historyChild.client_photo
                                             ? <img src={historyChild.client_photo} className="w-full h-full object-cover" alt="" />
-                                            : <User size={16} className="text-zinc-500" />
+                                            : <User size={16} className="text-zinc-400 dark:text-zinc-500" />
                                         }
                                     </div>
                                     <div>
-                                        <h2 className="text-base font-bold text-white">{historyChild.client_name}</h2>
+                                        <h2 className="text-base font-bold text-zinc-900 dark:text-white">{historyChild.client_name}</h2>
                                         <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider">
                                             Performance History
                                         </p>
@@ -1110,7 +1111,7 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
                                 </div>
                                 <button
                                     onClick={() => setHistoryChild(null)}
-                                    className="p-2 bg-zinc-800 rounded-xl text-zinc-500 hover:text-zinc-200 transition-colors"
+                                    className="p-2 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
                                 >
                                     <X size={16} />
                                 </button>
@@ -1118,49 +1119,49 @@ const ActiveGroupSession = ({ day, children, onClose, initialExercises }) => {
 
                             <div className="flex-1 overflow-y-auto p-5 space-y-3">
                                 {loadingHistory ? (
-                                    <div className="flex flex-col items-center justify-center h-40 text-zinc-600 gap-3">
+                                    <div className="flex flex-col items-center justify-center h-40 text-zinc-500 dark:text-zinc-600 gap-3">
                                         <Loader2 className="animate-spin" size={24} />
                                         <span className="text-sm">Loading records…</span>
                                     </div>
                                 ) : historyData.length === 0 ? (
-                                    <div className="text-center py-16 text-zinc-600">
+                                    <div className="text-center py-16 text-zinc-400 dark:text-zinc-600">
                                         <Activity size={36} className="mx-auto mb-3 opacity-30" />
                                         <p className="text-sm">No workout history found.</p>
                                     </div>
                                 ) : historyData.map(session => (
                                     <div key={session.id}
-                                         className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl overflow-hidden">
-                                        <div className="px-3.5 py-2.5 bg-zinc-900 flex justify-between items-center border-b border-zinc-800/50">
+                                         className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800/60 rounded-xl overflow-hidden">
+                                        <div className="px-3.5 py-2.5 bg-zinc-100 dark:bg-zinc-900 flex justify-between items-center border-b border-zinc-200 dark:border-zinc-800/50">
                                             <div className="flex items-center gap-2">
-                                                <Calendar size={12} className="text-blue-400" />
-                                                <span className="font-semibold text-zinc-300 text-sm">
+                                                <Calendar size={12} className="text-blue-500 dark:text-blue-400" />
+                                                <span className="font-semibold text-zinc-800 dark:text-zinc-300 text-sm">
                                                     {new Date(session.date).toLocaleDateString()}
                                                 </span>
                                             </div>
-                                            <span className="text-[10px] font-bold uppercase bg-zinc-800 text-zinc-500 px-2 py-0.5 rounded-md">
+                                            <span className="text-[10px] font-bold uppercase bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-500 px-2 py-0.5 rounded-md">
                                                 {session.day_name}
                                             </span>
                                         </div>
                                         <div className="p-2.5 space-y-1.5">
                                             {(!session.performance || session.performance.length === 0) ? (
-                                                <p className="text-xs text-zinc-600 italic px-1">Attended — no data recorded.</p>
+                                                <p className="text-xs text-zinc-500 dark:text-zinc-600 italic px-1">Attended — no data recorded.</p>
                                             ) : session.performance.map((p, pidx) => {
                                                 const fields = getInputFields(p.category || 'weight');
                                                 return (
                                                     <div key={pidx}
-                                                         className="flex justify-between items-center bg-zinc-900/50 rounded-lg p-2.5
-                                                                    hover:bg-zinc-800/50 transition-colors">
-                                                        <span className="text-xs font-medium text-zinc-400 truncate max-w-[9rem]">
+                                                         className="flex justify-between items-center bg-white dark:bg-zinc-900/50 rounded-lg p-2.5
+                                                                    hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors shadow-sm dark:shadow-none">
+                                                        <span className="text-xs font-medium text-zinc-700 dark:text-zinc-400 truncate max-w-[9rem]">
                                                             {p.exercise}
                                                         </span>
                                                         <div className="flex gap-1.5">
                                                             {p.val1 && p.val1 !== '-' && (
-                                                                <span className="text-xs font-bold text-zinc-200 bg-zinc-800 px-2 py-0.5 rounded-lg font-mono border border-zinc-700/50">
+                                                                <span className="text-xs font-bold text-zinc-900 dark:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-lg font-mono border border-zinc-200 dark:border-zinc-700/50">
                                                                     {p.val1} {fields.f1.unit}
                                                                 </span>
                                                             )}
                                                             {fields.f2 && p.val2 && p.val2 !== '-' && (
-                                                                <span className="text-xs font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-lg font-mono border border-blue-500/20">
+                                                                <span className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-lg font-mono border border-blue-500/20">
                                                                     {p.val2} {fields.f2.unit}
                                                                 </span>
                                                             )}

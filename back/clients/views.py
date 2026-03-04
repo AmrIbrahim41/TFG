@@ -1470,6 +1470,7 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
                         'client_id': r.get('client_id'),
                         'val1':      str(r.get('val1', '')),
                         'val2':      str(r.get('val2', '')),
+                        'val3':      str(r.get('val3', '')),
                         'note':      str(r.get('note', '')),
                     }
                     for r in (ex.get('results', []) if isinstance(ex.get('results'), list) else [])
@@ -1583,6 +1584,7 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
                             'sets_count': ex.get('sets_count', 0),
                             'val1':       user_res.get('val1', '-'),
                             'val2':       user_res.get('val2', '-'),
+                            'val3':       user_res.get('val3', '-'),
                             'note':       user_res.get('note', ''),
                         })
 
@@ -1679,6 +1681,7 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
                         'sets_count': int(ex.get('sets_count') or 0),
                         'val1':       str(user_res.get('val1', '')),
                         'val2':       str(user_res.get('val2', '')),
+                        'val3':       str(user_res.get('val3', '')),
                         'note':       str(user_res.get('note', '')),
                     }
                     resolved.setdefault(client_id_str, set()).add(ex_name)
