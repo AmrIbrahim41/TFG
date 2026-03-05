@@ -373,11 +373,26 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
 
                 client_list.append({
                     'id': sub.client.id,
+                    'subscription_id': sub.id,
                     'name': sub.client.name,
                     'plan': sub.plan.name if sub.plan else "No Plan",
+                    # FIX: sessions_used and total_sessions were missing entirely.
+                    # The frontend's computeProgress() and SessionsDisplay both depend
+                    # on these two fields. Without them, client.sessions_used and
+                    # client.total_sessions are both `undefined` in JS, causing
+                    # NaN arithmetic and a permanently invisible progress bar.
+                    #
+                    # total_sessions mirrors plan.units. When plan.units == 0 the
+                    # plan is "unlimited"; the frontend treats null/0 as ∞.
+                    'sessions_used': sub.sessions_used,
+                    'total_sessions': sub.plan.units if sub.plan else None,
+                    # Keep the server-side percentage as a cross-check fallback.
                     'progress': sub.progress_percentage,
                     'photo': photo_full_url,
                     'manual_id': sub.client.manual_id,
+                    # end_date lets the frontend flag expiring subscriptions
+                    # without a separate API call.
+                    'end_date': sub.end_date,
                 })
 
             return Response({
@@ -730,7 +745,15 @@ class SessionLogViewSet(viewsets.ModelViewSet):
         uses_training_session = TrainingSession.objects.filter(subscription=sub).exists()
         if not uses_training_session:
             sub.sessions_used = SessionLog.objects.filter(subscription=sub).count()
-            is_expired_sessions = sub.plan and sub.sessions_used >= sub.plan.units
+            # FIX: The original condition `sub.plan and sub.sessions_used >= sub.plan.units`
+            # was True for unlimited plans (units == 0) because 0 >= 0 → True.
+            # This caused every session log on an unlimited plan to immediately
+            # deactivate the subscription. Guard with `plan.units > 0`.
+            is_expired_sessions = (
+                sub.plan
+                and sub.plan.units > 0
+                and sub.sessions_used >= sub.plan.units
+            )
             is_expired_date = sub.end_date and timezone.now().date() > sub.end_date
             if is_expired_sessions or is_expired_date:
                 sub.is_active = False
@@ -1068,12 +1091,20 @@ class NutritionPlanViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def weekly_overview(self, request, pk=None):
         nutrition_plan = self.get_object()
-        # Use aggregate query to avoid N+1 across 7 days
         meal_plans = nutrition_plan.meal_plans.all()
+
+        # FIX: MealPlan.day is an IntegerField (1–7 or 1–14).
+        # The original code filtered with string day names ("Monday" …)
+        # against an IntegerField — Django silently returned empty querysets,
+        # so every day always showed 0 calories/meals.
+        # Now we iterate over integer day numbers 1–7 and return numeric keys.
+        # If callers expected string keys, update the frontend to use 1–7.
+        DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         weekly_data = {}
-        for day_name in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]:
-            day_meals = meal_plans.filter(day=day_name)
-            weekly_data[day_name] = {
+        for day_num in range(1, 8):
+            day_meals = meal_plans.filter(day=day_num)
+            weekly_data[DAY_NAMES[day_num - 1]] = {
+                "day": day_num,
                 "total_calories": sum(m.total_calories for m in day_meals),
                 "total_protein": sum(m.total_protein for m in day_meals),
                 "total_carbs": sum(m.total_carbs for m in day_meals),
@@ -1509,7 +1540,20 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
 
                 if sub:
                     sub.sessions_used += 1
-                    if sub.plan and sub.plan.units and sub.sessions_used >= sub.plan.units:
+                    # FIX: Also check end_date expiry, mirroring the logic in
+                    # TrainingSessionViewSet.save_session_data.  Previously,
+                    # group sessions only triggered deactivation on session count
+                    # exhaustion but never on date expiry — an inconsistency that
+                    # left date-expired subscriptions permanently active.
+                    is_finished_sessions = (
+                        sub.plan
+                        and sub.plan.units
+                        and sub.sessions_used >= sub.plan.units
+                    )
+                    is_expired_date = (
+                        sub.end_date and timezone.now().date() > sub.end_date
+                    )
+                    if is_finished_sessions or is_expired_date:
                         sub.is_active = False
                     subs_to_save.append(sub)
                     deducted = True

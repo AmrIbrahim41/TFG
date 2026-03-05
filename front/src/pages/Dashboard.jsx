@@ -162,35 +162,35 @@ const Dashboard = () => {
   );
 
   // ── Data Fetch ───────────────────────────────────────────────
-  const fetchStats = useCallback(async () => {
+  // FIX: Previously there were two independent fetchers:
+  //   1. fetchStats (useCallback) — used only by the Retry button, no cancel guard.
+  //   2. An inline useEffect — used for initial load + dep changes, had cancel guard.
+  // This caused a double request on every mount and a missing cancel guard on retry.
+  // Solution: fetchStats now owns an AbortController; useEffect simply calls it.
+  const fetchStats = useCallback(() => {
     setLoading(true);
     setError(null);
-    try {
-      const res = await api.get(`/dashboard/stats/?month=${selectedMonth}&year=${selectedYear}`);
-      setData(res.data);
-    } catch (err) {
-      console.error('Failed to load dashboard stats', err);
-      setError('Failed to load dashboard data. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    const controller = new AbortController();
+
+    api.get(`/dashboard/stats/?month=${selectedMonth}&year=${selectedYear}`, {
+      signal: controller.signal,
+    })
+      .then(res => setData(res.data))
+      .catch(err => {
+        if (err.name === 'CanceledError' || err.name === 'AbortError') return;
+        console.error('Failed to load dashboard stats', err);
+        setError('Failed to load dashboard data. Please try again.');
+      })
+      .finally(() => setLoading(false));
+
+    return controller;
   }, [selectedMonth, selectedYear]);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    api.get(`/dashboard/stats/?month=${selectedMonth}&year=${selectedYear}`)
-      .then(res => { if (!cancelled) setData(res.data); })
-      .catch(err => {
-        if (!cancelled) {
-          console.error(err);
-          setError('Failed to load dashboard data. Please try again.');
-        }
-      })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [selectedMonth, selectedYear]);
+    const controller = fetchStats();
+    // Cancel the in-flight request when deps change or component unmounts.
+    return () => controller.abort();
+  }, [fetchStats]);
 
   // ── Progress calculation
   // FIX: Compute progress locally from sessions_used / total_sessions.
