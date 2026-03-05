@@ -499,7 +499,7 @@ const Dashboard = () => {
                     return (
                       <div
                         key={client.id || i}
-                        onClick={() => navigate(`/clients/${client.id}`)}
+                        onClick={() => navigate(client.is_child ? `/children/${client.id}` : `/clients/${client.id}`)}
                         className="bg-white dark:bg-[#18181b] border border-zinc-200 dark:border-zinc-800 hover:border-orange-400/60 dark:hover:border-orange-500/50 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 p-4 md:p-5 rounded-3xl transition-all cursor-pointer group relative overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md"
                       >
                         {/* Active indicator strip */}

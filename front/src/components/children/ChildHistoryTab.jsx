@@ -3,14 +3,16 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * World-class child-specific session history tab.
  *
- * Key changes vs. original:
- *  1. "Performance Breakdown" modal fully redesigned with Framer Motion.
- *  2. Strength (weight/reps) vs. Cardio (distance/time) rendered with distinct
- *     visual cues: colour-coded rings, large "hero" metric, per-metric stat cards.
- *  3. Typography hierarchy: primary result = large bold mono; labels = muted xs.
- *  4. Session cards carry mini exercise previews with type-colour coding.
- *  5. Skeleton cards match real card shape.
- *  6. Beautiful animated empty state with icon composition.
+ * Key changes vs. previous version:
+ *  1. PerformanceModal fully redesigned to match ChildrenHistory's SessionModal:
+ *     - Centered on ALL screens (no more bottom-sheet on mobile).
+ *     - Backdrop: bg-black/50 backdrop-blur-md.
+ *     - Zoom/fade spring entrance (scale 0.92 → 1) replacing slide-up.
+ *     - Mobile drag handle removed.
+ *     - Header: text-2xl font-black day name, date + time + coach side-by-side
+ *       with icons, Quick Stats displayed in grid boxes (not pills).
+ *     - Body padding/spacing aligned with minimalist dark-mode aesthetic.
+ *  2. ExercisePerformanceCard and all performance data retained (val1/val2/note).
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -19,7 +21,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Calendar, User, Activity, X, Loader2, StickyNote, Info,
     ChevronLeft, ChevronRight, Dumbbell, Timer, Zap, Target,
-    TrendingUp, Clock, ArrowRight, Repeat,
+    TrendingUp, Clock, ArrowRight, Repeat, Layers,
 } from 'lucide-react';
 import api from '../../api';
 
@@ -104,6 +106,9 @@ const formatDateFull = (ds) =>
 const formatDateShort = (ds) =>
     new Date(ds).toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' });
 
+const formatTime = (ds) =>
+    new Date(ds).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 /** Skeleton card matching real session card shape. */
@@ -126,8 +131,8 @@ const SkeletonCard = () => (
 
 /**
  * Single exercise performance card inside the modal.
- * Matches the design language of ChildrenHistory's exercise rows,
- * while retaining the performance metric data (val1 / val2).
+ * Retains all performance metric data (val1 / val2 / note).
+ * Visual style updated to blend with the new minimalist modal aesthetic.
  */
 const ExercisePerformanceCard = ({ perf, index }) => {
     const meta    = getMeta(perf.type);
@@ -140,7 +145,8 @@ const ExercisePerformanceCard = ({ perf, index }) => {
             initial={{ opacity: 0, x: -12 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: index * 0.05 }}
-            className="rounded-2xl border bg-zinc-50 dark:bg-zinc-900/40
+            className="rounded-2xl border
+                       bg-zinc-50 dark:bg-zinc-900/60
                        border-zinc-200 dark:border-zinc-800
                        hover:border-zinc-300 dark:hover:border-zinc-700
                        transition-colors overflow-hidden"
@@ -178,7 +184,7 @@ const ExercisePerformanceCard = ({ perf, index }) => {
             {(hasVal1 || hasVal2) && (
                 <div className={`grid ${hasVal1 && hasVal2 ? 'grid-cols-2' : 'grid-cols-1'} gap-px border-t border-zinc-200 dark:border-zinc-800`}>
                     {hasVal1 && (
-                        <div className="bg-white/70 dark:bg-zinc-900/60 px-4 py-2.5 text-center">
+                        <div className="bg-white dark:bg-zinc-900/80 px-4 py-2.5 text-center">
                             <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-0.5">
                                 {meta.metrics[0]}
                             </p>
@@ -191,7 +197,7 @@ const ExercisePerformanceCard = ({ perf, index }) => {
                         </div>
                     )}
                     {hasVal2 && (
-                        <div className="bg-white/70 dark:bg-zinc-900/60 px-4 py-2.5 text-center border-l border-zinc-200 dark:border-zinc-800">
+                        <div className="bg-white dark:bg-zinc-900/80 px-4 py-2.5 text-center border-l border-zinc-200 dark:border-zinc-800">
                             <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-0.5">
                                 {meta.metrics[1]}
                             </p>
@@ -210,7 +216,7 @@ const ExercisePerformanceCard = ({ perf, index }) => {
             {perf.note && (
                 <div className="px-3.5 py-2.5 border-t border-zinc-200 dark:border-zinc-800
                                 flex items-start gap-1.5 text-xs text-zinc-500 dark:text-zinc-400
-                                bg-zinc-50/80 dark:bg-zinc-800/30">
+                                bg-zinc-100/60 dark:bg-zinc-800/30">
                     <StickyNote size={11} className="mt-0.5 shrink-0" />
                     <span className="italic leading-snug">{perf.note}</span>
                 </div>
@@ -221,106 +227,148 @@ const ExercisePerformanceCard = ({ perf, index }) => {
 
 /**
  * Performance Breakdown Modal.
- * Framer Motion slide-up with backdrop blur.
+ *
+ * Redesigned to match ChildrenHistory's SessionModal:
+ *  - Centered on ALL screen sizes via `fixed inset-0 flex items-center justify-center`.
+ *  - Backdrop: bg-black/50 backdrop-blur-md.
+ *  - Zoom/fade spring entrance: scale 0.92 → 1 with y offset, replacing the old slide-up.
+ *  - No mobile drag handle.
+ *  - Header: text-2xl font-black day name; date + time + coach side-by-side with icons.
+ *  - Quick Stats: grid of stat boxes (Total / Strength / Cardio) styled like ChildrenHistory.
+ *  - Body: p-6 spacing, section header for exercises list.
+ *  - ExercisePerformanceCard and all result data (val1 / val2 / note) fully preserved.
  */
 const PerformanceModal = ({ session, onClose }) => {
     if (!session) return null;
 
     const total         = session.performance.length;
-    const strengthCount = session.performance.filter(p => (p.type || 'strength').toLowerCase() === 'strength').length;
-    const cardioCount   = session.performance.filter(p => (p.type || '').toLowerCase() === 'cardio').length;
+    const strengthCount = session.performance.filter(
+        p => ['strength', 'weight'].includes((p.type || 'strength').toLowerCase())
+    ).length;
+    const cardioCount   = session.performance.filter(
+        p => ['cardio', 'time'].includes((p.type || '').toLowerCase())
+    ).length;
+    const otherCount    = total - strengthCount - cardioCount;
+
+    // Build quick-stat boxes — only show non-zero sub-counts
+    const statBoxes = [
+        { label: 'Exercises', value: total, always: true },
+        strengthCount > 0 && { label: 'Strength', value: strengthCount, icon: Dumbbell, color: 'text-blue-500' },
+        cardioCount   > 0 && { label: 'Cardio',   value: cardioCount,   icon: Activity, color: 'text-orange-400' },
+        otherCount    > 0 && { label: 'Other',    value: otherCount,    icon: Repeat,   color: 'text-violet-400' },
+    ].filter(Boolean);
 
     return (
         <AnimatePresence>
             {session && (
                 <>
-                    {/* Backdrop */}
+                    {/* ── Backdrop ──────────────────────────────────────────── */}
                     <motion.div
                         key="modal-backdrop"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
                         onClick={onClose}
-                        className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
+                        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-md"
                     />
 
-                    {/* Modal panel (slides up from bottom on mobile, centered on desktop) */}
+                    {/* ── Modal panel — centered on ALL screen sizes ──────── */}
                     <motion.div
                         key="modal-panel"
-                        initial={{ opacity: 0, y: 40, scale: 0.97 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 40, scale: 0.97 }}
-                        transition={{ type: 'spring', stiffness: 350, damping: 28 }}
-                        className="fixed inset-x-0 bottom-0 sm:inset-0 z-50 flex sm:items-center sm:justify-center sm:p-4"
+                        initial={{ opacity: 0, scale: 0.92, y: 24 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.92, y: 24 }}
+                        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
                     >
-                        <div className="w-full sm:max-w-lg max-h-[92vh] sm:max-h-[90vh] flex flex-col
-                                        bg-white dark:bg-[#0f0f11] rounded-t-3xl sm:rounded-3xl
-                                        border border-zinc-200 dark:border-zinc-800
-                                        shadow-2xl overflow-hidden">
+                        <div
+                            onClick={e => e.stopPropagation()}
+                            className="pointer-events-auto w-full max-w-lg max-h-[90vh] flex flex-col
+                                       bg-white dark:bg-[#111113]
+                                       border border-zinc-200 dark:border-zinc-800
+                                       rounded-3xl shadow-2xl overflow-hidden"
+                        >
 
-                            {/* ── MODAL HEADER ── */}
-                            <div className="flex-shrink-0 px-6 pt-6 pb-5 border-b border-zinc-200 dark:border-zinc-800
-                                            bg-zinc-50 dark:bg-zinc-900/60">
-                                {/* Drag handle (mobile) */}
-                                <div className="w-10 h-1 bg-zinc-300 dark:bg-zinc-700 rounded-full mx-auto mb-4 sm:hidden" />
+                            {/* ── MODAL HEADER ──────────────────────────────── */}
+                            <div className="p-6 border-b border-zinc-100 dark:border-zinc-800
+                                            bg-zinc-50/80 dark:bg-zinc-900/50 shrink-0">
 
                                 <div className="flex items-start justify-between">
-                                    <div>
-                                        <h3 className="text-xl font-black text-zinc-900 dark:text-white">
+                                    <div className="flex-1 min-w-0 pr-4">
+                                        {/* Day name — large, black weight */}
+                                        <h2 className="text-2xl font-black text-zinc-900 dark:text-white truncate leading-tight">
                                             {session.day_name}
-                                        </h3>
-                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">
-                                            <span className="flex items-center gap-1">
-                                                <Calendar size={11} />
+                                        </h2>
+
+                                        {/* Date · Time · Coach — side-by-side with icons */}
+                                        <div className="flex flex-wrap items-center gap-3 mt-1.5 text-sm text-zinc-500 dark:text-zinc-400">
+                                            <span className="flex items-center gap-1.5">
+                                                <Calendar size={13} />
                                                 {formatDateFull(session.date)}
                                             </span>
-                                            <span className="flex items-center gap-1">
-                                                <User size={11} />
-                                                <span className="text-zinc-700 dark:text-zinc-300 font-semibold">
+                                            <span className="flex items-center gap-1.5">
+                                                <Clock size={13} />
+                                                {formatTime(session.date)}
+                                            </span>
+                                            <span className="flex items-center gap-1.5">
+                                                <User size={13} />
+                                                <span className="font-medium text-zinc-700 dark:text-zinc-300">
                                                     {session.coach}
                                                 </span>
                                             </span>
                                         </div>
                                     </div>
+
+                                    {/* Close button */}
                                     <button
                                         onClick={onClose}
-                                        className="p-2 rounded-xl text-zinc-400 hover:text-zinc-900 dark:hover:text-white
+                                        className="flex-shrink-0 p-2 rounded-xl text-zinc-400
+                                                   hover:text-zinc-900 dark:hover:text-white
                                                    hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
                                     >
                                         <X size={18} />
                                     </button>
                                 </div>
 
-                                {/* Stat pills */}
-                                <div className="flex gap-2 mt-3 flex-wrap">
-                                    <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full
-                                                     bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700">
-                                        <Target size={10} /> {total} exercises
-                                    </span>
-                                    {strengthCount > 0 && (
-                                        <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full
-                                                         bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                                            <Dumbbell size={10} /> {strengthCount} strength
-                                        </span>
-                                    )}
-                                    {cardioCount > 0 && (
-                                        <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full
-                                                         bg-orange-500/10 text-orange-400 border border-orange-500/20">
-                                            <Activity size={10} /> {cardioCount} cardio
-                                        </span>
-                                    )}
+                                {/* ── Quick Stats grid (matches ChildrenHistory style) ── */}
+                                <div
+                                    className={`grid gap-3 mt-4 ${
+                                        statBoxes.length === 2 ? 'grid-cols-2' :
+                                        statBoxes.length === 3 ? 'grid-cols-3' :
+                                        'grid-cols-4'
+                                    }`}
+                                >
+                                    {statBoxes.map(({ label, value, icon: StatIcon, color }) => (
+                                        <div
+                                            key={label}
+                                            className="bg-white dark:bg-zinc-800/60
+                                                       border border-zinc-200 dark:border-zinc-700/50
+                                                       rounded-xl px-3 py-3 text-center"
+                                        >
+                                            <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mb-0.5">
+                                                {label}
+                                            </p>
+                                            <p className={`text-2xl font-black leading-none ${color ?? 'text-zinc-900 dark:text-white'}`}>
+                                                {value}
+                                            </p>
+                                            {StatIcon && (
+                                                <StatIcon size={10} className={`mx-auto mt-1 ${color}`} />
+                                            )}
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
 
-                            {/* ── MODAL BODY ── */}
-                            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+                            {/* ── MODAL BODY ─────────────────────────────────── */}
+                            <div className="flex-1 overflow-y-auto p-6 space-y-5">
 
                                 {/* Coach note (if any) */}
                                 {session.session_note && (
                                     <motion.div
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
-                                        className="flex gap-2.5 p-3.5 rounded-xl
+                                        className="flex gap-2.5 p-4 rounded-2xl
                                                    bg-blue-50 dark:bg-blue-500/10
                                                    border border-blue-200 dark:border-blue-500/20"
                                     >
@@ -335,6 +383,13 @@ const PerformanceModal = ({ session, onClose }) => {
                                         </div>
                                     </motion.div>
                                 )}
+
+                                {/* Section header */}
+                                <h3 className="text-xs font-bold uppercase tracking-widest
+                                               text-zinc-500 dark:text-zinc-400
+                                               flex items-center gap-2">
+                                    <Layers size={12} /> Performance Breakdown
+                                </h3>
 
                                 {/* Performance cards or empty state */}
                                 {session.performance.length === 0 ? (
