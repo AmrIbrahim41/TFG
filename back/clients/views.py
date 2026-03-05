@@ -393,6 +393,7 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
                     # end_date lets the frontend flag expiring subscriptions
                     # without a separate API call.
                     'end_date': sub.end_date,
+                    'is_child': sub.client.is_child, 
                 })
 
             return Response({
