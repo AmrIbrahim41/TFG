@@ -19,7 +19,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Calendar, User, Activity, X, Loader2, StickyNote, Info,
     ChevronLeft, ChevronRight, Dumbbell, Timer, Zap, Target,
-    TrendingUp, Clock, ArrowRight,
+    TrendingUp, Clock, ArrowRight, Repeat,
 } from 'lucide-react';
 import api from '../../api';
 
@@ -27,14 +27,48 @@ import api from '../../api';
 
 const PAGE_SIZE = 20;
 
-/** Exercise-type → display metadata. */
+/**
+ * Exercise-type → display metadata.
+ * Aligned with CATEGORY_META from ChildrenHistory for visual consistency.
+ * Supports both legacy types (strength/cardio) and new API values (weight/reps/time).
+ */
 const TYPE_META = {
+    weight: {
+        label:   'Weight',
+        color:   'text-blue-400',
+        bg:      'bg-blue-500/10 border-blue-500/20',
+        iconBg:  'bg-blue-500/10 border border-blue-500/20',
+        ring:    '#3b82f6',
+        icon:    Dumbbell,
+        metrics: ['Weight', 'Reps'],
+        units:   ['kg', 'reps'],
+    },
+    reps: {
+        label:   'Reps',
+        color:   'text-violet-400',
+        bg:      'bg-violet-500/10 border-violet-500/20',
+        iconBg:  'bg-violet-500/10 border border-violet-500/20',
+        ring:    '#8b5cf6',
+        icon:    Repeat,
+        metrics: ['Reps', 'Sets'],
+        units:   ['reps', 'sets'],
+    },
+    time: {
+        label:   'Time',
+        color:   'text-emerald-400',
+        bg:      'bg-emerald-500/10 border-emerald-500/20',
+        iconBg:  'bg-emerald-500/10 border border-emerald-500/20',
+        ring:    '#10b981',
+        icon:    Timer,
+        metrics: ['Duration', 'Reps'],
+        units:   ['min', 'reps'],
+    },
+    // Legacy aliases — map to new canonical entries
     strength: {
-        label:   'Strength',
-        accent:  'blue',
-        bg:      'bg-blue-500/10',
-        border:  'border-blue-500/20',
-        text:    'text-blue-500',
+        label:   'Weight',
+        color:   'text-blue-400',
+        bg:      'bg-blue-500/10 border-blue-500/20',
+        iconBg:  'bg-blue-500/10 border border-blue-500/20',
         ring:    '#3b82f6',
         icon:    Dumbbell,
         metrics: ['Weight', 'Reps'],
@@ -42,21 +76,19 @@ const TYPE_META = {
     },
     cardio: {
         label:   'Cardio',
-        accent:  'orange',
-        bg:      'bg-orange-500/10',
-        border:  'border-orange-500/20',
-        text:    'text-orange-500',
+        color:   'text-orange-400',
+        bg:      'bg-orange-500/10 border-orange-500/20',
+        iconBg:  'bg-orange-500/10 border border-orange-500/20',
         ring:    '#f97316',
         icon:    Activity,
         metrics: ['Distance', 'Time'],
         units:   ['km', 'min'],
     },
-    time: {
+    circuit: {
         label:   'Circuit',
-        accent:  'emerald',
-        bg:      'bg-emerald-500/10',
-        border:  'border-emerald-500/20',
-        text:    'text-emerald-500',
+        color:   'text-emerald-400',
+        bg:      'bg-emerald-500/10 border-emerald-500/20',
+        iconBg:  'bg-emerald-500/10 border border-emerald-500/20',
         ring:    '#10b981',
         icon:    Timer,
         metrics: ['Duration', 'Reps'],
@@ -64,7 +96,7 @@ const TYPE_META = {
     },
 };
 
-const getMeta = (type) => TYPE_META[(type || 'strength').toLowerCase()] || TYPE_META.strength;
+const getMeta = (type) => TYPE_META[(type || 'weight').toLowerCase()] || TYPE_META.weight;
 
 const formatDateFull = (ds) =>
     new Date(ds).toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
@@ -94,7 +126,8 @@ const SkeletonCard = () => (
 
 /**
  * Single exercise performance card inside the modal.
- * Shows a large "hero" primary metric with ring accent + secondary metric.
+ * Matches the design language of ChildrenHistory's exercise rows,
+ * while retaining the performance metric data (val1 / val2).
  */
 const ExercisePerformanceCard = ({ perf, index }) => {
     const meta    = getMeta(perf.type);
@@ -104,63 +137,82 @@ const ExercisePerformanceCard = ({ perf, index }) => {
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.06 }}
-            className={`rounded-2xl border p-4 ${meta.bg} ${meta.border}`}
+            initial={{ opacity: 0, x: -12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: index * 0.05 }}
+            className="rounded-2xl border bg-zinc-50 dark:bg-zinc-900/40
+                       border-zinc-200 dark:border-zinc-800
+                       hover:border-zinc-300 dark:hover:border-zinc-700
+                       transition-colors overflow-hidden"
         >
             {/* ── Header row ── */}
-            <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                    <div className={`flex items-center justify-center w-7 h-7 rounded-lg ${meta.bg} ${meta.border} border`}>
-                        <Icon size={13} className={meta.text} />
-                    </div>
-                    <div>
-                        <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100 leading-none">
-                            {perf.exercise}
-                        </p>
-                        <span className={`inline-block text-[10px] font-bold uppercase tracking-wider mt-0.5 ${meta.text}`}>
-                            {meta.label}
-                        </span>
-                    </div>
+            <div className="flex items-center gap-3 p-3.5">
+                {/* Index badge */}
+                <span className="w-6 h-6 rounded-lg bg-zinc-200 dark:bg-zinc-800
+                                 flex items-center justify-center text-[10px] font-black
+                                 text-zinc-500 dark:text-zinc-400 shrink-0">
+                    {String(index + 1).padStart(2, '0')}
+                </span>
+
+                {/* Category icon */}
+                <div className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${meta.iconBg}`}>
+                    <Icon size={13} className={meta.color} />
                 </div>
-                <span className="text-xs text-zinc-400 font-mono">#{String(index + 1).padStart(2, '0')}</span>
+
+                {/* Name + type badge */}
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100 truncate leading-tight">
+                        {perf.exercise}
+                    </p>
+                </div>
+
+                {/* Category label badge */}
+                <span className={`text-[10px] font-bold uppercase tracking-wider
+                                  px-2 py-0.5 rounded-full border shrink-0
+                                  ${meta.bg} ${meta.color}`}>
+                    {meta.label}
+                </span>
             </div>
 
-            {/* ── Metric cards ── */}
-            <div className="grid grid-cols-2 gap-2">
-                {/* Primary metric */}
-                <div className="bg-white/60 dark:bg-zinc-900/60 rounded-xl p-3 border border-white/40 dark:border-zinc-700/30 text-center">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
-                        {meta.metrics[0]}
-                    </p>
-                    <p className={`text-2xl font-black font-mono leading-none ${hasVal1 ? 'text-zinc-900 dark:text-white' : 'text-zinc-300 dark:text-zinc-700'}`}>
-                        {hasVal1 ? perf.val1 : '—'}
-                    </p>
+            {/* ── Metric strip (only shown when values exist) ── */}
+            {(hasVal1 || hasVal2) && (
+                <div className={`grid ${hasVal1 && hasVal2 ? 'grid-cols-2' : 'grid-cols-1'} gap-px border-t border-zinc-200 dark:border-zinc-800`}>
                     {hasVal1 && (
-                        <p className={`text-xs font-semibold mt-0.5 ${meta.text}`}>{meta.units[0]}</p>
+                        <div className="bg-white/70 dark:bg-zinc-900/60 px-4 py-2.5 text-center">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-0.5">
+                                {meta.metrics[0]}
+                            </p>
+                            <p className={`text-xl font-black font-mono leading-none ${meta.color}`}>
+                                {perf.val1}
+                            </p>
+                            <p className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 mt-0.5">
+                                {meta.units[0]}
+                            </p>
+                        </div>
                     )}
-                </div>
-
-                {/* Secondary metric */}
-                <div className="bg-white/60 dark:bg-zinc-900/60 rounded-xl p-3 border border-white/40 dark:border-zinc-700/30 text-center">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
-                        {meta.metrics[1]}
-                    </p>
-                    <p className={`text-2xl font-black font-mono leading-none ${hasVal2 ? 'text-zinc-900 dark:text-white' : 'text-zinc-300 dark:text-zinc-700'}`}>
-                        {hasVal2 ? perf.val2 : '—'}
-                    </p>
                     {hasVal2 && (
-                        <p className={`text-xs font-semibold mt-0.5 ${meta.text}`}>{meta.units[1]}</p>
+                        <div className="bg-white/70 dark:bg-zinc-900/60 px-4 py-2.5 text-center border-l border-zinc-200 dark:border-zinc-800">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-0.5">
+                                {meta.metrics[1]}
+                            </p>
+                            <p className={`text-xl font-black font-mono leading-none ${meta.color}`}>
+                                {perf.val2}
+                            </p>
+                            <p className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 mt-0.5">
+                                {meta.units[1]}
+                            </p>
+                        </div>
                     )}
                 </div>
-            </div>
+            )}
 
             {/* Optional per-exercise note */}
             {perf.note && (
-                <div className="mt-2.5 flex items-start gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                <div className="px-3.5 py-2.5 border-t border-zinc-200 dark:border-zinc-800
+                                flex items-start gap-1.5 text-xs text-zinc-500 dark:text-zinc-400
+                                bg-zinc-50/80 dark:bg-zinc-800/30">
                     <StickyNote size={11} className="mt-0.5 shrink-0" />
-                    <span className="italic">{perf.note}</span>
+                    <span className="italic leading-snug">{perf.note}</span>
                 </div>
             )}
         </motion.div>
@@ -247,13 +299,13 @@ const PerformanceModal = ({ session, onClose }) => {
                                     </span>
                                     {strengthCount > 0 && (
                                         <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full
-                                                         bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                                                         bg-blue-500/10 text-blue-400 border border-blue-500/20">
                                             <Dumbbell size={10} /> {strengthCount} strength
                                         </span>
                                     )}
                                     {cardioCount > 0 && (
                                         <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full
-                                                         bg-orange-500/10 text-orange-500 border border-orange-500/20">
+                                                         bg-orange-500/10 text-orange-400 border border-orange-500/20">
                                             <Activity size={10} /> {cardioCount} cardio
                                         </span>
                                     )}
@@ -489,7 +541,7 @@ const ChildHistoryTab = ({ clientId }) => {
                                         const m = getMeta(t);
                                         return (
                                             <span key={t} className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase
-                                                                       tracking-wider px-2 py-0.5 rounded-full border ${m.bg} ${m.border} ${m.text}`}>
+                                                                       tracking-wider px-2 py-0.5 rounded-full border ${m.bg} ${m.color}`}>
                                                 <m.icon size={9} /> {m.label}
                                             </span>
                                         );

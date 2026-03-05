@@ -41,11 +41,11 @@ const SPORTS = [
 // ─────────────────────────────────────────────
 
 const Pulse = ({ className = '' }) => (
-  <div className={`animate-pulse rounded-xl bg-zinc-800/60 ${className}`} />
+  <div className={`animate-pulse rounded-xl bg-zinc-200 dark:bg-zinc-800/60 ${className}`} />
 );
 
 const SkeletonCard = ({ children, className = '' }) => (
-  <div className={`bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-5 backdrop-blur-sm ${className}`}>
+  <div className={`bg-white dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-2xl p-5 backdrop-blur-sm ${className}`}>
     {children}
   </div>
 );
@@ -86,8 +86,8 @@ const Toast = ({ message, type = 'error', onDismiss }) => {
     <div className={`fixed bottom-6 right-6 z-[200] flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl backdrop-blur-md border text-sm font-semibold
       animate-in slide-in-from-bottom-4 duration-300
       ${isError
-        ? 'bg-red-950/90 border-red-800/60 text-red-300'
-        : 'bg-emerald-950/90 border-emerald-800/60 text-emerald-300'
+        ? 'bg-red-50 dark:bg-red-950/90 border-red-200 dark:border-red-800/60 text-red-700 dark:text-red-300'
+        : 'bg-emerald-50 dark:bg-emerald-950/90 border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300'
       }`}
     >
       <AlertCircle size={15} className="shrink-0" />
@@ -107,21 +107,23 @@ const FieldInput = ({ label, icon: Icon, error, className: cls = '', ...props })
   <div className="w-full space-y-1.5">
     {label && (
       <label className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ml-0.5
-        ${error ? 'text-red-400' : 'text-zinc-500'}`}
+        ${error ? 'text-red-500 dark:text-red-400' : 'text-zinc-500 dark:text-zinc-500'}`}
       >
         {Icon && <Icon size={11} />}{label}
       </label>
     )}
     <input
       {...props}
-      className={`w-full bg-zinc-900 border rounded-xl px-4 py-3.5 text-sm text-zinc-100 outline-none transition-all
-        placeholder:text-zinc-700 caret-blue-400
+      className={`w-full bg-zinc-50 dark:bg-zinc-900 border rounded-xl px-4 py-3.5 text-sm text-zinc-900 dark:text-zinc-100 outline-none transition-all
+        placeholder:text-zinc-400 dark:placeholder:text-zinc-700 caret-blue-500 dark:caret-blue-400
+        hover:border-zinc-400 dark:hover:border-zinc-700
+        disabled:opacity-40 disabled:cursor-not-allowed
         ${error
-          ? 'border-red-600/50 focus:border-red-500 bg-red-950/20'
-          : 'border-zinc-800 focus:border-blue-500/70 focus:bg-zinc-900/80 focus:ring-1 focus:ring-blue-500/20'
+          ? 'border-red-400 dark:border-red-600/50 focus:border-red-500 bg-red-50/50 dark:bg-red-950/20'
+          : 'border-zinc-300 dark:border-zinc-800 focus:border-blue-500/70 dark:focus:border-blue-500/70 focus:ring-1 focus:ring-blue-500/20'
         } ${cls}`}
     />
-    {error && <p className="text-[11px] text-red-400 ml-0.5">{error}</p>}
+    {error && <p className="text-[11px] text-red-500 dark:text-red-400 ml-0.5">{error}</p>}
   </div>
 );
 
@@ -131,17 +133,17 @@ const FieldInput = ({ label, icon: Icon, error, className: cls = '', ...props })
 
 const CountrySelector = ({ value, onChange, countries, onAddClick }) => (
   <div className="w-full space-y-1.5">
-    <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ml-0.5 text-zinc-500">
+    <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ml-0.5 text-zinc-500 dark:text-zinc-500">
       <Globe size={11} />Nationality
     </label>
-    <div className="flex gap-2">
+    <div className="flex flex-col sm:flex-row gap-2">
       <select
         name="country"
         value={value}
         onChange={onChange}
-        className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3.5 text-sm text-zinc-100 outline-none
+        className="flex-1 bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-sm text-zinc-900 dark:text-zinc-100 outline-none
           focus:border-blue-500/70 focus:ring-1 focus:ring-blue-500/20 appearance-none cursor-pointer
-          hover:border-zinc-700 transition-all"
+          hover:border-zinc-400 dark:hover:border-zinc-700 transition-all"
       >
         <option value="">Select nationality…</option>
         {countries.map(c => (
@@ -152,8 +154,8 @@ const CountrySelector = ({ value, onChange, countries, onAddClick }) => (
         type="button"
         onClick={onAddClick}
         title="Add country"
-        className="px-3 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-xl
-          hover:bg-blue-500 hover:text-white transition-all active:scale-95"
+        className="w-full sm:w-auto px-3 py-3 sm:py-0 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 text-blue-500 dark:text-blue-400 rounded-xl
+          hover:bg-blue-500 hover:text-white hover:border-blue-500 transition-all active:scale-95 flex items-center justify-center"
       >
         <Plus size={18} />
       </button>
@@ -209,34 +211,34 @@ const PhoneInput = ({ label, name, value, onChange, defaultCountryName, countrie
 
   return (
     <div className="w-full space-y-1.5" ref={wrapperRef}>
-      <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ml-0.5 text-zinc-500">
+      <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ml-0.5 text-zinc-500 dark:text-zinc-500">
         <Phone size={11} />{label}
       </label>
-      <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row gap-2">
         {/* Code picker */}
-        <div className="relative">
+        <div className="relative shrink-0">
           <button
             type="button"
             onClick={() => setIsOpen(o => !o)}
-            className="flex-shrink-0 w-[4.5rem] h-full bg-zinc-900 border border-zinc-800 rounded-xl
-              flex flex-col items-center justify-center py-3.5 px-1
-              hover:border-zinc-700 transition-all"
+            className="w-full sm:w-[4.5rem] bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl
+              flex items-center justify-center sm:flex-col py-3.5 px-3 sm:px-1 gap-2 sm:gap-0
+              hover:border-zinc-400 dark:hover:border-zinc-700 transition-all"
           >
-            <span className="text-xs font-black text-zinc-100 leading-none mb-0.5">{cur.code}</span>
+            <span className="text-xs font-black text-zinc-800 dark:text-zinc-100 leading-none sm:mb-0.5">{cur.code}</span>
             <span className="text-[10px] font-mono text-zinc-500 leading-none">{cur.dial_code}</span>
           </button>
 
           {isOpen && (
-            <div className="absolute top-full left-0 mt-2 w-60 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-50
+            <div className="absolute top-full left-0 mt-2 w-60 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xl z-50
               animate-in fade-in zoom-in-95 duration-150 origin-top-left overflow-hidden">
-              <div className="p-2 border-b border-zinc-800">
+              <div className="p-2 border-b border-zinc-200 dark:border-zinc-800">
                 <input
                   autoFocus
                   placeholder="Search…"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200
-                    outline-none focus:border-blue-500/50 placeholder:text-zinc-600"
+                  className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-800 dark:text-zinc-200
+                    outline-none focus:border-blue-500/50 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
                 />
               </div>
               <div className="max-h-44 overflow-y-auto p-1">
@@ -245,11 +247,11 @@ const PhoneInput = ({ label, name, value, onChange, defaultCountryName, countrie
                     key={c.id}
                     type="button"
                     onClick={() => { setSelected(c); setIsOpen(false); setSearch(''); }}
-                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800 transition-colors text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"
                   >
-                    <span className="text-[10px] font-black bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300 shrink-0">{c.code}</span>
-                    <span className="text-xs text-zinc-300 flex-1 truncate">{c.name}</span>
-                    <span className="text-[10px] font-mono text-zinc-600 shrink-0">{c.dial_code}</span>
+                    <span className="text-[10px] font-black bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-600 dark:text-zinc-300 shrink-0">{c.code}</span>
+                    <span className="text-xs text-zinc-700 dark:text-zinc-300 flex-1 truncate">{c.name}</span>
+                    <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-600 shrink-0">{c.dial_code}</span>
                   </button>
                 ))}
               </div>
@@ -265,9 +267,10 @@ const PhoneInput = ({ label, name, value, onChange, defaultCountryName, countrie
           onChange={onChange}
           placeholder="1000000000"
           inputMode="tel"
-          className="flex-1 min-w-0 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3.5
-            text-zinc-100 text-sm font-mono outline-none
-            focus:border-blue-500/70 focus:ring-1 focus:ring-blue-500/20 transition-all"
+          className="flex-1 min-w-0 bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3.5
+            text-zinc-900 dark:text-zinc-100 text-sm font-mono outline-none
+            focus:border-blue-500/70 focus:ring-1 focus:ring-blue-500/20
+            hover:border-zinc-400 dark:hover:border-zinc-700 transition-all"
         />
 
         {/* WhatsApp */}
@@ -276,10 +279,10 @@ const PhoneInput = ({ label, name, value, onChange, defaultCountryName, countrie
           onClick={handleWhatsApp}
           disabled={!value}
           title="Open in WhatsApp"
-          className={`px-3.5 rounded-xl border flex items-center justify-center transition-all duration-200
+          className={`w-full sm:w-auto px-3.5 py-3.5 rounded-xl border flex items-center justify-center transition-all duration-200
             ${value
-              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white active:scale-95'
-              : 'bg-zinc-900 border-zinc-800 text-zinc-700 cursor-not-allowed'
+              ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white hover:border-emerald-500 active:scale-95'
+              : 'bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-300 dark:text-zinc-700 cursor-not-allowed'
             }`}
         >
           <MessageCircle size={18} />
@@ -295,15 +298,15 @@ const PhoneInput = ({ label, name, value, onChange, defaultCountryName, countrie
 
 const TogglePair = ({ label, name, value, onTrue, onFalse, trueLabel = 'Yes', falseLabel = 'No', trueColor = 'bg-emerald-600', icon: Icon }) => (
   <div className="space-y-2">
-    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500">
       {Icon && <Icon size={11} />}{label}
     </span>
-    <div className="flex bg-zinc-900/80 p-1 rounded-xl border border-zinc-800 gap-1">
+    <div className="flex bg-zinc-100 dark:bg-zinc-900/80 p-1 rounded-xl border border-zinc-200 dark:border-zinc-800 gap-1">
       <button
         type="button"
         onClick={onFalse}
         className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-[11px] font-bold uppercase transition-all duration-200
-          ${!value ? 'bg-zinc-700 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
+          ${!value ? 'bg-zinc-400 dark:bg-zinc-700 text-white shadow' : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
       >
         <X size={12} />{falseLabel}
       </button>
@@ -311,7 +314,7 @@ const TogglePair = ({ label, name, value, onTrue, onFalse, trueLabel = 'Yes', fa
         type="button"
         onClick={onTrue}
         className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-[11px] font-bold uppercase transition-all duration-200
-          ${value ? `${trueColor} text-white shadow-lg` : 'text-zinc-500 hover:text-zinc-300'}`}
+          ${value ? `${trueColor} text-white shadow-lg` : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
       >
         <Check size={12} />{trueLabel}
       </button>
@@ -323,22 +326,22 @@ const TogglePair = ({ label, name, value, onTrue, onFalse, trueLabel = 'Yes', fa
 // SECTION HEADER
 // ─────────────────────────────────────────────
 
-const SectionHeader = ({ icon: Icon, label, accent = 'text-blue-400 bg-blue-500/10', action }) => (
+const SectionHeader = ({ icon: Icon, label, accent = 'text-blue-500 dark:text-blue-400 bg-blue-100 dark:bg-blue-500/10', action }) => (
   <div className="flex items-center justify-between mb-5">
     <div className="flex items-center gap-2.5">
       <span className={`p-2 rounded-xl ${accent}`}>
         <Icon size={16} />
       </span>
-      <h3 className="text-xs font-black text-zinc-300 uppercase tracking-widest">{label}</h3>
+      <h3 className="text-xs font-black text-zinc-600 dark:text-zinc-300 uppercase tracking-widest">{label}</h3>
     </div>
     {action}
   </div>
 );
 
 const BentoCard = ({ children, className = '', glowColor = '' }) => (
-  <div className={`relative bg-zinc-950/80 border border-zinc-800/70 rounded-2xl p-5 backdrop-blur-sm overflow-hidden ${className}`}>
+  <div className={`relative bg-white dark:bg-zinc-950/80 border border-zinc-200 dark:border-zinc-800/70 rounded-2xl p-5 backdrop-blur-sm overflow-hidden shadow-sm dark:shadow-none transition-colors ${className}`}>
     {glowColor && (
-      <div className={`absolute top-0 right-0 w-40 h-40 ${glowColor} blur-[80px] opacity-30 pointer-events-none rounded-full`} />
+      <div className={`absolute top-0 right-0 w-40 h-40 ${glowColor} blur-[80px] opacity-10 dark:opacity-30 pointer-events-none rounded-full`} />
     )}
     {children}
   </div>
@@ -423,7 +426,7 @@ const ChildInfoTab = ({ formData, handleChange, clientAge, user }) => {
 
         {/* Core Identity */}
         <BentoCard glowColor="bg-blue-500">
-          <SectionHeader icon={Baby} label="Core Identity" accent="text-blue-400 bg-blue-500/10" />
+          <SectionHeader icon={Baby} label="Core Identity" accent="text-blue-500 dark:text-blue-400 bg-blue-100 dark:bg-blue-500/10" />
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-8">
               <FieldInput
@@ -459,7 +462,7 @@ const ChildInfoTab = ({ formData, handleChange, clientAge, user }) => {
 
         {/* Contact Channels */}
         <BentoCard glowColor="bg-emerald-500">
-          <SectionHeader icon={Phone} label="Contact Channels" accent="text-emerald-400 bg-emerald-500/10" />
+          <SectionHeader icon={Phone} label="Contact Channels" accent="text-emerald-500 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-500/10" />
           <div className="space-y-5">
             <PhoneInput
               label="Parent's WhatsApp (Primary)"
@@ -497,12 +500,12 @@ const ChildInfoTab = ({ formData, handleChange, clientAge, user }) => {
           <SectionHeader
             icon={Activity}
             label="Physical & Sport"
-            accent="text-purple-400 bg-purple-500/10"
+            accent="text-purple-500 dark:text-purple-400 bg-purple-100 dark:bg-purple-500/10"
             action={
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
                 <Calendar size={11} className="text-zinc-500" />
                 <span className="text-[10px] text-zinc-500 uppercase font-bold">Age</span>
-                <span className="text-sm font-black text-zinc-100 font-mono">{displayAge ?? '--'}</span>
+                <span className="text-sm font-black text-zinc-900 dark:text-zinc-100 font-mono">{displayAge ?? '--'}</span>
               </div>
             }
           />
@@ -518,9 +521,10 @@ const ChildInfoTab = ({ formData, handleChange, clientAge, user }) => {
                 value={formData.birth_date || ''}
                 onChange={handleChange}
                 max={new Date().toISOString().split('T')[0]}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3.5 text-sm text-zinc-100
+                className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl px-4 py-3.5 text-sm text-zinc-900 dark:text-zinc-100
                   outline-none focus:border-purple-500/70 focus:ring-1 focus:ring-purple-500/20
-                  [color-scheme:dark] transition-all"
+                  hover:border-zinc-400 dark:hover:border-zinc-700
+                  [color-scheme:light] dark:[color-scheme:dark] transition-all"
               />
             </div>
 
@@ -540,8 +544,8 @@ const ChildInfoTab = ({ formData, handleChange, clientAge, user }) => {
                       className={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl border transition-all duration-200
                         hover:scale-105 active:scale-95
                         ${isSelected
-                          ? `${sport.accent.bg} border-zinc-700 ${sport.accent.text} ring-1 ${sport.accent.ring}`
-                          : 'bg-zinc-900 border-zinc-800 text-zinc-600 hover:border-zinc-700 hover:text-zinc-400'
+                          ? `${sport.accent.bg} border-zinc-300 dark:border-zinc-700 ${sport.accent.text} ring-1 ${sport.accent.ring}`
+                          : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600 hover:border-zinc-300 dark:hover:border-zinc-700 hover:text-zinc-600 dark:hover:text-zinc-400'
                         }`}
                     >
                       <sport.icon size={18} />
@@ -560,8 +564,8 @@ const ChildInfoTab = ({ formData, handleChange, clientAge, user }) => {
                     value={formData.nature_of_work === 'Other' ? '' : formData.nature_of_work}
                     onChange={handleChange}
                     placeholder="Specific sport name…"
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-zinc-100
-                      outline-none focus:border-zinc-600 placeholder:text-zinc-600"
+                    className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100
+                      outline-none focus:border-zinc-400 dark:focus:border-zinc-600 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 transition-all"
                   />
                 </div>
               )}
@@ -571,7 +575,7 @@ const ChildInfoTab = ({ formData, handleChange, clientAge, user }) => {
 
         {/* History & Medical */}
         <BentoCard glowColor="bg-orange-500">
-          <SectionHeader icon={Stethoscope} label="History & Medical" accent="text-orange-400 bg-orange-500/10" />
+          <SectionHeader icon={Stethoscope} label="History & Medical" accent="text-orange-500 dark:text-orange-400 bg-orange-100 dark:bg-orange-500/10" />
           <div className="space-y-5">
             <div className="grid grid-cols-2 gap-4">
               <TogglePair
@@ -593,7 +597,7 @@ const ChildInfoTab = ({ formData, handleChange, clientAge, user }) => {
             {/* Injuries textarea */}
             <div className="relative">
               <label className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ml-0.5 mb-1.5
-                ${formData.injuries ? 'text-red-400' : 'text-zinc-500'}`}
+                ${formData.injuries ? 'text-red-500 dark:text-red-400' : 'text-zinc-500 dark:text-zinc-500'}`}
               >
                 <Stethoscope size={11} />Medical Conditions / Injuries
               </label>
@@ -603,16 +607,16 @@ const ChildInfoTab = ({ formData, handleChange, clientAge, user }) => {
                 onChange={handleChange}
                 rows={3}
                 placeholder="None"
-                className={`w-full bg-zinc-900 border rounded-xl px-4 py-3 text-sm text-zinc-100
-                  outline-none resize-none transition-all placeholder:text-zinc-700
+                className={`w-full bg-zinc-50 dark:bg-zinc-900 border rounded-xl px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100
+                  outline-none resize-none transition-all placeholder:text-zinc-400 dark:placeholder:text-zinc-700
                   ${formData.injuries
-                    ? 'border-red-700/50 bg-red-950/20 focus:border-red-600'
-                    : 'border-zinc-800 focus:border-zinc-700'
+                    ? 'border-red-300 dark:border-red-700/50 bg-red-50/50 dark:bg-red-950/20 focus:border-red-400 dark:focus:border-red-600'
+                    : 'border-zinc-300 dark:border-zinc-800 focus:border-zinc-400 dark:focus:border-zinc-700'
                   }`}
               />
               {formData.injuries && (
                 <div className="absolute bottom-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-md
-                  bg-red-500/10 border border-red-500/20 text-[9px] font-black text-red-400 uppercase">
+                  bg-red-500/10 border border-red-400/20 dark:border-red-500/20 text-[9px] font-black text-red-500 dark:text-red-400 uppercase">
                   <Shield size={9} />Alert Active
                 </div>
               )}
@@ -633,17 +637,17 @@ const ChildInfoTab = ({ formData, handleChange, clientAge, user }) => {
       {/* ── ADD COUNTRY MODAL ── */}
       {isModalOpen && (
         <div
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4
+          className="fixed inset-0 bg-black/40 dark:bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4
             animate-in fade-in duration-200"
           onClick={e => { if (e.target === e.currentTarget) closeModal(); }}
         >
-          <div className="bg-zinc-950 border border-zinc-800 w-full max-w-sm rounded-2xl p-6 shadow-2xl
+          <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 w-full max-w-sm rounded-2xl p-6 shadow-2xl
             ring-1 ring-blue-500/10 animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-base font-black text-zinc-100 flex items-center gap-2">
-                <Globe size={18} className="text-blue-400" /> Add Country
+              <h3 className="text-base font-black text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                <Globe size={18} className="text-blue-500 dark:text-blue-400" /> Add Country
               </h3>
-              <button onClick={closeModal} className="text-zinc-600 hover:text-zinc-200 transition-colors">
+              <button onClick={closeModal} className="text-zinc-400 hover:text-zinc-700 dark:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
                 <X size={18} />
               </button>
             </div>
@@ -655,10 +659,10 @@ const ChildInfoTab = ({ formData, handleChange, clientAge, user }) => {
                   placeholder="e.g. Bahrain"
                   value={newCountry.name}
                   onChange={e => handleCountryField('name', e.target.value)}
-                  className={`w-full mt-1.5 bg-zinc-900 border rounded-xl px-4 py-3 text-sm text-zinc-100 outline-none transition-all
-                    ${countryErrors.name ? 'border-red-600/60' : 'border-zinc-800 focus:border-blue-500/60'}`}
+                  className={`w-full mt-1.5 bg-zinc-50 dark:bg-zinc-900 border rounded-xl px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100 outline-none transition-all
+                    ${countryErrors.name ? 'border-red-400 dark:border-red-600/60' : 'border-zinc-300 dark:border-zinc-800 focus:border-blue-500/60'}`}
                 />
-                {countryErrors.name && <p className="text-[11px] text-red-400 mt-1">{countryErrors.name}</p>}
+                {countryErrors.name && <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{countryErrors.name}</p>}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -668,10 +672,10 @@ const ChildInfoTab = ({ formData, handleChange, clientAge, user }) => {
                     maxLength={2}
                     value={newCountry.code}
                     onChange={e => handleCountryField('code', e.target.value.toUpperCase())}
-                    className={`w-full mt-1.5 bg-zinc-900 border rounded-xl px-4 py-3 text-sm text-zinc-100 uppercase font-mono outline-none transition-all
-                      ${countryErrors.code ? 'border-red-600/60' : 'border-zinc-800 focus:border-blue-500/60'}`}
+                    className={`w-full mt-1.5 bg-zinc-50 dark:bg-zinc-900 border rounded-xl px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100 uppercase font-mono outline-none transition-all
+                      ${countryErrors.code ? 'border-red-400 dark:border-red-600/60' : 'border-zinc-300 dark:border-zinc-800 focus:border-blue-500/60'}`}
                   />
-                  {countryErrors.code && <p className="text-[11px] text-red-400 mt-1">{countryErrors.code}</p>}
+                  {countryErrors.code && <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{countryErrors.code}</p>}
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-0.5">Dial Code</label>
@@ -679,10 +683,10 @@ const ChildInfoTab = ({ formData, handleChange, clientAge, user }) => {
                     placeholder="+973"
                     value={newCountry.dial_code}
                     onChange={e => handleCountryField('dial_code', e.target.value)}
-                    className={`w-full mt-1.5 bg-zinc-900 border rounded-xl px-4 py-3 text-sm text-zinc-100 font-mono outline-none transition-all
-                      ${countryErrors.dial_code ? 'border-red-600/60' : 'border-zinc-800 focus:border-blue-500/60'}`}
+                    className={`w-full mt-1.5 bg-zinc-50 dark:bg-zinc-900 border rounded-xl px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100 font-mono outline-none transition-all
+                      ${countryErrors.dial_code ? 'border-red-400 dark:border-red-600/60' : 'border-zinc-300 dark:border-zinc-800 focus:border-blue-500/60'}`}
                   />
-                  {countryErrors.dial_code && <p className="text-[11px] text-red-400 mt-1">{countryErrors.dial_code}</p>}
+                  {countryErrors.dial_code && <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{countryErrors.dial_code}</p>}
                 </div>
               </div>
               <button

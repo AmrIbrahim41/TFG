@@ -113,7 +113,7 @@ const CountrySelector = ({ value, onChange, countries, onAddClick }) => (
     <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ml-0.5 text-zinc-500">
       <Globe size={11} />Nationality
     </label>
-    <div className="flex gap-2">
+    <div className="flex flex-col sm:flex-row gap-2">
       <select
         name="country"
         value={value}
@@ -130,8 +130,8 @@ const CountrySelector = ({ value, onChange, countries, onAddClick }) => (
       <button
         type="button"
         onClick={onAddClick}
-        className="px-3 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 text-orange-500 dark:text-orange-400 rounded-xl
-          hover:bg-orange-500 hover:text-white hover:border-orange-500 transition-all active:scale-95"
+        className="w-full sm:w-auto px-3 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 text-orange-500 dark:text-orange-400 rounded-xl
+          hover:bg-orange-500 hover:text-white hover:border-orange-500 transition-all active:scale-95 flex items-center justify-center py-3 sm:py-0"
       >
         <Plus size={18} />
       </button>
@@ -188,15 +188,15 @@ const PhoneInput = ({ label, name, value, onChange, defaultCountryName, countrie
       <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ml-0.5 text-zinc-500">
         <Phone size={11} />{label}
       </label>
-      <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row gap-2">
         {/* Dial code trigger */}
         <div className="relative shrink-0">
           <button
             type="button"
             onClick={() => setIsOpen(o => !o)}
-            className="w-[4.5rem] h-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl flex flex-col items-center justify-center py-3.5 px-1 hover:border-zinc-400 dark:hover:border-zinc-700 transition-all"
+            className="w-full sm:w-[4.5rem] bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl flex items-center justify-center sm:flex-col py-3.5 px-3 sm:px-1 gap-2 sm:gap-0 hover:border-zinc-400 dark:hover:border-zinc-700 transition-all"
           >
-            <span className="text-xs font-black text-zinc-800 dark:text-zinc-100 leading-none mb-0.5">{cur.code}</span>
+            <span className="text-xs font-black text-zinc-800 dark:text-zinc-100 leading-none sm:mb-0.5">{cur.code}</span>
             <span className="text-[10px] font-mono text-zinc-500 leading-none">{cur.dial_code}</span>
           </button>
 
@@ -243,7 +243,7 @@ const PhoneInput = ({ label, name, value, onChange, defaultCountryName, countrie
           type="button"
           onClick={handleWhatsApp}
           disabled={!value}
-          className={`px-3.5 rounded-xl border flex items-center justify-center transition-all duration-200
+          className={`w-full sm:w-auto px-3.5 rounded-xl border flex items-center justify-center py-3.5 transition-all duration-200
             ${value
               ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white hover:border-emerald-500 active:scale-95'
               : 'bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-300 dark:text-zinc-700 cursor-not-allowed'
