@@ -40,6 +40,11 @@ const Clients = () => {
     const [fetchError, setFetchError] = useState(null);
     const searchDebounceRef = useRef(null);
 
+    // FIX #9: Used to prevent the debounce effect from firing on initial mount.
+    // Without this guard, both the initial-load effect and the debounce effect
+    // fired immediately on mount, sending two identical API requests.
+    const isFirstRender = useRef(true);
+
     // ---------------------------------------------------------------------------
     // Fetch clients — supports pagination URL overrides and search queries
     // ---------------------------------------------------------------------------
@@ -78,16 +83,30 @@ const Clients = () => {
         } finally {
             if (!cancelled) setLoading(false);
         }
+        // FIX #10: Return the cleanup function so React can call it on unmount.
+        // Previously fetchClients returned this function but the initial-load
+        // useEffect below didn't propagate the return value to React, meaning
+        // a fast navigation away (before the response arrived) would still
+        // attempt setState on an unmounted component and trigger a React warning.
         return () => { cancelled = true; };
     }, []);
 
     // Initial load
+    // FIX #10: Return the cleanup so React cancels any in-flight request on unmount.
     useEffect(() => {
-        fetchClients();
+        return fetchClients();
     }, [fetchClients]);
 
     // Debounced search — clears previous timeout on every keystroke
+    // FIX #9: Skip on first render. The initial-load effect above already
+    // fetches on mount. Without this guard, both effects fired simultaneously,
+    // causing two identical GET /clients/?is_child=false requests every time
+    // the component mounted.
     useEffect(() => {
+        if (isFirstRender.current) {
+            isFirstRender.current = false;
+            return;
+        }
         if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
         searchDebounceRef.current = setTimeout(() => {
             fetchClients(null, searchQuery);

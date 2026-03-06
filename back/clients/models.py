@@ -114,9 +114,28 @@ class ClientSubscription(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
+        # Auto-calculate end_date when creating a brand-new subscription.
         if not self.end_date and self.plan:
             self.end_date = self.start_date + timedelta(days=self.plan.duration_days)
+
+        # FIX: Auto-deactivate at save time if the subscription has expired.
+        # This ensures the flag is corrected whenever ANY code path saves the
+        # model (admin edits, API updates, etc.) — not just on session check-ins.
+        # The management command handles the bulk nightly sweep; this guard
+        # catches individual saves between runs.
+        if self.is_active and self.end_date and self.end_date < timezone.now().date():
+            self.is_active = False
+
         super().save(*args, **kwargs)
+
+    @property
+    def is_expired(self) -> bool:
+        """
+        FIX (new property): True when the subscription is past its end_date,
+        regardless of the is_active flag. Lets views and serializers check
+        expiry status without triggering a DB write.
+        """
+        return bool(self.end_date and self.end_date < timezone.now().date())
 
     @property
     def progress_percentage(self):

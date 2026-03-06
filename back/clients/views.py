@@ -393,7 +393,7 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
                     # end_date lets the frontend flag expiring subscriptions
                     # without a separate API call.
                     'end_date': sub.end_date,
-                    'is_child': sub.client.is_child, 
+                    'is_child': sub.client.is_child,
                 })
 
             return Response({
@@ -576,11 +576,22 @@ class ClientSubscriptionViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
+        user = self.request.user
         queryset = (
             ClientSubscription.objects.all()
             .select_related('client', 'plan', 'trainer')
             .order_by("-start_date")
         )
+
+        # FIX #4: The original queryset returned ALL subscriptions to every
+        # authenticated user. A non-admin trainer could enumerate every
+        # client's InBody data (weight, fat %, muscle mass, goals) simply by
+        # calling GET /api/client-subscriptions/. This scopes the response to
+        # only subscriptions the requesting trainer owns. Admins and
+        # receptionists retain full visibility.
+        if not user.is_superuser and not user.groups.filter(name='REC').exists():
+            queryset = queryset.filter(trainer=user)
+
         client_id = self.request.query_params.get("client_id")
         if client_id:
             queryset = queryset.filter(client=client_id)
@@ -1092,26 +1103,28 @@ class NutritionPlanViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def weekly_overview(self, request, pk=None):
         nutrition_plan = self.get_object()
-        meal_plans = nutrition_plan.meal_plans.all()
 
-        # FIX: MealPlan.day is an IntegerField (1–7 or 1–14).
-        # The original code filtered with string day names ("Monday" …)
-        # against an IntegerField — Django silently returned empty querysets,
-        # so every day always showed 0 calories/meals.
-        # Now we iterate over integer day numbers 1–7 and return numeric keys.
-        # If callers expected string keys, update the frontend to use 1–7.
+        # FIX #7 (N+1 query): The original code called meal_plans.filter(day=day_num)
+        # inside a loop over 7 days, firing one DB query per iteration (7 queries
+        # total, plus .count() calls making it effectively 14+).
+        #
+        # Fix: fetch all meal plans for this nutrition plan in a single query,
+        # then filter by day number purely in Python. This reduces the total
+        # DB cost to exactly 1 query regardless of how many days the plan has.
+        meal_plans = list(nutrition_plan.meal_plans.all())
+
         DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         weekly_data = {}
         for day_num in range(1, 8):
-            day_meals = meal_plans.filter(day=day_num)
+            day_meals = [m for m in meal_plans if m.day == day_num]
             weekly_data[DAY_NAMES[day_num - 1]] = {
                 "day": day_num,
                 "total_calories": sum(m.total_calories for m in day_meals),
-                "total_protein": sum(m.total_protein for m in day_meals),
-                "total_carbs": sum(m.total_carbs for m in day_meals),
-                "total_fats": sum(m.total_fats for m in day_meals),
-                "meals_count": day_meals.count(),
-                "completed_meals": day_meals.filter(is_completed=True).count(),
+                "total_protein":  sum(m.total_protein  for m in day_meals),
+                "total_carbs":    sum(m.total_carbs    for m in day_meals),
+                "total_fats":     sum(m.total_fats     for m in day_meals),
+                "meals_count":    len(day_meals),
+                "completed_meals": sum(1 for m in day_meals if m.is_completed),
             }
         return Response(weekly_data)
 
@@ -1363,7 +1376,6 @@ class CoachScheduleViewSet(viewsets.ModelViewSet):
         return Response(list(trainers))
 
 
-
 class GroupTrainingViewSet(viewsets.GenericViewSet):
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardResultsSetPagination
@@ -1549,6 +1561,7 @@ class GroupTrainingViewSet(viewsets.GenericViewSet):
                     is_finished_sessions = (
                         sub.plan
                         and sub.plan.units
+                        and sub.plan.units > 0           # explicit guard for unlimited plans
                         and sub.sessions_used >= sub.plan.units
                     )
                     is_expired_date = (

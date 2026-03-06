@@ -5,11 +5,15 @@ from django.utils.html import format_html
 from django.db.models import Sum, Count, F
 from django.utils import timezone
 
+# FIX #3: timedelta was used in renew_subscription but never imported,
+# causing a NameError at runtime whenever an admin tried to renew a subscription.
+from datetime import timedelta
+
 # --- Unfold Imports ---
 from unfold.admin import ModelAdmin, TabularInline, StackedInline
 from unfold.decorators import display, action
 from unfold.contrib.filters.admin import (
-    RangeDateFilter, 
+    RangeDateFilter,
     TextFilter
 )
 from unfold.contrib.import_export.forms import ExportForm, ImportForm
@@ -26,7 +30,7 @@ admin.site.unregister(Group)
 class UserAdmin(BaseUserAdmin, ModelAdmin):
     list_display = ("username", "first_name", "role_badge", "active_clients_count", "last_login")
     search_fields = ("username", "first_name", "email")
-    
+
     fieldsets = (
         (None, {"fields": ("username", "password")}),
         ("Profile", {"fields": ("first_name", "last_name", "email", "is_active"), "classes": ("tab",)}),
@@ -58,13 +62,13 @@ class SubscriptionInline(TabularInline):
         if not obj.plan or obj.plan.units == 0:
             return 0
         percent = int((obj.sessions_used / obj.plan.units) * 100)
-        return percent 
+        return percent
 
 
 class MealPlanInline(StackedInline):
     model = MealPlan
     extra = 0
-    tab = True # <--- This magic makes each meal a clickable tab!
+    tab = True  # <--- This magic makes each meal a clickable tab!
     fields = ('day', 'meal_type', 'meal_name', 'total_calories', 'is_completed')
     readonly_fields = ('total_calories',)
 
@@ -121,7 +125,7 @@ class ClientAdmin(ModelAdmin):
     @display(description="Location")
     def country_flag(self, obj):
         # Assuming you have flag emojis or logic based on country code
-        return f"{obj.country}" 
+        return f"{obj.country}"
 
     def active_plan(self, obj):
         sub = obj.subscriptions.filter(is_active=True).select_related('plan').first()
@@ -132,12 +136,16 @@ class ClientAdmin(ModelAdmin):
 class ClientSubscriptionAdmin(ModelAdmin):
     list_display = ('client_link', 'plan_badge', 'trainer_avatar', 'visual_progress', 'expiry_status')
     list_filter = (
-        ('start_date', RangeDateFilter), # Date Range Picker
-        'is_active', 
-        'trainer', 
+        ('start_date', RangeDateFilter),  # Date Range Picker
+        'is_active',
+        'trainer',
         'plan'
     )
     autocomplete_fields = ['client', 'plan', 'trainer']
+
+    # FIX #2: 'mark_completed' was listed in actions but never defined, causing
+    # an AttributeError whenever an admin clicked it. The method is now
+    # implemented below alongside renew_subscription.
     actions = ['mark_completed', 'renew_subscription']
 
     fieldsets = (
@@ -180,8 +188,18 @@ class ClientSubscriptionAdmin(ModelAdmin):
             return "Expired"
         return "Valid"
 
+    # FIX #2: Implemented the missing mark_completed action.
+    # Previously this was listed in the actions tuple above but the method body
+    # did not exist, raising AttributeError on every admin click.
+    @action(description="Mark selected subscriptions as inactive/completed")
+    def mark_completed(self, request, queryset):
+        updated = queryset.update(is_active=False)
+        self.message_user(request, f"{updated} subscription(s) marked as inactive.")
+
     @action(description="Renew selected subscriptions (Add 30 days)")
     def renew_subscription(self, request, queryset):
+        # FIX #3: timedelta is now imported at the top of this file.
+        # Previously this method raised NameError: name 'timedelta' is not defined.
         for sub in queryset:
             if sub.end_date:
                 sub.end_date += timedelta(days=30)
@@ -195,7 +213,7 @@ class NutritionPlanAdmin(ModelAdmin):
     list_display = ('name', 'client_name', 'calories_indicator', 'macro_breakdown', 'created_at')
     inlines = [MealPlanInline]
     list_filter = ('created_at',)
-    
+
     fieldsets = (
         ("Settings", {
             'fields': ('subscription', 'name', 'duration_weeks', 'created_by')
@@ -205,7 +223,7 @@ class NutritionPlanAdmin(ModelAdmin):
             'fields': ('target_calories', 'target_protein', 'target_carbs', 'target_fats')
         }),
         ("Calculator Data", {
-            'classes': ('tab', 'collapse'), # Collapsed by default
+            'classes': ('tab', 'collapse'),  # Collapsed by default
             'fields': ('calc_gender', 'calc_tdee', 'calc_weight', 'calc_activity_level')
         }),
     )
@@ -240,6 +258,7 @@ class FoodDatabaseAdmin(ModelAdmin):
 class SubscriptionPackageAdmin(ModelAdmin):
     list_display = ('name', 'price_formatted', 'units', 'duration_days', 'is_child_plan')
     search_fields = ('name',)
+
     @display(description="Price")
     def price_formatted(self, obj):
         return f"${obj.price}"

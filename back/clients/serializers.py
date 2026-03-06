@@ -114,7 +114,14 @@ class CountrySerializer(serializers.ModelSerializer):
 class ClientSubscriptionSerializer(serializers.ModelSerializer):
     plan_name = serializers.ReadOnlyField(source="plan.name")
     plan_total_sessions = serializers.ReadOnlyField(source="plan.units")
-    trainer_name = serializers.ReadOnlyField(source="trainer.username")
+
+    # FIX #6: trainer_name was sourced from trainer.username, but the frontend
+    # and dashboard views both display first_name. Trainers who only have a
+    # username (no first_name set) would show their login handle instead of
+    # their display name. Changed to trainer.first_name to match the rest of
+    # the application.
+    trainer_name = serializers.ReadOnlyField(source="trainer.first_name")
+
     client_name = serializers.ReadOnlyField(source="client.name")
 
     class Meta:
@@ -122,8 +129,27 @@ class ClientSubscriptionSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def validate(self, data):
-        """STRICT VALIDATION: Only one active subscription allowed per client."""
-        if data.get("is_active", True):
+        """
+        STRICT VALIDATION: Only one active subscription allowed per client.
+
+        FIX #5: The original code used data.get("is_active", True), which
+        defaulted to True whenever is_active was absent from the request payload.
+        During a PATCH (partial update) — e.g. a trainer saving InBody data
+        without sending is_active — this caused the one-active-sub guard to
+        fire incorrectly, blocking the save even though the active state was
+        not being changed at all.
+
+        Fix: read the current instance value as the default on PATCH so the
+        guard only activates when the caller is explicitly setting is_active=True.
+        """
+        if self.instance:
+            # PATCH scenario: fall back to the current persisted value.
+            effective_is_active = data.get("is_active", self.instance.is_active)
+        else:
+            # POST scenario: no instance yet, so True is the correct default.
+            effective_is_active = data.get("is_active", True)
+
+        if effective_is_active:
             client = data.get("client") or (self.instance.client if self.instance else None)
             if client is None:
                 return data
