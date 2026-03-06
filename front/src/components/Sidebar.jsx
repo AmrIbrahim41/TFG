@@ -1,9 +1,10 @@
-import React, { useState, useContext, useCallback } from 'react';
+import React, { useState, useContext, useCallback, useEffect } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
     LayoutDashboard, Users, ShieldCheck,
     Menu, X, LogOut, Ticket, Database, Calculator, Baby,
-    Briefcase, Sun, Moon, Dumbbell, PawPrint
+    Briefcase, Sun, Moon, Dumbbell
 } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -24,6 +25,16 @@ const Sidebar = () => {
         navigate(mainSection ? '/' + mainSection : '/');
         closeSidebar();
     }, [location.pathname, navigate, closeSidebar]);
+
+    // منع التمرير في الموبايل عند فتح القائمة
+    useEffect(() => {
+        if (isOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'unset';
+        }
+        return () => { document.body.style.overflow = 'unset'; };
+    }, [isOpen]);
 
     const navItems = [
         { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -53,154 +64,208 @@ const Sidebar = () => {
         [user]
     );
 
-    const Logo = ({ size = 'w-20 h-20', textSize = 'text-5xl' }) => (
-        <div
+    // إعدادات الأنيميشن لعناصر القائمة (Staggered Effect)
+    const containerVariants = {
+        hidden: { opacity: 0 },
+        visible: {
+            opacity: 1,
+            transition: {
+                staggerChildren: 0.08, // التتابع الزمني بين كل عنصر والثاني
+                delayChildren: 0.1,
+            }
+        }
+    };
+
+    const itemVariants = {
+        hidden: { opacity: 0, x: -20 },
+        visible: {
+            opacity: 1,
+            x: 0,
+            transition: { type: "spring", stiffness: 300, damping: 24 }
+        }
+    };
+
+    const Logo = ({ size = 'w-16 h-16', textSize = 'text-4xl' }) => (
+        <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 200, damping: 20 }}
             onClick={handleLogoClick}
-            className="flex items-center gap-4 cursor-pointer group select-none transition-transform hover:scale-105"
+            className="flex items-center gap-4 cursor-pointer group select-none"
         >
-            <div className={`${size} relative rounded-xl overflow-hidden shadow-lg border border-zinc-200 dark:border-zinc-700 shrink-0`}>
+            <div className={`${size} relative rounded-2xl overflow-hidden shadow-lg border border-white/20 dark:border-white/10 shrink-0 transition-transform duration-500 group-hover:scale-105 group-hover:rotate-2 group-hover:shadow-orange-500/20`}>
                 <img
                     src="/tiger-logo.jpg"
                     alt="TFG Tiger"
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                     loading="eager"
                 />
             </div>
-            <h1 className={`${textSize} font-black text-zinc-900 dark:text-white leading-none tracking-tighter`}>
-                T<span className="text-orange-500">F</span>G
+            <h1 className={`${textSize} font-black text-zinc-900 dark:text-white leading-none tracking-tighter transition-all duration-300 group-hover:text-orange-500`}>
+                T<span className="text-orange-500 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors duration-300">F</span>G
             </h1>
-        </div>
+        </motion.div>
     );
 
     return (
         <>
-            {/* Mobile Header */}
-            <div className="lg:hidden fixed top-0 left-0 right-0 h-24 bg-zinc-50/90 dark:bg-[#09090b]/90 backdrop-blur-md border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between px-6 z-[50] transition-colors duration-300">
-                <Logo size="w-14 h-14" textSize="text-3xl" />
-                <button
+            {/* Header الموبايل */}
+            <div className="lg:hidden fixed top-0 left-0 right-0 h-20 bg-white/80 dark:bg-[#09090b]/80 backdrop-blur-xl border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-6 z-[50] transition-colors duration-300 shadow-sm">
+                <Logo size="w-12 h-12" textSize="text-3xl" />
+                <motion.button
+                    whileTap={{ scale: 0.9 }}
                     onClick={() => setIsOpen(true)}
-                    className="p-2.5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white bg-zinc-200 dark:bg-zinc-800/50 rounded-xl border border-zinc-300 dark:border-zinc-700 active:scale-95 transition-all"
+                    className="p-2.5 text-zinc-600 dark:text-zinc-400 hover:text-orange-500 dark:hover:text-orange-400 bg-zinc-100 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700 shadow-sm"
                     aria-label="Open menu"
                 >
-                    <Menu size={26} />
-                </button>
+                    <Menu size={24} />
+                </motion.button>
             </div>
 
-            {/* Mobile Backdrop */}
-            {isOpen && (
-                <div
-                    className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[90] lg:hidden animate-in fade-in duration-200"
-                    onClick={closeSidebar}
-                    aria-hidden="true"
-                />
-            )}
+            {/* Backdrop الموبايل مع AnimatePresence */}
+            <AnimatePresence>
+                {isOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="fixed inset-0 bg-zinc-900/60 dark:bg-black/80 backdrop-blur-sm z-[90] lg:hidden"
+                        onClick={closeSidebar}
+                        aria-hidden="true"
+                    />
+                )}
+            </AnimatePresence>
 
-            {/* Sidebar */}
+            {/* القائمة الجانبية */}
             <aside className={`
                 fixed top-0 left-0 z-[100] h-screen w-72
-                bg-zinc-50 dark:bg-[#09090b]
-                border-r border-zinc-300 dark:border-zinc-800
-                flex flex-col transition-all duration-300 ease-out
-                shadow-2xl lg:shadow-xl shadow-zinc-300/20 dark:shadow-none
+                bg-white/95 dark:bg-[#09090b]/95 backdrop-blur-xl
+                border-r border-zinc-200 dark:border-zinc-800/80
+                flex flex-col transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]
+                shadow-2xl shadow-zinc-400/20 dark:shadow-none
                 ${isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0
             `}>
-                {/* Logo Area */}
-                <div className="h-40 flex items-center justify-center px-6 border-b border-zinc-300 dark:border-zinc-800 bg-zinc-100/30 dark:bg-zinc-900/30 relative">
+                {/* منطقة اللوجو */}
+                <div className="h-32 flex items-center justify-between px-6 border-b border-zinc-100 dark:border-zinc-800/50 bg-gradient-to-b from-zinc-50 to-transparent dark:from-zinc-900/50 relative">
                     <Logo />
-                    <button
+                    <motion.button
+                        whileTap={{ scale: 0.9 }}
                         onClick={closeSidebar}
-                        className="lg:hidden absolute right-6 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors"
+                        className="lg:hidden p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all duration-200"
                         aria-label="Close menu"
                     >
-                        <X size={24} />
-                    </button>
+                        <X size={22} />
+                    </motion.button>
                 </div>
 
-                {/* Nav Links */}
-                <nav className="flex-1 py-6 px-5 space-y-1.5 overflow-y-auto custom-scrollbar">
+                {/* روابط القائمة مع الأنيميشن المتتابع */}
+                <motion.nav
+                    variants={containerVariants}
+                    initial="hidden"
+                    animate="visible"
+                    className="flex-1 py-6 px-4 space-y-2 overflow-y-auto custom-scrollbar"
+                >
                     {navItems.map((item) => (
-                        <NavLink
-                            key={item.path}
-                            to={item.path}
-                            end={item.path === '/'}
-                            onClick={closeSidebar}
-                            className={({ isActive }) => `
-                                flex items-center gap-4 px-4 py-4 rounded-2xl transition-all font-bold text-sm border relative overflow-hidden group
-                                ${isActive
-                                    ? 'text-orange-600 bg-white dark:bg-zinc-800 border-orange-200 dark:border-orange-500/20 shadow-lg shadow-orange-500/5'
-                                    : 'text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 border-transparent hover:border-zinc-300 dark:hover:border-zinc-800'
-                                }
-                            `}
-                        >
-                            {({ isActive }) => (
-                                <>
-                                    <item.icon
-                                        size={22}
-                                        className={`transition-transform duration-300 group-hover:scale-110 ${item.path === '/quick-workout' ? 'text-orange-500' : ''}`}
-                                    />
-                                    <span className="relative z-10">{item.label}</span>
-                                    {isActive && (
-                                        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-orange-500 rounded-l-full" />
-                                    )}
-                                </>
-                            )}
-                        </NavLink>
-                    ))}
-                </nav>
+                        <motion.div key={item.path} variants={itemVariants}>
+                            <NavLink
+                                to={item.path}
+                                end={item.path === '/'}
+                                onClick={closeSidebar}
+                                className={({ isActive }) => `
+                                    flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-300 font-semibold text-sm relative overflow-hidden group w-full
+                                    ${isActive
+                                        ? 'text-orange-600 dark:text-orange-400 bg-orange-50/80 dark:bg-orange-500/10 border border-orange-200/50 dark:border-orange-500/20 shadow-sm shadow-orange-500/10'
+                                        : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-100 border border-transparent'
+                                    }
+                                `}
+                            >
+                                {({ isActive }) => (
+                                    <>
+                                        {/* مؤشر الحالة النشطة */}
+                                        {isActive && (
+                                            <motion.div
+                                                layoutId="activeIndicator"
+                                                className="absolute left-0 top-0 bottom-0 w-1 bg-orange-500 rounded-r-full shadow-[0_0_10px_rgba(249,115,22,0.5)]"
+                                            />
+                                        )}
 
-                {/* Footer with Theme Toggle */}
-                <div className="p-6 border-t border-zinc-300 dark:border-zinc-800 bg-zinc-100/50 dark:bg-[#0c0c0e] transition-colors duration-300">
-                    <button
+                                        <item.icon
+                                            size={22}
+                                            className={`transition-all duration-300 ${isActive ? 'scale-110 drop-shadow-md' : 'group-hover:scale-110 group-hover:-rotate-3'}`}
+                                        />
+                                        <span className={`relative z-10 transition-transform duration-300 ${!isActive && 'group-hover:translate-x-1'}`}>
+                                            {item.label}
+                                        </span>
+                                    </>
+                                )}
+                            </NavLink>
+                        </motion.div>
+                    ))}
+                </motion.nav>
+
+                {/* الفوتر (الوضع الليلي والملف الشخصي) */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.4, type: "spring" }}
+                    className="p-5 border-t border-zinc-100 dark:border-zinc-800/50 bg-white/50 dark:bg-transparent backdrop-blur-md z-10"
+                >
+                    <motion.button
+                        whileTap={{ scale: 0.98 }}
                         onClick={toggleTheme}
-                        className="w-full flex items-center justify-between px-4 py-3.5 mb-4 rounded-xl
-                        bg-zinc-50 dark:bg-zinc-900
-                        border border-zinc-300 dark:border-zinc-800
+                        className="w-full flex items-center justify-between px-4 py-3 mb-4 rounded-xl
+                        bg-zinc-50 dark:bg-zinc-900/80
+                        border border-zinc-200 dark:border-zinc-800
                         text-zinc-600 dark:text-zinc-400
-                        hover:border-orange-400 dark:hover:border-zinc-700 hover:shadow-md transition-all active:scale-95"
+                        hover:border-orange-300 dark:hover:border-orange-500/50 hover:shadow-md transition-all duration-300 group"
                     >
-                        <span className="text-xs font-bold uppercase tracking-wider">
+                        <span className="text-xs font-bold uppercase tracking-wider group-hover:text-orange-500 transition-colors">
                             {theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
                         </span>
-                        {theme === 'dark'
-                            ? <Moon size={18} className="text-purple-400 fill-purple-400/20" />
-                            : <Sun size={18} className="text-orange-500 fill-orange-500/20" />
-                        }
-                    </button>
+                        <div className="relative w-6 h-6 flex items-center justify-center">
+                            {theme === 'dark'
+                                ? <Moon size={18} className="text-purple-400 fill-purple-400/20 absolute transition-transform duration-500 rotate-0 scale-100" />
+                                : <Sun size={18} className="text-orange-500 fill-orange-500/20 absolute transition-transform duration-500 rotate-90 scale-100" />
+                            }
+                        </div>
+                    </motion.button>
 
                     {user ? (
-                        <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-800 rounded-2xl p-4 transition-colors duration-300 shadow-sm">
+                        <div className="bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/80 rounded-2xl p-4 transition-colors duration-300 shadow-sm hover:shadow-md">
                             <div className="flex items-center gap-3 mb-4">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-zinc-200 to-zinc-300 dark:from-zinc-700 dark:to-zinc-800 border border-zinc-300 dark:border-zinc-700 flex items-center justify-center text-zinc-700 dark:text-white font-bold text-sm shadow-inner shrink-0">
+                                <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-orange-100 to-orange-200 dark:from-zinc-800 dark:to-zinc-700 border-2 border-white dark:border-zinc-600 flex items-center justify-center text-orange-700 dark:text-white font-bold text-base shadow-sm shrink-0">
                                     {getUserInitial()}
                                 </div>
-                                <div className="overflow-hidden">
+                                <div className="overflow-hidden flex-1">
                                     <p className="text-zinc-900 dark:text-white text-sm font-bold truncate">
                                         {getDisplayName()}
                                     </p>
-                                    <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider truncate">
+                                    <p className="text-orange-600 dark:text-orange-400 text-[10px] font-bold uppercase tracking-wider truncate mt-0.5">
                                         {getUserRole()}
                                     </p>
                                 </div>
                             </div>
-                            <button
+                            <motion.button
+                                whileTap={{ scale: 0.95 }}
                                 onClick={logoutUser}
                                 className="w-full flex items-center justify-center gap-2
-                                bg-zinc-100 dark:bg-zinc-950
+                                bg-white dark:bg-zinc-950
                                 hover:bg-red-50 hover:text-red-600 hover:border-red-200
-                                dark:hover:bg-red-500/10 dark:hover:text-red-500 dark:hover:border-red-500/20
+                                dark:hover:bg-red-500/10 dark:hover:text-red-500 dark:hover:border-red-500/30
                                 text-zinc-600 dark:text-zinc-400
-                                border border-zinc-300 dark:border-zinc-800
-                                py-3 rounded-xl transition-all text-xs font-bold uppercase tracking-wider active:scale-95"
+                                border border-zinc-200 dark:border-zinc-800/80
+                                py-2.5 rounded-xl transition-all duration-300 text-xs font-bold uppercase tracking-wider group"
                             >
-                                <LogOut size={14} /> Log Out
-                            </button>
+                                <LogOut size={16} className="transition-transform group-hover:-translate-x-1" /> Log Out
+                            </motion.button>
                         </div>
                     ) : (
-                        <div className="text-center p-4">
-                            <p className="text-zinc-500 text-sm">Please Log In</p>
+                        <div className="text-center p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-200 dark:border-zinc-800">
+                            <p className="text-zinc-500 dark:text-zinc-400 text-sm font-medium">Please Log In</p>
                         </div>
                     )}
-                </div>
+                </motion.div>
             </aside>
         </>
     );
