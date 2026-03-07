@@ -583,18 +583,16 @@ class ClientSubscriptionViewSet(viewsets.ModelViewSet):
             .order_by("-start_date")
         )
 
-        # FIX #4: The original queryset returned ALL subscriptions to every
-        # authenticated user. A non-admin trainer could enumerate every
-        # client's InBody data (weight, fat %, muscle mass, goals) simply by
-        # calling GET /api/client-subscriptions/. This scopes the response to
-        # only subscriptions the requesting trainer owns. Admins and
-        # receptionists retain full visibility.
-        if not user.is_superuser and not user.groups.filter(name='REC').exists():
-            queryset = queryset.filter(trainer=user)
-
         client_id = self.request.query_params.get("client_id")
+
+        # إذا تم تحديد عميل معين، قم بعرض جميع اشتراكاته للمدرب
         if client_id:
             queryset = queryset.filter(client=client_id)
+        else:
+            # إذا كان استعلام عام، قم بتطبيق الخصوصية ليرى المدرب اشتراكاته فقط
+            if not user.is_superuser and not user.groups.filter(name='REC').exists():
+                queryset = queryset.filter(trainer=user)
+
         return queryset
 
     @action(detail=False, methods=['get'])
