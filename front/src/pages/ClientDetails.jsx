@@ -78,6 +78,7 @@ const ClientDetails = () => {
         name: '', manual_id: '', phone: '',
         nature_of_work: '', birth_date: '', address: '',
         status: 'Single', smoking: false, sleep_hours: '', notes: '',
+        country: 'Egypt',
         created_at: ''
     });
 
@@ -141,6 +142,7 @@ const ClientDetails = () => {
                     smoking: data.smoking || false,
                     sleep_hours: data.sleep_hours || '',
                     notes: data.notes || '',
+                    country: data.country || 'Egypt',
                     created_at: data.created_at,
                 });
                 setDbAge(data.age);
