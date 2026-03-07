@@ -158,7 +158,9 @@ class ClientViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
-        queryset = Client.objects.all().order_by("-created_at")
+        # إضافة prefetch_related لجلب الاشتراكات والمدربين دفعة واحدة
+        queryset = Client.objects.prefetch_related('subscriptions__trainer').order_by("-created_at")
+        
         is_child = self.request.query_params.get('is_child')
         if is_child == 'true':
             queryset = queryset.filter(is_child=True)

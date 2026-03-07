@@ -45,6 +45,7 @@ class ClientSerializer(serializers.ModelSerializer):
     photo_url = serializers.SerializerMethodField()
     age = serializers.ReadOnlyField()
     is_subscribed = serializers.SerializerMethodField()
+    active_trainer_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Client
@@ -54,6 +55,7 @@ class ClientSerializer(serializers.ModelSerializer):
             "status", "smoking", "sleep_hours", "notes", "is_subscribed",
             "is_child", "parent_phone", "country", "trained_gym_before",
             "trained_coach_before", "injuries",
+            "active_trainer_name",
         ]
 
     def get_photo_url(self, obj):
@@ -64,6 +66,13 @@ class ClientSerializer(serializers.ModelSerializer):
         """
         request = self.context.get("request")
         return _build_photo_url(request, obj.photo)
+    
+    def get_active_trainer_name(self, obj):
+        # استخدام all() هنا بيسمح للـ Django باستخدام الـ prefetch cache عشان ميعملش N+1 Queries
+        active_sub = next((sub for sub in obj.subscriptions.all() if sub.is_active), None)
+        if active_sub and active_sub.trainer:
+            return active_sub.trainer.first_name or active_sub.trainer.username
+        return None
 
     def get_is_subscribed(self, obj):
         return obj.subscriptions.filter(is_active=True).exists()

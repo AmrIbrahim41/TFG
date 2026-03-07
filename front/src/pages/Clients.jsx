@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, X, User, Phone, Hash, Loader2, Camera, Search, ChevronLeft, ChevronRight } from 'lucide-react';
-import api from '../api';
+import { Plus, X, User, Phone, Hash, Loader2, Camera, Search, ChevronLeft, ChevronRight, Dumbbell } from 'lucide-react'; import api from '../api';
 // IMPORTANT: BASE_URL is NOT imported here.
 // The backend returns full absolute URIs for all photo fields.
 // Using photo_url directly without any prepending is correct.
@@ -289,6 +288,12 @@ const Clients = () => {
                                                 <Phone size={12} strokeWidth={2.5} />
                                                 <span className="truncate">{client.phone}</span>
                                             </div>
+                                            {client.active_trainer_name && (
+                                                <div className="flex items-center gap-2 text-orange-600 dark:text-orange-500 text-xs md:text-sm font-semibold">
+                                                    <Dumbbell size={12} strokeWidth={2.5} />
+                                                    <span className="truncate">Coach: {client.active_trainer_name}</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>

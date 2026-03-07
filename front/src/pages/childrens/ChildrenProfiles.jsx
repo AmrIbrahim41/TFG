@@ -246,6 +246,11 @@ const ChildrenProfiles = () => {
                           {child.age} yrs
                         </span>
                       )}
+                      {child.active_trainer_name && (
+                        <span className="bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 text-xs font-bold px-2 py-0.5 rounded-lg border border-orange-200 dark:border-orange-500/20">
+                          Coach: {child.active_trainer_name}
+                        </span>
+                      )}
                     </div>
                   </div>
 
