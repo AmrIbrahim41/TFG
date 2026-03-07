@@ -92,9 +92,8 @@ const Clients = () => {
     }, []);
 
     // Initial load
-    // FIX #10: Return the cleanup so React cancels any in-flight request on unmount.
     useEffect(() => {
-        return fetchClients();
+        fetchClients(); // استدعاء الدالة فقط بدون return
     }, [fetchClients]);
 
     // Debounced search — clears previous timeout on every keystroke
