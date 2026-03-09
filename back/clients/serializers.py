@@ -1,8 +1,7 @@
 from rest_framework import serializers
-from django.db.models import Sum, Count
-from django.db.models.functions import TruncDay
 from django.db import transaction
-import datetime
+from django.contrib.auth.models import User, Group
+from django.contrib.auth.password_validation import validate_password as django_validate_password
 
 from .models import (
     Client, Country, Subscription, ClientSubscription,
@@ -12,6 +11,7 @@ from .models import (
     CoachSchedule, GroupSessionLog, GroupSessionParticipant,
     GroupWorkoutTemplate, SessionTransferRequest,
     ManualNutritionSave, ManualWorkoutSave,
+    TrainerShift, TrainerSchedule,
 )
 
 
@@ -31,10 +31,98 @@ def _build_photo_url(request, photo_field):
     try:
         if request is not None:
             return request.build_absolute_uri(photo_field.url)
-        # No request context (e.g. management commands): return relative URL
         return photo_field.url
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# TRAINER  (moved here from views.py — belongs in serializers.py)
+# ---------------------------------------------------------------------------
+
+class TrainerSerializer(serializers.ModelSerializer):
+    """
+    Full trainer serializer — admin use only (create / update / detail).
+    Exposes sensitive fields (email, date_joined) so restrict to IsAdminUser.
+    Password field runs Django's built-in validators on create/update.
+    """
+    role = serializers.ChoiceField(
+        choices=[('trainer', 'Trainer'), ('rec', 'Receptionist')],
+        write_only=True,
+        default='trainer',
+    )
+
+    class Meta:
+        model = User
+        fields = ('id', 'username', 'first_name', 'email', 'password', 'date_joined', 'role')
+        extra_kwargs = {'password': {'write_only': True, 'required': False}}
+
+    # ------------------------------------------------------------------
+    # FIX #17: Password strength validation
+    # ------------------------------------------------------------------
+    def validate_password(self, value):
+        """
+        Run Django's built-in password validators.
+        By default this enforces minimum length (8 chars), rejects common
+        passwords, and rejects purely numeric passwords.
+        Configure via AUTH_PASSWORD_VALIDATORS in settings.py.
+        """
+        if value:
+            # Pass the user instance (or None on create) so the
+            # UserAttributeSimilarityValidator can compare against username/email.
+            user = self.instance
+            django_validate_password(value, user=user)
+        return value
+
+    def create(self, validated_data):
+        role = validated_data.pop('role', 'trainer')
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data.get('email', ''),
+            password=validated_data['password'],
+            first_name=validated_data.get('first_name', ''),
+        )
+        user.is_staff = False
+        user.save()
+
+        if role == 'rec':
+            group, _ = Group.objects.get_or_create(name='REC')
+            user.groups.add(group)
+
+        return user
+
+    def update(self, instance, validated_data):
+        role = validated_data.pop('role', None)
+        password = validated_data.pop('password', None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if password:
+            instance.set_password(password)
+
+        instance.save()
+
+        if role:
+            rec_group = Group.objects.filter(name='REC').first()
+            if rec_group:
+                instance.groups.remove(rec_group)
+            if role == 'rec':
+                group, _ = Group.objects.get_or_create(name='REC')
+                instance.groups.add(group)
+
+        return instance
+
+
+class TrainerPublicSerializer(serializers.ModelSerializer):
+    """
+    FIX #15: Limited trainer info for non-admin, authenticated users.
+    Used for the transfer-target picker and similar lists.
+    Does NOT expose email, date_joined, or any sensitive field.
+    """
+    class Meta:
+        model = User
+        fields = ('id', 'first_name', 'username')
 
 
 # ---------------------------------------------------------------------------
@@ -50,25 +138,19 @@ class ClientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Client
         fields = [
-            "id", "name", "manual_id", "phone", "photo", "photo_url",
-            "created_at", "nature_of_work", "birth_date", "age", "address",
-            "status", "smoking", "sleep_hours", "notes", "is_subscribed",
-            "is_child", "parent_phone", "country", "trained_gym_before",
-            "trained_coach_before", "injuries",
-            "active_trainer_name",
+            'id', 'name', 'manual_id', 'phone', 'photo', 'photo_url',
+            'created_at', 'nature_of_work', 'birth_date', 'age', 'address',
+            'status', 'smoking', 'sleep_hours', 'notes', 'is_subscribed',
+            'is_child', 'parent_phone', 'country', 'trained_gym_before',
+            'trained_coach_before', 'injuries',
+            'active_trainer_name',
         ]
 
     def get_photo_url(self, obj):
-        """
-        FIX: Use request.build_absolute_uri() so the React frontend always
-        gets an absolute URL. Wrapped in try/except to prevent serializer
-        failure if the file has been deleted from disk.
-        """
-        request = self.context.get("request")
+        request = self.context.get('request')
         return _build_photo_url(request, obj.photo)
-    
+
     def get_active_trainer_name(self, obj):
-        # استخدام all() هنا بيسمح للـ Django باستخدام الـ prefetch cache عشان ميعملش N+1 Queries
         active_sub = next((sub for sub in obj.subscriptions.all() if sub.is_active), None)
         if active_sub and active_sub.trainer:
             return active_sub.trainer.first_name or active_sub.trainer.username
@@ -78,20 +160,20 @@ class ClientSerializer(serializers.ModelSerializer):
         return obj.subscriptions.filter(is_active=True).exists()
 
     def validate(self, data):
-        request = self.context.get("request")
-        if request and hasattr(request, "user"):
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
             user = request.user
             is_admin = user.is_superuser
             is_rec = user.groups.filter(name='REC').exists()
 
             if not is_admin and not is_rec and self.instance:
-                if "name" in data and data["name"] != self.instance.name:
+                if 'name' in data and data['name'] != self.instance.name:
                     raise serializers.ValidationError(
-                        {"name": "Only Admins or Reception can edit the Name."}
+                        {'name': 'Only Admins or Reception can edit the Name.'}
                     )
-                if "manual_id" in data and data["manual_id"] != self.instance.manual_id:
+                if 'manual_id' in data and data['manual_id'] != self.instance.manual_id:
                     raise serializers.ValidationError(
-                        {"manual_id": "Only Admins or Reception can edit the ID."}
+                        {'manual_id': 'Only Admins or Reception can edit the ID.'}
                     )
         return data
 
@@ -103,7 +185,7 @@ class ClientSerializer(serializers.ModelSerializer):
 class SubscriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Subscription
-        fields = "__all__"
+        fields = '__all__'
 
 
 # ---------------------------------------------------------------------------
@@ -121,45 +203,23 @@ class CountrySerializer(serializers.ModelSerializer):
 # ---------------------------------------------------------------------------
 
 class ClientSubscriptionSerializer(serializers.ModelSerializer):
-    plan_name = serializers.ReadOnlyField(source="plan.name")
-    plan_total_sessions = serializers.ReadOnlyField(source="plan.units")
-
-    # FIX #6: trainer_name was sourced from trainer.username, but the frontend
-    # and dashboard views both display first_name. Trainers who only have a
-    # username (no first_name set) would show their login handle instead of
-    # their display name. Changed to trainer.first_name to match the rest of
-    # the application.
-    trainer_name = serializers.ReadOnlyField(source="trainer.first_name")
-
-    client_name = serializers.ReadOnlyField(source="client.name")
+    plan_name = serializers.ReadOnlyField(source='plan.name')
+    plan_total_sessions = serializers.ReadOnlyField(source='plan.units')
+    trainer_name = serializers.ReadOnlyField(source='trainer.first_name')
+    client_name = serializers.ReadOnlyField(source='client.name')
 
     class Meta:
         model = ClientSubscription
-        fields = "__all__"
+        fields = '__all__'
 
     def validate(self, data):
-        """
-        STRICT VALIDATION: Only one active subscription allowed per client.
-
-        FIX #5: The original code used data.get("is_active", True), which
-        defaulted to True whenever is_active was absent from the request payload.
-        During a PATCH (partial update) — e.g. a trainer saving InBody data
-        without sending is_active — this caused the one-active-sub guard to
-        fire incorrectly, blocking the save even though the active state was
-        not being changed at all.
-
-        Fix: read the current instance value as the default on PATCH so the
-        guard only activates when the caller is explicitly setting is_active=True.
-        """
         if self.instance:
-            # PATCH scenario: fall back to the current persisted value.
-            effective_is_active = data.get("is_active", self.instance.is_active)
+            effective_is_active = data.get('is_active', self.instance.is_active)
         else:
-            # POST scenario: no instance yet, so True is the correct default.
-            effective_is_active = data.get("is_active", True)
+            effective_is_active = data.get('is_active', True)
 
         if effective_is_active:
-            client = data.get("client") or (self.instance.client if self.instance else None)
+            client = data.get('client') or (self.instance.client if self.instance else None)
             if client is None:
                 return data
 
@@ -170,9 +230,9 @@ class ClientSubscriptionSerializer(serializers.ModelSerializer):
             if active_subs.exists():
                 raise serializers.ValidationError(
                     {
-                        "is_active": (
-                            "This client already has an active subscription. "
-                            "Deactivate the old one first."
+                        'is_active': (
+                            'This client already has an active subscription. '
+                            'Deactivate the old one first.'
                         )
                     }
                 )
@@ -202,7 +262,7 @@ class TrainingDaySplitSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TrainingDaySplit
-        fields = ["id", "order", "name", "exercises"]
+        fields = ['id', 'order', 'name', 'exercises']
 
 
 class TrainingPlanSerializer(serializers.ModelSerializer):
@@ -210,7 +270,7 @@ class TrainingPlanSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TrainingPlan
-        fields = ["id", "subscription", "cycle_length", "created_at", "splits"]
+        fields = ['id', 'subscription', 'cycle_length', 'created_at', 'splits']
 
 
 # ---------------------------------------------------------------------------
@@ -259,6 +319,10 @@ class TrainingSessionSerializer(serializers.ModelSerializer):
 # ---------------------------------------------------------------------------
 
 class FoodItemSerializer(serializers.ModelSerializer):
+    # Expose `id` as an optional writable field so the NutritionPlan update
+    # serializer can distinguish "update this existing item" from "create new".
+    id = serializers.IntegerField(required=False)
+
     class Meta:
         model = FoodItem
         fields = '__all__'
@@ -363,7 +427,6 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
         return nutrition_plan
 
     def update(self, instance, validated_data):
-        # Update scalar fields first
         meal_plans_data = validated_data.pop('meal_plans', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -373,11 +436,10 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
             return instance
 
         with transaction.atomic():
-            existing_ids = set(instance.meal_plans.values_list('id', flat=True))
-            incoming_ids = {item['id'] for item in meal_plans_data if item.get('id')}
+            existing_meal_ids = set(instance.meal_plans.values_list('id', flat=True))
+            incoming_meal_ids = {item['id'] for item in meal_plans_data if item.get('id')}
 
-            # Delete removed meals in bulk
-            ids_to_delete = existing_ids - incoming_ids
+            ids_to_delete = existing_meal_ids - incoming_meal_ids
             if ids_to_delete:
                 MealPlan.objects.filter(id__in=ids_to_delete).delete()
 
@@ -385,7 +447,7 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
                 meal_id = meal_data.get('id')
                 foods_data = meal_data.pop('foods', [])
 
-                if meal_id and meal_id in existing_ids:
+                if meal_id and meal_id in existing_meal_ids:
                     meal_obj = MealPlan.objects.get(id=meal_id)
                     for k, v in meal_data.items():
                         if k != 'id':
@@ -395,14 +457,24 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
                     meal_data.pop('id', None)
                     meal_obj = MealPlan.objects.create(nutrition_plan=instance, **meal_data)
 
-                # For food items, the delete+bulk_create pattern is acceptable here
-                # because meal foods are small, frequently replaced atomically, and
-                # their history is not tracked independently.
-                meal_obj.foods.all().delete()
-                if foods_data:
-                    FoodItem.objects.bulk_create(
-                        [FoodItem(meal_plan=meal_obj, **f) for f in foods_data]
-                    )
+                # Upsert FoodItems — update existing, create new, delete removed.
+                existing_food_ids = set(meal_obj.foods.values_list('id', flat=True))
+                incoming_food_ids = {f['id'] for f in foods_data if f.get('id')}
+
+                food_ids_to_delete = existing_food_ids - incoming_food_ids
+                if food_ids_to_delete:
+                    FoodItem.objects.filter(id__in=food_ids_to_delete).delete()
+
+                foods_to_create = []
+                for food_data in foods_data:
+                    food_id = food_data.pop('id', None)
+                    if food_id and food_id in existing_food_ids:
+                        FoodItem.objects.filter(id=food_id).update(**food_data)
+                    else:
+                        foods_to_create.append(FoodItem(meal_plan=meal_obj, **food_data))
+
+                if foods_to_create:
+                    FoodItem.objects.bulk_create(foods_to_create)
 
         return instance
 
@@ -440,10 +512,7 @@ class CoachScheduleSerializer(serializers.ModelSerializer):
         fields = ['id', 'coach', 'client', 'client_id', 'client_name', 'client_photo', 'day', 'session_time']
 
     def get_client_photo(self, obj):
-        """
-        FIX: Use request.build_absolute_uri() for absolute URL.
-        """
-        request = self.context.get("request")
+        request = self.context.get('request')
         return _build_photo_url(request, obj.client.photo if obj.client else None)
 
 
@@ -501,10 +570,7 @@ class SessionTransferRequestSerializer(serializers.ModelSerializer):
         read_only_fields = ['from_trainer', 'status', 'created_at']
 
     def get_client_photo(self, obj):
-        """
-        FIX: Use request.build_absolute_uri() for absolute URL.
-        """
-        request = self.context.get("request")
+        request = self.context.get('request')
         try:
             photo = obj.subscription.client.photo
         except Exception:
@@ -519,32 +585,35 @@ class SessionTransferRequestSerializer(serializers.ModelSerializer):
 
         if target_trainer == user:
             raise serializers.ValidationError(
-                {"to_trainer": "You cannot transfer sessions to yourself."}
+                {'to_trainer': 'You cannot transfer sessions to yourself.'}
             )
 
-        if subscription.trainer != user:
+        # FIX #10: trainer is nullable — guard against None before comparing.
+        # Without this, a subscription with trainer=None satisfies `None != user`
+        # and any trainer could falsely "own" an unassigned subscription.
+        if subscription.trainer is None or subscription.trainer != user:
             raise serializers.ValidationError(
-                {"subscription": "You do not own this client subscription."}
+                {'subscription': 'You do not own this client subscription.'}
             )
 
         if not subscription.is_active:
             raise serializers.ValidationError(
-                {"subscription": "Cannot transfer sessions from an inactive or expired subscription."}
+                {'subscription': 'Cannot transfer sessions from an inactive or expired subscription.'}
             )
 
         if subscription.plan and subscription.plan.units and subscription.plan.units > 0:
             remaining_sessions = subscription.plan.units - subscription.sessions_used
             if count > remaining_sessions:
                 raise serializers.ValidationError({
-                    "sessions_count": (
-                        f"Client only has {remaining_sessions} sessions remaining. "
-                        f"You cannot transfer {count}."
+                    'sessions_count': (
+                        f'Client only has {remaining_sessions} sessions remaining. '
+                        f'You cannot transfer {count}.'
                     )
                 })
 
         if count <= 0:
             raise serializers.ValidationError(
-                {"sessions_count": "You must transfer at least 1 session."}
+                {'sessions_count': 'You must transfer at least 1 session.'}
             )
 
         return data
@@ -566,3 +635,125 @@ class ManualWorkoutSaveSerializer(serializers.ModelSerializer):
         model = ManualWorkoutSave
         fields = ['id', 'client_name', 'phone', 'session_name', 'data', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+# ---------------------------------------------------------------------------
+# TRAINER SHIFT
+# ---------------------------------------------------------------------------
+
+class TrainerShiftSerializer(serializers.ModelSerializer):
+    trainer = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False)
+    trainer_name = serializers.SerializerMethodField()
+    # Tells the frontend whether this shift crosses midnight so it can generate
+    # time-slot grids correctly (e.g. 22:00 → 02:00 wraps over to the next day).
+    is_overnight = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TrainerShift
+        fields = [
+            'id',
+            'trainer',
+            'trainer_name',
+            'shift_start',
+            'shift_end',
+            'slot_duration',
+            'is_overnight',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'updated_at']
+
+    def get_trainer_name(self, obj):
+        return obj.trainer.first_name or obj.trainer.username
+
+    def get_is_overnight(self, obj):
+        """True when the shift crosses midnight (shift_end < shift_start)."""
+        if obj.shift_start and obj.shift_end:
+            return obj.shift_end < obj.shift_start
+        return False
+
+    def validate(self, data):
+        start = data.get('shift_start', getattr(self.instance, 'shift_start', None))
+        end   = data.get('shift_end',   getattr(self.instance, 'shift_end',   None))
+
+        if start and end:
+            if end == start:
+                raise serializers.ValidationError(
+                    {'shift_end': 'Shift end cannot be the same as shift start.'}
+                )
+            # end < start is an overnight shift (e.g. 22:00 → 06:00).
+            # Explicitly allowed — `is_overnight` signals this to the frontend.
+
+        duration = data.get('slot_duration', getattr(self.instance, 'slot_duration', 60))
+        if duration and (duration < 15 or duration > 240):
+            raise serializers.ValidationError(
+                {'slot_duration': 'Slot duration must be between 15 and 240 minutes.'}
+            )
+        return data
+
+
+# ---------------------------------------------------------------------------
+# TRAINER SCHEDULE
+# ---------------------------------------------------------------------------
+
+class TrainerScheduleSerializer(serializers.ModelSerializer):
+    # trainer is optional in the payload; non-admins have it injected by the view.
+    trainer = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        default=serializers.CurrentUserDefault()
+    )
+
+    client_name  = serializers.ReadOnlyField(source='client.name')
+    client_photo = serializers.SerializerMethodField()
+    client_id    = serializers.ReadOnlyField(source='client.id')
+    day_name     = serializers.SerializerMethodField()
+    
+
+    class Meta:
+        model = TrainerSchedule
+        fields = [
+            'id',
+            'trainer',
+            'client',
+            'client_id',
+            'client_name',
+            'client_photo',
+            'day_of_week',
+            'day_name',
+            'time_slot',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def get_client_photo(self, obj):
+        request = self.context.get('request')
+        return _build_photo_url(request, obj.client.photo if obj.client else None)
+
+    def get_day_name(self, obj):
+        return dict(TrainerSchedule.DAY_CHOICES).get(obj.day_of_week, '')
+
+    def validate(self, data):
+        request = self.context.get('request')
+        trainer = data.get('trainer') or getattr(self.instance, 'trainer', None)
+
+        # For non-admin trainers, resolve trainer from the authenticated request
+        # user when not explicitly provided in the payload.
+        if not trainer and request and hasattr(request, 'user') and not request.user.is_superuser:
+            trainer = request.user
+
+        client = data.get('client') or getattr(self.instance, 'client', None)
+
+        if trainer and client:
+            has_active = ClientSubscription.objects.filter(
+                client=client,
+                trainer=trainer,
+                is_active=True,
+            ).exists()
+            if not has_active:
+                raise serializers.ValidationError({
+                    'client': (
+                        'This client does not have an active subscription with this trainer. '
+                        'Only clients with active subscriptions can be added to the schedule.'
+                    )
+                })
+
+        return data

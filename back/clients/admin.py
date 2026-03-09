@@ -4,9 +4,6 @@ from django.contrib.auth.models import User, Group
 from django.utils.html import format_html
 from django.db.models import Sum, Count, F
 from django.utils import timezone
-
-# FIX #3: timedelta was used in renew_subscription but never imported,
-# causing a NameError at runtime whenever an admin tried to renew a subscription.
 from datetime import timedelta
 
 # --- Unfold Imports ---
@@ -58,19 +55,28 @@ class SubscriptionInline(TabularInline):
 
     @display(description="Usage")
     def progress_bar(self, obj):
-        # Generates a visual progress bar
         if not obj.plan or obj.plan.units == 0:
             return 0
         percent = int((obj.sessions_used / obj.plan.units) * 100)
-        return percent
+        return min(percent, 100)  # Cap at 100% — sessions_used can exceed plan.units after transfers
 
 
 class MealPlanInline(StackedInline):
     model = MealPlan
     extra = 0
-    tab = True  # <--- This magic makes each meal a clickable tab!
+    tab = True
     fields = ('day', 'meal_type', 'meal_name', 'total_calories', 'is_completed')
     readonly_fields = ('total_calories',)
+
+
+# ── NEW: Inline for TrainerSchedule inside Trainer/User admin ──
+class TrainerScheduleInline(TabularInline):
+    model = TrainerSchedule
+    extra = 0
+    fields = ('day_of_week', 'time_slot', 'client')
+    show_change_link = True
+    verbose_name = "Schedule Slot"
+    verbose_name_plural = "Weekly Schedule Slots"
 
 
 # --- 3. MAIN MODELS ---
@@ -80,10 +86,9 @@ class ClientAdmin(ModelAdmin):
     list_display = ('user_card', 'status_badge', 'contact_info', 'active_plan', 'country_flag')
     search_fields = ('name', 'manual_id', 'phone')
     list_filter = ('status', 'country', 'is_child')
-    list_filter_submit = True  # Adds a "Apply Filters" button (cleaner UI)
+    list_filter_submit = True
     inlines = [SubscriptionInline]
 
-    # Tabs Configuration
     fieldsets = (
         ("Identity", {
             'fields': ('name', 'manual_id', 'photo')
@@ -100,7 +105,6 @@ class ClientAdmin(ModelAdmin):
 
     @display(description="Client", header=True)
     def user_card(self, obj):
-        # Returns a rich card with image and name
         return [
             obj.name,
             f"ID: {obj.manual_id}",
@@ -124,7 +128,6 @@ class ClientAdmin(ModelAdmin):
 
     @display(description="Location")
     def country_flag(self, obj):
-        # Assuming you have flag emojis or logic based on country code
         return f"{obj.country}"
 
     def active_plan(self, obj):
@@ -136,16 +139,12 @@ class ClientAdmin(ModelAdmin):
 class ClientSubscriptionAdmin(ModelAdmin):
     list_display = ('client_link', 'plan_badge', 'trainer_avatar', 'visual_progress', 'expiry_status')
     list_filter = (
-        ('start_date', RangeDateFilter),  # Date Range Picker
+        ('start_date', RangeDateFilter),
         'is_active',
         'trainer',
         'plan'
     )
     autocomplete_fields = ['client', 'plan', 'trainer']
-
-    # FIX #2: 'mark_completed' was listed in actions but never defined, causing
-    # an AttributeError whenever an admin clicked it. The method is now
-    # implemented below alongside renew_subscription.
     actions = ['mark_completed', 'renew_subscription']
 
     fieldsets = (
@@ -177,7 +176,6 @@ class ClientSubscriptionAdmin(ModelAdmin):
 
     @display(description="Usage %")
     def visual_progress(self, obj):
-        # Unfold automatically renders integers 0-100 as progress bars if configured
         if not obj.plan or obj.plan.units == 0:
             return 0
         return int((obj.sessions_used / obj.plan.units) * 100)
@@ -188,24 +186,22 @@ class ClientSubscriptionAdmin(ModelAdmin):
             return "Expired"
         return "Valid"
 
-    # FIX #2: Implemented the missing mark_completed action.
-    # Previously this was listed in the actions tuple above but the method body
-    # did not exist, raising AttributeError on every admin click.
     @action(description="Mark selected subscriptions as inactive/completed")
     def mark_completed(self, request, queryset):
         updated = queryset.update(is_active=False)
         self.message_user(request, f"{updated} subscription(s) marked as inactive.")
 
-    @action(description="Renew selected subscriptions (Add 30 days)")
+    @action(description="Renew selected subscriptions based on plan duration")
     def renew_subscription(self, request, queryset):
-        # FIX #3: timedelta is now imported at the top of this file.
-        # Previously this method raised NameError: name 'timedelta' is not defined.
-        for sub in queryset:
+        for sub in queryset.select_related('plan'):
             if sub.end_date:
-                sub.end_date += timedelta(days=30)
+                # Use the plan's actual duration rather than a hardcoded 30 days.
+                # Fall back to 30 days only when no plan is attached (e.g. custom subs).
+                days = sub.plan.duration_days if sub.plan else 30
+                sub.end_date += timedelta(days=days)
                 sub.is_active = True
                 sub.save()
-        self.message_user(request, "Selected subscriptions renewed for 30 days.")
+        self.message_user(request, "Selected subscriptions renewed based on their plan duration.")
 
 
 @admin.register(NutritionPlan)
@@ -223,7 +219,7 @@ class NutritionPlanAdmin(ModelAdmin):
             'fields': ('target_calories', 'target_protein', 'target_carbs', 'target_fats')
         }),
         ("Calculator Data", {
-            'classes': ('tab', 'collapse'),  # Collapsed by default
+            'classes': ('tab', 'collapse'),
             'fields': ('calc_gender', 'calc_tdee', 'calc_weight', 'calc_activity_level')
         }),
     )
@@ -268,6 +264,83 @@ class SubscriptionPackageAdmin(ModelAdmin):
 class CountryAdmin(ModelAdmin):
     list_display = ('name', 'code', 'dial_code')
 
-# Register remaining technical models simply
+
+# --- 5. NEW: TRAINER SHIFT & SCHEDULE ---
+
+@admin.register(TrainerShift)
+class TrainerShiftAdmin(ModelAdmin):
+    """
+    Admin panel for managing trainer working hours.
+    """
+    list_display = ('trainer_display', 'shift_start', 'shift_end', 'slot_duration_display', 'updated_at')
+    search_fields = ('trainer__first_name', 'trainer__username')
+    autocomplete_fields = ['trainer']
+
+    fieldsets = (
+        ("Trainer", {
+            'fields': ('trainer',)
+        }),
+        ("Shift Hours", {
+            'fields': ('shift_start', 'shift_end', 'slot_duration')
+        }),
+    )
+
+    @display(description="Trainer")
+    def trainer_display(self, obj):
+        return obj.trainer.first_name or obj.trainer.username
+
+    @display(description="Slot Duration")
+    def slot_duration_display(self, obj):
+        return f"{obj.slot_duration} min"
+
+
+@admin.register(TrainerSchedule)
+class TrainerScheduleAdmin(ModelAdmin):
+    """
+    Admin panel for viewing and managing all schedule slots.
+    Shows only slots where the client still has an active subscription.
+    """
+    list_display = ('trainer_display', 'day_display', 'time_slot', 'client_display', 'subscription_status')
+    search_fields = ('trainer__first_name', 'client__name')
+    list_filter = ('day_of_week', 'trainer')
+    autocomplete_fields = ['trainer', 'client']
+
+    fieldsets = (
+        ("Slot", {
+            'fields': ('trainer', 'client', 'day_of_week', 'time_slot')
+        }),
+    )
+
+    def get_queryset(self, request):
+        """Filter out slots for clients with expired subscriptions."""
+        from django.db.models import F as DjF
+        return super().get_queryset(request).select_related(
+            'trainer', 'client'
+        ).filter(
+            client__subscriptions__is_active=True,
+            client__subscriptions__trainer=DjF('trainer'),
+        ).distinct()
+
+    @display(description="Trainer")
+    def trainer_display(self, obj):
+        return obj.trainer.first_name or obj.trainer.username
+
+    @display(description="Day")
+    def day_display(self, obj):
+        return dict(TrainerSchedule.DAY_CHOICES).get(obj.day_of_week, str(obj.day_of_week))
+
+    @display(description="Client")
+    def client_display(self, obj):
+        return obj.client.name
+
+    @display(description="Sub Status", label={"Active": "success", "Expired": "danger"})
+    def subscription_status(self, obj):
+        has_active = obj.client.subscriptions.filter(
+            trainer=obj.trainer, is_active=True
+        ).exists()
+        return "Active" if has_active else "Expired"
+
+
+# --- Register remaining technical models simply ---
 admin.site.register(TrainingPlan, ModelAdmin)
 admin.site.register(TrainingExercise, ModelAdmin)

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
 import {
     UserPlus, Shield, CheckCircle, AlertCircle,
-    Trash2, Edit2, X, Save, User, Loader2
+    Trash2, Edit2, X, Save, User, Loader2,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -24,17 +24,17 @@ const TrainerCardSkeleton = () => (
 // Main Component
 // ---------------------------------------------------------------------------
 const AdminTrainers = () => {
-    const [trainers, setTrainers] = useState([]);
+    const [trainers, setTrainers]               = useState([]);
     const [loadingTrainers, setLoadingTrainers] = useState(true);
-    const [formData, setFormData] = useState({ username: '', first_name: '', email: '', password: '' });
-    const [formErrors, setFormErrors] = useState({});
-    const [status, setStatus] = useState({ type: '', message: '' });
-    const [isLoading, setIsLoading] = useState(false);
-    const statusTimerRef = useRef(null);
+    const [formData, setFormData]               = useState({ username: '', first_name: '', email: '', password: '' });
+    const [formErrors, setFormErrors]           = useState({});
+    const [status, setStatus]                   = useState({ type: '', message: '' });
+    const [isLoading, setIsLoading]             = useState(false);
+    const statusTimerRef                        = useRef(null);
 
     // Edit State
-    const [editingId, setEditingId] = useState(null);
-    const [editData, setEditData] = useState({ username: '', first_name: '', email: '', password: '' });
+    const [editingId, setEditingId]     = useState(null);
+    const [editData, setEditData]       = useState({ username: '', first_name: '', email: '', password: '' });
     const [isSavingEdit, setIsSavingEdit] = useState(false);
 
     // ---------------------------------------------------------------------------
@@ -43,31 +43,52 @@ const AdminTrainers = () => {
     const showStatus = useCallback((type, message) => {
         setStatus({ type, message });
         if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
-        statusTimerRef.current = setTimeout(() => setStatus({ type: '', message: '' }), 5000);
+        statusTimerRef.current = setTimeout(
+            () => setStatus({ type: '', message: '' }),
+            5000,
+        );
     }, []);
 
-    useEffect(() => () => { if (statusTimerRef.current) clearTimeout(statusTimerRef.current); }, []);
+    useEffect(() => () => {
+        if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    }, []);
 
     // ---------------------------------------------------------------------------
-    // Fetch — with cleanup flag
+    // fetchTrainers
+    //
+    // FIX #2 (Medium — broken async cleanup):
+    // The original code returned `() => { cancelled = true }` as the *resolved
+    // value* of the async function, then attempted to call it via
+    // `.then(fn => fn && fn())` inside the useEffect cleanup.  By the time
+    // `.then()` resolves the component is already unmounted, so the flag is
+    // set far too late to prevent the setState calls inside `finally`.
+    //
+    // Fix: Accept an AbortSignal parameter and pass it to api.get().  Each
+    // useEffect creates its own AbortController and returns `controller.abort`
+    // as the synchronous cleanup React requires.  On abort, Axios throws a
+    // CanceledError which we catch and swallow silently.
     // ---------------------------------------------------------------------------
-    const fetchTrainers = useCallback(async () => {
-        let cancelled = false;
+    const fetchTrainers = useCallback(async (signal = null) => {
         setLoadingTrainers(true);
         try {
-            const response = await api.get('/manage-trainers/');
-            if (!cancelled) setTrainers(response.data);
+            const response = await api.get('/manage-trainers/', { signal });
+            setTrainers(response.data);
         } catch (error) {
-            if (!cancelled) console.error('Error fetching trainers', error);
+            if (error.name === 'CanceledError' || error.name === 'AbortError') return;
+            console.error('Error fetching trainers', error);
         } finally {
-            if (!cancelled) setLoadingTrainers(false);
+            // Guard: don't update state if the request was intentionally aborted
+            // (i.e. the component unmounted while the request was in flight).
+            if (!signal?.aborted) {
+                setLoadingTrainers(false);
+            }
         }
-        return () => { cancelled = true; };
     }, []);
 
     useEffect(() => {
-        const cleanup = fetchTrainers();
-        return () => { if (cleanup && typeof cleanup.then === 'function') cleanup.then(fn => fn && fn()); };
+        const controller = new AbortController();
+        fetchTrainers(controller.signal);
+        return () => controller.abort();
     }, [fetchTrainers]);
 
     // ---------------------------------------------------------------------------
@@ -76,12 +97,12 @@ const AdminTrainers = () => {
     const validateCreateForm = useCallback(() => {
         const errors = {};
         if (!formData.first_name.trim()) errors.first_name = 'Full name is required.';
-        if (!formData.username.trim()) errors.username = 'Username is required.';
+        if (!formData.username.trim())   errors.username   = 'Username is required.';
         else if (formData.username.trim().length < 3) errors.username = 'Username must be at least 3 characters.';
-        if (!formData.email.trim()) errors.email = 'Email is required.';
+        if (!formData.email.trim())      errors.email      = 'Email is required.';
         else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) errors.email = 'Please enter a valid email address.';
-        if (!formData.password) errors.password = 'Password is required.';
-        else if (formData.password.length < 6) errors.password = 'Password must be at least 6 characters.';
+        if (!formData.password)          errors.password   = 'Password is required.';
+        else if (formData.password.length < 8) errors.password = 'Password must be at least 8 characters.';
         return errors;
     }, [formData]);
 
@@ -101,17 +122,19 @@ const AdminTrainers = () => {
 
         try {
             await api.post('/manage-trainers/', {
-                username: formData.username.trim(),
+                username:   formData.username.trim(),
                 first_name: formData.first_name.trim(),
-                email: formData.email.trim(),
-                password: formData.password,
+                email:      formData.email.trim(),
+                password:   formData.password,
             });
             showStatus('success', 'Trainer account created successfully!');
             setFormData({ username: '', first_name: '', email: '', password: '' });
+            // Refresh without a signal — user-triggered action, no unmount concern.
             fetchTrainers();
         } catch (error) {
             const detail = error.response?.data?.username?.[0]
                 || error.response?.data?.email?.[0]
+                || error.response?.data?.password?.[0]
                 || 'Error creating trainer. Username or email may already be taken.';
             showStatus('error', detail);
         } finally {
@@ -128,7 +151,7 @@ const AdminTrainers = () => {
             await api.delete(`/manage-trainers/${id}/`);
             setTrainers(prev => prev.filter(t => t.id !== id));
             showStatus('success', `${name} has been removed.`);
-        } catch (error) {
+        } catch {
             showStatus('error', 'Failed to delete trainer. They may have active assignments.');
         }
     }, [showStatus]);
@@ -139,10 +162,10 @@ const AdminTrainers = () => {
     const startEdit = useCallback((trainer) => {
         setEditingId(trainer.id);
         setEditData({
-            username: trainer.username,
+            username:   trainer.username,
             first_name: trainer.first_name || '',
-            email: trainer.email || '',
-            password: '',
+            email:      trainer.email || '',
+            password:   '',
         });
     }, []);
 
@@ -152,22 +175,21 @@ const AdminTrainers = () => {
     }, []);
 
     const saveEdit = useCallback(async (id) => {
-        // Basic validation for edit
         if (!editData.username.trim()) {
             showStatus('error', 'Username cannot be empty.');
             return;
         }
-        if (editData.password && editData.password.length < 6) {
-            showStatus('error', 'New password must be at least 6 characters.');
+        if (editData.password && editData.password.length < 8) {
+            showStatus('error', 'New password must be at least 8 characters.');
             return;
         }
 
         setIsSavingEdit(true);
         try {
             const payload = {
-                username: editData.username.trim(),
+                username:   editData.username.trim(),
                 first_name: editData.first_name.trim(),
-                email: editData.email.trim(),
+                email:      editData.email.trim(),
             };
             if (editData.password.length > 0) payload.password = editData.password;
 
@@ -178,6 +200,7 @@ const AdminTrainers = () => {
         } catch (error) {
             const detail = error.response?.data?.username?.[0]
                 || error.response?.data?.email?.[0]
+                || error.response?.data?.password?.[0]
                 || 'Error updating trainer.';
             showStatus('error', detail);
         } finally {
@@ -270,7 +293,7 @@ const AdminTrainers = () => {
                                 type="password"
                                 onChange={(e) => { setFormData({ ...formData, password: e.target.value }); setFormErrors(prev => ({ ...prev, password: '' })); }}
                                 value={formData.password}
-                                placeholder="Min. 6 characters"
+                                placeholder="Min. 8 characters"
                             />
                             {formErrors.password && <p className="text-red-500 text-xs ml-1">{formErrors.password}</p>}
                         </div>
@@ -344,7 +367,6 @@ const AdminTrainers = () => {
                                                 className="bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 focus:border-orange-500 rounded-lg px-3 py-2 text-sm text-zinc-900 dark:text-white outline-none w-full"
                                                 placeholder="New Password (leave blank to keep)"
                                             />
-                                            {/* Save / Cancel buttons inlined below edit fields */}
                                             <div className="flex gap-2 pt-1">
                                                 <button
                                                     onClick={() => saveEdit(trainer.id)}

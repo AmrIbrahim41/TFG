@@ -62,7 +62,8 @@ const TrainerProfile = () => {
     try {
       const [transfersRes, clientsRes] = await Promise.all([
         api.get('/transfers/'),
-        api.get('/client-subscriptions/profile_clients/'),
+        // تم التعديل هنا: استخدام المسار الصحيح لجلب العملاء النشطين للمدرب
+        api.get('/client-subscriptions/active/'),
       ]);
       const sorted = [...transfersRes.data].sort(
         (a, b) => new Date(b.created_at) - new Date(a.created_at)
@@ -80,8 +81,12 @@ const TrainerProfile = () => {
 
   const fetchTrainers = useCallback(async () => {
     try {
-      const res = await api.get('/coach-schedules/get_trainers/');
-      setTrainers(res.data.filter((t) => t.id != currentUserId));
+      // تم التعديل هنا: استخدام المسار الصحيح لجلب قائمة المدربين
+      const res = await api.get('/manage-trainers/');
+      
+      // في حال كان الـ API يرجع data.results (بسبب الـ Pagination) أو مصفوفة مباشرة
+      const trainersList = Array.isArray(res.data) ? res.data : (res.data.results || []);
+      setTrainers(trainersList.filter((t) => t.id != currentUserId));
     } catch {
       // non-critical
     }

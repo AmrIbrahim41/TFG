@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     Plus, Search, Trash2, Database,
     X, Save, Edit2, Loader2
@@ -83,15 +83,43 @@ const FoodDatabase = () => {
     const [editingId, setEditingId] = useState(null);
     const [formData, setFormData] = useState(EMPTY_FORM);
 
+    // Pagination & Debounce States
+    const [nextPage, setNextPage] = useState(null);
+    const [prevPage, setPrevPage] = useState(null);
+    const searchDebounceRef = useRef(null);
+    const isFirstRender = useRef(true);
+
     // ---------------------------------------------------------------------------
-    // Fetch — with cleanup flag
+    // Fetch — with Pagination & Server-side filtering
     // ---------------------------------------------------------------------------
-    const fetchFoods = useCallback(async () => {
+    const fetchFoods = useCallback(async (urlOverride = null, query = '', category = 'All') => {
         let cancelled = false;
         setLoading(true);
         try {
-            const res = await api.get('/food-database/');
-            if (!cancelled) setFoods(res.data);
+            let url = urlOverride;
+            
+            // Build URL if not using a direct next/prev link
+            if (!url) {
+                const params = new URLSearchParams();
+                if (query) params.append('search', query);
+                if (category !== 'All') params.append('category', category);
+                url = `/food-database/?${params.toString()}`;
+            }
+
+            const res = await api.get(url);
+            
+            if (!cancelled) {
+                if (res.data.results) {
+                    setFoods(res.data.results);
+                    setNextPage(res.data.next);
+                    setPrevPage(res.data.previous);
+                } else {
+                    // Fallback in case pagination is disabled globally
+                    setFoods(res.data);
+                    setNextPage(null);
+                    setPrevPage(null);
+                }
+            }
         } catch (error) {
             if (!cancelled) {
                 console.error(error);
@@ -103,19 +131,28 @@ const FoodDatabase = () => {
         return () => { cancelled = true; };
     }, []);
 
+    // 1. Initial Load
     useEffect(() => {
-        const cleanup = fetchFoods();
-        return () => { if (cleanup && typeof cleanup.then === 'function') cleanup.then(fn => fn && fn()); };
+        fetchFoods();
     }, [fetchFoods]);
 
-    // ---------------------------------------------------------------------------
-    // Filtered list — useMemo prevents re-filtering on every render
-    // ---------------------------------------------------------------------------
-    const filteredFoods = useMemo(() => foods.filter(f =>
-        (activeCategory === 'All' || f.category === activeCategory) &&
-        (f.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-         (f.arabic_name || '').toLowerCase().includes(searchTerm.toLowerCase()))
-    ), [foods, activeCategory, searchTerm]);
+    // 2. Search & Category Filter (Debounced)
+    useEffect(() => {
+        if (isFirstRender.current) {
+            isFirstRender.current = false;
+            return;
+        }
+        
+        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+        
+        searchDebounceRef.current = setTimeout(() => {
+            fetchFoods(null, searchTerm, activeCategory);
+        }, 500);
+
+        return () => {
+            if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+        };
+    }, [searchTerm, activeCategory, fetchFoods]);
 
     // ---------------------------------------------------------------------------
     // Handlers
@@ -207,6 +244,9 @@ const FoodDatabase = () => {
         setFormData(prev => ({ ...prev, [key]: val }));
     }, []);
 
+    const handlePrev = useCallback(() => { if (prevPage) fetchFoods(prevPage); }, [prevPage, fetchFoods]);
+    const handleNext = useCallback(() => { if (nextPage) fetchFoods(nextPage); }, [nextPage, fetchFoods]);
+
     // ---------------------------------------------------------------------------
     // Render
     // ---------------------------------------------------------------------------
@@ -264,7 +304,7 @@ const FoodDatabase = () => {
             {!loading && (
                 <div className="flex items-center justify-between">
                     <p className="text-sm text-zinc-500 font-medium">
-                        {filteredFoods.length} {filteredFoods.length === 1 ? 'item' : 'items'}
+                        {foods.length} {foods.length === 1 ? 'item' : 'items'}
                         {activeCategory !== 'All' && ` in ${activeCategory}`}
                     </p>
                 </div>
@@ -288,7 +328,7 @@ const FoodDatabase = () => {
                         <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800/50">
                             {loading ? (
                                 [...Array(6)].map((_, i) => <TableRowSkeleton key={i} />)
-                            ) : filteredFoods.length === 0 ? (
+                            ) : foods.length === 0 ? (
                                 <tr>
                                     <td colSpan="7" className="p-16 text-center text-zinc-500">
                                         <Database size={32} className="opacity-20 mb-2 mx-auto" />
@@ -296,7 +336,7 @@ const FoodDatabase = () => {
                                     </td>
                                 </tr>
                             ) : (
-                                filteredFoods.map(food => (
+                                foods.map(food => (
                                     <tr key={food.id} className="hover:bg-zinc-100 dark:hover:bg-zinc-900/40 transition-colors group">
                                         <td className="p-5">
                                             <div className="font-bold text-zinc-900 dark:text-white text-sm">{food.name}</div>
@@ -355,10 +395,10 @@ const FoodDatabase = () => {
                             <div className="h-12 bg-zinc-200 dark:bg-zinc-800 rounded-xl" />
                         </div>
                     ))
-                ) : filteredFoods.length === 0 ? (
+                ) : foods.length === 0 ? (
                     <EmptyState query={searchTerm} />
                 ) : (
-                    filteredFoods.map(food => (
+                    foods.map(food => (
                         <div key={food.id} className="bg-zinc-50 dark:bg-[#121214] border border-zinc-300 dark:border-zinc-800 p-4 rounded-2xl space-y-3 shadow-sm">
                             <div className="flex justify-between items-start">
                                 <div>
@@ -411,6 +451,26 @@ const FoodDatabase = () => {
                     ))
                 )}
             </div>
+
+            {/* Pagination Controls */}
+            {!loading && foods.length > 0 && (
+                <div className="flex justify-center items-center gap-4 mt-8 mb-4">
+                    <button
+                        onClick={handlePrev}
+                        disabled={!prevPage}
+                        className="flex items-center gap-2 px-6 py-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 font-bold hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
+                    >
+                        Previous
+                    </button>
+                    <button
+                        onClick={handleNext}
+                        disabled={!nextPage}
+                        className="flex items-center gap-2 px-6 py-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 font-bold hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
+                    >
+                        Next
+                    </button>
+                </div>
+            )}
 
             {/* Modal */}
             {isModalOpen && (

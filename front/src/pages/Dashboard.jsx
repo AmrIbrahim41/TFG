@@ -3,12 +3,41 @@ import {
   Users, Activity, DollarSign, TrendingUp,
   ChevronDown, Check, UserCheck, Hash, CreditCard, ChevronRight,
   ArrowUpRight, ArrowDownRight, Wallet, AlertCircle, RefreshCw, Infinity,
+  Calendar,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import api from '../api';
 import { AuthContext } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+
+// ─────────────────────────────────────────────────────────────────
+// FIX #3 + #9: yearOptions computed dynamically from the current
+// year and defined OUTSIDE the component.
+//
+// Previously this was:
+//   const yearOptions = useMemo(() => [
+//     { value: 2024, label: '2024' },
+//     { value: 2025, label: '2025' },
+//     { value: 2026, label: '2026' },
+//   ], []);
+//
+// Two problems with that:
+//   • The year range was hardcoded — would silently break in 2027.
+//   • A static array inside useMemo adds memoisation overhead with
+//     zero benefit; the array never changes between renders.
+//
+// Moving it to module scope means it is computed exactly once when
+// the module loads, and the reference is always stable (no useMemo
+// needed at all).
+// ─────────────────────────────────────────────────────────────────
+const CURRENT_YEAR = new Date().getFullYear();
+const yearOptions = [
+  { value: CURRENT_YEAR - 1, label: String(CURRENT_YEAR - 1) },
+  { value: CURRENT_YEAR,     label: String(CURRENT_YEAR) },
+  { value: CURRENT_YEAR + 1, label: String(CURRENT_YEAR + 1) },
+];
 
 // ─────────────────────────────────────────────────────────────────
 // Custom Dropdown
@@ -25,9 +54,19 @@ const CustomSelect = ({ value, options, onChange }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // FIX #6: Replace loose == with explicit String() coercion on both sides.
+  //
+  // The original code used `opt.value == value` in three places.  This
+  // "worked" only because JavaScript's abstract equality coerces numbers to
+  // strings when one side is a string — month/year state is a number while
+  // option.value could be either, depending on how onChange propagates the
+  // value.  Relying on that coercion is undocumented and fragile.
+  //
+  // Using String(x) === String(y) is explicit, type-safe, and communicates
+  // intent clearly to future readers.
   const selectedLabel = useMemo(
-    () => options.find(opt => opt.value == value)?.label || value,
-    [options, value]
+    () => options.find(opt => String(opt.value) === String(value))?.label ?? value,
+    [options, value],
   );
 
   return (
@@ -50,13 +89,13 @@ const CustomSelect = ({ value, options, onChange }) => {
               key={option.value}
               onClick={() => { onChange(option.value); setIsOpen(false); }}
               className={`px-4 py-3 text-xs font-bold cursor-pointer flex items-center justify-between transition-colors
-                ${option.value == value
+                ${String(option.value) === String(value)
                   ? 'bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-500'
                   : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-white'
                 }`}
             >
               {option.label}
-              {option.value == value && <Check size={12} />}
+              {String(option.value) === String(value) && <Check size={12} />}
             </div>
           ))}
         </div>
@@ -137,12 +176,12 @@ const Dashboard = () => {
   const { user } = useContext(AuthContext);
   const { theme } = useTheme();
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
-  const navigate = useNavigate();
+  const [data, setData]       = useState(null);
+  const [error, setError]     = useState(null);
+  const navigate              = useNavigate();
 
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedYear, setSelectedYear]   = useState(new Date().getFullYear());
 
   const monthOptions = useMemo(() =>
     Array.from({ length: 12 }, (_, i) => ({
@@ -150,23 +189,14 @@ const Dashboard = () => {
       label: new Date(0, i).toLocaleString('default', { month: 'long' }),
     })), []);
 
-  const yearOptions = useMemo(() => [
-    { value: 2024, label: '2024' },
-    { value: 2025, label: '2025' },
-    { value: 2026, label: '2026' },
-  ], []);
+  // yearOptions is now defined at module scope (see top of file).
 
   const currentMonthLabel = useMemo(
     () => monthOptions[selectedMonth - 1]?.label || '',
-    [monthOptions, selectedMonth]
+    [monthOptions, selectedMonth],
   );
 
-  // ── Data Fetch ───────────────────────────────────────────────
-  // FIX: Previously there were two independent fetchers:
-  //   1. fetchStats (useCallback) — used only by the Retry button, no cancel guard.
-  //   2. An inline useEffect — used for initial load + dep changes, had cancel guard.
-  // This caused a double request on every mount and a missing cancel guard on retry.
-  // Solution: fetchStats now owns an AbortController; useEffect simply calls it.
+  // ── Data Fetch ── AbortController pattern (unchanged — already correct) ──
   const fetchStats = useCallback(() => {
     setLoading(true);
     setError(null);
@@ -188,18 +218,13 @@ const Dashboard = () => {
 
   useEffect(() => {
     const controller = fetchStats();
-    // Cancel the in-flight request when deps change or component unmounts.
     return () => controller.abort();
   }, [fetchStats]);
 
-  // ── Progress calculation
-  // FIX: Compute progress locally from sessions_used / total_sessions.
-  // Backend's `progress` field can be 0 even when sessions_used > 0 on
-  // some plan types. Computing locally guarantees accuracy.
   const computeProgress = useCallback((client) => {
-    const used = Number(client.sessions_used ?? 0);
+    const used  = Number(client.sessions_used ?? 0);
     const total = Number(client.total_sessions);
-    if (!total || total <= 0) return null; // unlimited plan — no % to show
+    if (!total || total <= 0) return null;
     return Math.min(100, Math.max(0, Math.round((used / total) * 100)));
   }, []);
 
@@ -267,7 +292,7 @@ const Dashboard = () => {
           {(data?.role === 'admin' || data?.role === 'trainer') && (
             <div className="flex items-center gap-2 flex-wrap">
               <CustomSelect value={selectedMonth} options={monthOptions} onChange={setSelectedMonth} />
-              <CustomSelect value={selectedYear} options={yearOptions} onChange={setSelectedYear} />
+              <CustomSelect value={selectedYear}  options={yearOptions}  onChange={setSelectedYear} />
             </div>
           )}
         </div>
@@ -275,9 +300,38 @@ const Dashboard = () => {
         {/* ── ADMIN VIEW ───────────────────────────────────────── */}
         {data?.role === 'admin' && (
           <div className="space-y-8">
+
+            <motion.button
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => navigate('/admin')}
+              className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl
+                         bg-gradient-to-r from-blue-600 to-blue-700
+                         hover:from-blue-700 hover:to-blue-800
+                         text-white shadow-lg shadow-blue-600/20
+                         transition-all group relative overflow-hidden"
+            >
+              <div className="absolute right-0 top-0 w-40 h-40 bg-white/10 rounded-full
+                              -mr-12 -mt-12 blur-2xl pointer-events-none" />
+              <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center
+                              flex-shrink-0 group-hover:bg-white/30 transition-colors shadow-sm">
+                <Users size={22} className="text-white" />
+              </div>
+              <div className="flex-1 text-left">
+                <p className="text-base font-bold leading-tight">Manage Trainers &amp; Schedules</p>
+                <p className="text-xs text-blue-100 mt-0.5">
+                  View all trainers, inspect schedules, and drill into individual performance
+                </p>
+              </div>
+              <ChevronRight
+                size={20}
+                className="text-white/70 group-hover:text-white group-hover:translate-x-1
+                           transition-all flex-shrink-0"
+              />
+            </motion.button>
+
             {/* Financial Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Total Sales */}
               <div className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800 p-5 md:p-6 rounded-3xl relative overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors shadow-sm">
                 <div className="absolute right-0 top-0 p-32 bg-orange-500/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
                 <div className="flex justify-between items-start mb-4">
@@ -295,7 +349,6 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              {/* Total Revenue */}
               <div className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800 p-5 md:p-6 rounded-3xl relative overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors shadow-sm">
                 <div className="absolute right-0 top-0 p-32 bg-green-500/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
                 <div className="flex justify-between items-start mb-4">
@@ -351,23 +404,45 @@ const Dashboard = () => {
 
             {/* Trainers Overview */}
             <div className="space-y-4">
-              <h3 className="text-base md:text-lg font-bold flex items-center gap-2 text-zinc-900 dark:text-white">
-                <Users size={20} className="text-blue-500" /> Coach Performance
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-base md:text-lg font-bold flex items-center gap-2 text-zinc-900 dark:text-white">
+                  <Users size={20} className="text-blue-500" /> Coach Performance
+                </h3>
+                <motion.button
+                  whileHover={{ x: 2 }}
+                  onClick={() => navigate('/admin')}
+                  className="flex items-center gap-1 text-xs font-bold text-blue-500
+                             hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                >
+                  View All <ChevronRight size={14} />
+                </motion.button>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {data.trainers_overview.map(trainer => (
-                  <div
+                  <motion.div
                     key={trainer.id}
-                    className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800 p-4 md:p-5 rounded-2xl flex flex-col gap-4 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors shadow-sm"
+                    whileHover={{ y: -2, scale: 1.01 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => navigate(`/admin/trainers/${trainer.id}`)}
+                    className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800
+                               p-4 md:p-5 rounded-2xl flex flex-col gap-4
+                               hover:border-blue-400/60 dark:hover:border-blue-500/40
+                               transition-all cursor-pointer shadow-sm hover:shadow-md group"
                   >
                     <div className="flex items-center gap-3 border-b border-zinc-200 dark:border-zinc-800 pb-4">
-                      <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-white font-bold shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700
+                                      flex items-center justify-center text-white font-bold shrink-0 shadow-sm">
                         {trainer.name.charAt(0)}
                       </div>
-                      <div className="min-w-0">
-                        <h4 className="font-bold text-zinc-900 dark:text-white truncate">{trainer.name}</h4>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-bold text-zinc-900 dark:text-white truncate
+                                       group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                          {trainer.name}
+                        </h4>
                         <span className="text-xs text-zinc-500">Coach</span>
                       </div>
+                      <ChevronRight size={16} className="text-zinc-300 dark:text-zinc-600 shrink-0
+                                                          group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all" />
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="bg-green-50 dark:bg-green-500/5 border border-green-200 dark:border-green-500/10 p-3 rounded-xl">
@@ -392,7 +467,14 @@ const Dashboard = () => {
                         )}
                       </div>
                     </div>
-                  </div>
+                    <div className="flex items-center justify-center gap-1.5 pt-1 border-t
+                                    border-zinc-100 dark:border-zinc-800 text-xs font-semibold
+                                    text-zinc-400 dark:text-zinc-600
+                                    group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors">
+                      <Calendar size={12} />
+                      View Schedule &amp; Details
+                    </div>
+                  </motion.div>
                 ))}
               </div>
             </div>
@@ -402,9 +484,38 @@ const Dashboard = () => {
         {/* ── TRAINER VIEW ────────────────────────────────────── */}
         {data?.role === 'trainer' && (
           <div className="space-y-8 animate-in fade-in duration-500">
+
+            <motion.button
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => navigate('/schedule')}
+              className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl
+                         bg-gradient-to-r from-orange-500 to-orange-600
+                         hover:from-orange-600 hover:to-orange-700
+                         text-white shadow-lg shadow-orange-500/20
+                         transition-all group relative overflow-hidden"
+            >
+              <div className="absolute right-0 top-0 w-40 h-40 bg-white/10 rounded-full
+                              -mr-12 -mt-12 blur-2xl pointer-events-none" />
+              <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center
+                              flex-shrink-0 group-hover:bg-white/30 transition-colors shadow-sm">
+                <Calendar size={22} className="text-white" />
+              </div>
+              <div className="flex-1 text-left">
+                <p className="text-base font-bold leading-tight">Manage My Weekly Schedule</p>
+                <p className="text-xs text-orange-100 mt-0.5">
+                  Configure your shift hours and assign clients to time slots
+                </p>
+              </div>
+              <ChevronRight
+                size={20}
+                className="text-white/70 group-hover:text-white group-hover:translate-x-1
+                           transition-all flex-shrink-0"
+              />
+            </motion.button>
+
             {/* Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Active Clients */}
               <div className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800 p-5 md:p-6 rounded-3xl flex flex-col justify-center items-center gap-2 group hover:border-green-500/50 transition-colors relative overflow-hidden min-h-[200px] md:h-[240px] shadow-sm">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 rounded-full -mr-10 -mt-10 blur-2xl" />
                 <div className="p-4 bg-green-100 dark:bg-green-500/10 text-green-600 dark:text-green-500 rounded-2xl group-hover:scale-110 transition-transform">
@@ -416,7 +527,6 @@ const Dashboard = () => {
                 <div className="text-xs font-bold text-zinc-500 uppercase tracking-widest z-10">Active Clients</div>
               </div>
 
-              {/* Financial Breakdown */}
               <div className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800 p-5 md:p-6 rounded-3xl flex flex-col justify-between group hover:border-orange-500/50 transition-colors relative overflow-hidden min-h-[200px] md:h-[240px] shadow-sm">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-full -mr-10 -mt-10 blur-2xl" />
 
@@ -487,14 +597,13 @@ const Dashboard = () => {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                   {data.clients.map((client, i) => {
-                    // ── FIX: compute progress locally for accuracy ──────────
-                    const sessionsUsed = Number(client.sessions_used ?? 0);
-                    const totalSessions = client.total_sessions != null ? Number(client.total_sessions) : null;
-                    const hasLimit = totalSessions != null && totalSessions > 0;
-                    const progress = hasLimit
+                    const sessionsUsed   = Number(client.sessions_used ?? 0);
+                    const totalSessions  = client.total_sessions != null ? Number(client.total_sessions) : null;
+                    const hasLimit       = totalSessions != null && totalSessions > 0;
+                    const progress       = hasLimit
                       ? Math.min(100, Math.max(0, Math.round((sessionsUsed / totalSessions) * 100)))
-                      : null; // null = unlimited plan
-                    const isComplete = progress != null && progress >= 100;
+                      : null;
+                    const isComplete     = progress != null && progress >= 100;
 
                     return (
                       <div
@@ -502,10 +611,8 @@ const Dashboard = () => {
                         onClick={() => navigate(client.is_child ? `/children/${client.id}` : `/clients/${client.id}`)}
                         className="bg-white dark:bg-[#18181b] border border-zinc-200 dark:border-zinc-800 hover:border-orange-400/60 dark:hover:border-orange-500/50 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 p-4 md:p-5 rounded-3xl transition-all cursor-pointer group relative overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md"
                       >
-                        {/* Active indicator strip */}
                         <div className="absolute left-0 top-6 bottom-6 w-1 rounded-r-full bg-green-300 dark:bg-green-500/20 group-hover:bg-green-500 transition-colors" />
 
-                        {/* Top: Avatar & Info */}
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex items-center gap-3">
                             <div className="w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center overflow-hidden border-2 border-zinc-200 dark:border-zinc-700/50 group-hover:border-orange-400 dark:group-hover:border-orange-500 transition-colors shadow-sm shrink-0">
@@ -531,7 +638,6 @@ const Dashboard = () => {
                           </div>
                         </div>
 
-                        {/* Progress Bar — only shown for plans with a session limit */}
                         {hasLimit ? (
                           <div className="mb-3">
                             <div className="flex justify-between items-center mb-1.5">
@@ -560,7 +666,6 @@ const Dashboard = () => {
                           </div>
                         )}
 
-                        {/* Bottom: Info Grid */}
                         <div className="grid grid-cols-2 gap-2 bg-zinc-50 dark:bg-zinc-900/50 p-3 rounded-2xl border border-zinc-200 dark:border-zinc-800/50">
                           <div>
                             <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mb-1 flex items-center gap-1">

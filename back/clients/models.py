@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.conf import settings
 from datetime import date, timedelta
 from django.utils import timezone
@@ -118,11 +118,7 @@ class ClientSubscription(models.Model):
         if not self.end_date and self.plan:
             self.end_date = self.start_date + timedelta(days=self.plan.duration_days)
 
-        # FIX: Auto-deactivate at save time if the subscription has expired.
-        # This ensures the flag is corrected whenever ANY code path saves the
-        # model (admin edits, API updates, etc.) — not just on session check-ins.
-        # The management command handles the bulk nightly sweep; this guard
-        # catches individual saves between runs.
+        # Auto-deactivate at save time if the subscription has expired.
         if self.is_active and self.end_date and self.end_date < timezone.now().date():
             self.is_active = False
 
@@ -130,11 +126,6 @@ class ClientSubscription(models.Model):
 
     @property
     def is_expired(self) -> bool:
-        """
-        FIX (new property): True when the subscription is past its end_date,
-        regardless of the is_active flag. Lets views and serializers check
-        expiry status without triggering a DB write.
-        """
         return bool(self.end_date and self.end_date < timezone.now().date())
 
     @property
@@ -468,28 +459,11 @@ class CoachSchedule(models.Model):
 
 # ---------------------------------------------------------------------------
 # EXERCISE CATEGORY CHOICES
-# Used in the exercises_summary JSONField of GroupSessionLog and GroupWorkoutTemplate.
-#
-# Each exercise object stored in JSON follows this schema:
-# {
-#   "name":       str,                    # e.g. "Barbell Squat"
-#   "category":   "weight"|"reps"|"time", # replaces legacy "type" / "target"
-#   "sets_count": int,                    # e.g. 4
-#   "results": [                          # per-participant performance
-#     {
-#       "client":   str,     # client name
-#       "client_id": int,    # client pk
-#       "val1":     str,     # Weight (kg) | Reps | Minutes
-#       "val2":     str,     # Reps       | —    | Seconds
-#       "note":     str
-#     }
-#   ]
-# }
 # ---------------------------------------------------------------------------
 
-EXERCISE_CATEGORY_WEIGHT = 'weight'   # وزن  – captures KG + Reps
-EXERCISE_CATEGORY_REPS   = 'reps'     # عدات – captures Reps only
-EXERCISE_CATEGORY_TIME   = 'time'     # وقت  – captures Minutes + Seconds
+EXERCISE_CATEGORY_WEIGHT = 'weight'
+EXERCISE_CATEGORY_REPS   = 'reps'
+EXERCISE_CATEGORY_TIME   = 'time'
 
 EXERCISE_CATEGORY_CHOICES = [
     (EXERCISE_CATEGORY_WEIGHT, 'Weight / وزن'),
@@ -499,13 +473,6 @@ EXERCISE_CATEGORY_CHOICES = [
 
 
 class GroupSessionLog(models.Model):
-    """
-    Records a completed group training session.
-
-    exercises_summary (JSONField) stores a list of exercise objects.
-    Each object uses the new category-based schema defined above.
-    Legacy records may still contain 'type'/'target' – the API handles both.
-    """
     coach = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     date = models.DateTimeField(default=timezone.now)
     day_name = models.CharField(max_length=20)
@@ -522,17 +489,56 @@ class GroupSessionParticipant(models.Model):
     note = models.CharField(max_length=255, blank=True)
     deducted = models.BooleanField(default=False)
 
+    def save(self, *args, **kwargs):
+        # Determine if `deducted` is transitioning from False → True so we only
+        # deduct once, even if the record is saved multiple times afterward.
+        is_new = self.pk is None
+        previously_deducted = False
+
+        if not is_new:
+            try:
+                previously_deducted = (
+                    GroupSessionParticipant.objects
+                    .values_list('deducted', flat=True)
+                    .get(pk=self.pk)
+                )
+            except GroupSessionParticipant.DoesNotExist:
+                is_new = True
+
+        super().save(*args, **kwargs)
+
+        # Only touch the subscription when deducted is being flipped to True.
+        should_deduct = self.deducted and (is_new or not previously_deducted)
+        if not (should_deduct and self.client_id):
+            return
+
+        with transaction.atomic():
+            active_sub = (
+                ClientSubscription.objects
+                .select_for_update()
+                .filter(client_id=self.client_id, is_active=True)
+                .select_related('plan')
+                .first()
+            )
+            if active_sub is None:
+                return
+
+            # Atomic increment using the ORM to avoid race conditions.
+            ClientSubscription.objects.filter(pk=active_sub.pk).update(
+                sessions_used=models.F('sessions_used') + 1
+            )
+            active_sub.refresh_from_db(fields=['sessions_used'])
+
+            # Auto-deactivate if the plan's session limit has been reached.
+            if active_sub.plan and active_sub.sessions_used >= active_sub.plan.units:
+                active_sub.is_active = False
+                active_sub.save(update_fields=['is_active'])
+
     def __str__(self):
         return f"{self.client.name if self.client else 'Unknown'} in {self.session}"
 
 
 class GroupWorkoutTemplate(models.Model):
-    """
-    Reusable exercise template.
-
-    exercises (JSONField) stores a list of exercise plan objects (no results):
-    [{"name": str, "category": "weight"|"reps"|"time", "sets_count": int}, ...]
-    """
     name = models.CharField(max_length=200)
     exercises = models.JSONField(default=list)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
@@ -603,3 +609,96 @@ class ManualWorkoutSave(models.Model):
 
     def __str__(self):
         return f"{self.client_name} - {self.session_name}"
+
+
+# ---------------------------------------------------------------------------
+# 14. TRAINER SHIFT & WEEKLY SCHEDULE  ← NEW
+# ---------------------------------------------------------------------------
+
+class TrainerShift(models.Model):
+    """
+    Stores the working hours (shift) for a single trainer.
+    One-to-one with User so each trainer has exactly one shift record.
+    The slot_duration field controls how many minutes each schedule cell spans
+    (default 60 min = 1 hour).
+    """
+    trainer = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='shift',
+        help_text="The trainer this shift belongs to."
+    )
+    shift_start = models.TimeField(
+        default='08:00',
+        help_text="Start of working day (HH:MM)."
+    )
+    shift_end = models.TimeField(
+        default='20:00',
+        help_text="End of working day (HH:MM)."
+    )
+    slot_duration = models.IntegerField(
+        default=60,
+        help_text="Duration of each time slot in minutes (e.g. 60 = 1 hour)."
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return (
+            f"{self.trainer.first_name or self.trainer.username} — "
+            f"{self.shift_start.strftime('%H:%M')} to {self.shift_end.strftime('%H:%M')}"
+        )
+
+
+class TrainerSchedule(models.Model):
+    """
+    A single booked time slot in a trainer's weekly schedule.
+
+    Business rules enforced at the serializer layer:
+      • The linked client must have an is_active=True subscription with this trainer.
+      • If the subscription expires/is deactivated the slot is excluded at the
+        queryset level in the ViewSet (no stale entries returned to the UI).
+
+    Uniqueness constraint prevents double-booking the same slot for the same trainer.
+    """
+    DAY_CHOICES = [
+        (1, 'Monday'),
+        (2, 'Tuesday'),
+        (3, 'Wednesday'),
+        (4, 'Thursday'),
+        (5, 'Friday'),
+        (6, 'Saturday'),
+        (7, 'Sunday'),
+    ]
+
+    trainer = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='trainer_schedule_slots',
+        help_text="The trainer who owns this slot."
+    )
+    client = models.ForeignKey(
+        Client,
+        on_delete=models.CASCADE,
+        related_name='schedule_slots',
+        help_text="The client booked into this slot."
+    )
+    day_of_week = models.IntegerField(
+        choices=DAY_CHOICES,
+        help_text="Day number: 1=Monday … 7=Sunday."
+    )
+    time_slot = models.TimeField(
+        help_text="Start time of the slot (HH:MM)."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        # A trainer cannot have two clients in the exact same slot.
+        unique_together = ('trainer', 'day_of_week', 'time_slot')
+        ordering = ['day_of_week', 'time_slot']
+
+    def __str__(self):
+        day_name = dict(self.DAY_CHOICES).get(self.day_of_week, str(self.day_of_week))
+        return (
+            f"{self.trainer.first_name or self.trainer.username} — "
+            f"{day_name} {self.time_slot.strftime('%H:%M')} → {self.client.name}"
+        )

@@ -185,7 +185,10 @@ CORS_ALLOW_ALL_ORIGINS = True  # For development only
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-    )
+    ),
+    'DEFAULT_THROTTLE_RATES': {
+        'login_anon': '10/min', # السماح بـ 10 محاولات فقط في الدقيقة
+    }
 }
 
 from datetime import timedelta

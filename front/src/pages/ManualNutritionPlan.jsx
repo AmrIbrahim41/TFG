@@ -153,7 +153,12 @@ const ManualNutritionPlan = () => {
     let cancelled = false;
     api
       .get('/food-database/')
-      .then((res) => { if (!cancelled) setFoodDatabase(res.data); })
+      .then((res) => { 
+        if (!cancelled) {
+          // التعديل هنا ليدعم الـ Pagination
+          setFoodDatabase(res.data.results || res.data); 
+        }
+      })
       .catch(() => { /* non-critical */ });
     return () => { cancelled = true; };
   }, []);

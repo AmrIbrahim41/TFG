@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, X, User, Phone, Hash, Loader2, Camera, Search, ChevronLeft, ChevronRight, Dumbbell } from 'lucide-react'; import api from '../api';
+import {
+    Plus, X, User, Phone, Hash, Loader2,
+    Camera, Search, ChevronLeft, ChevronRight, Dumbbell,
+} from 'lucide-react';
+import api from '../api';
 // IMPORTANT: BASE_URL is NOT imported here.
 // The backend returns full absolute URIs for all photo fields.
 // Using photo_url directly without any prepending is correct.
@@ -27,30 +31,45 @@ const ClientCardSkeleton = () => (
 // ---------------------------------------------------------------------------
 const Clients = () => {
     const navigate = useNavigate();
-    const [clients, setClients] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [clients, setClients]       = useState([]);
+    const [loading, setLoading]       = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
+    const [isSaving, setIsSaving]     = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [nextPage, setNextPage] = useState(null);
-    const [prevPage, setPrevPage] = useState(null);
-    const [formData, setFormData] = useState({ name: '', manual_id: '', phone: '', photo: null });
+    const [nextPage, setNextPage]     = useState(null);
+    const [prevPage, setPrevPage]     = useState(null);
+    const [formData, setFormData]     = useState({ name: '', manual_id: '', phone: '', photo: null });
     const [previewUrl, setPreviewUrl] = useState(null);
     const [fetchError, setFetchError] = useState(null);
-    const searchDebounceRef = useRef(null);
 
-    // FIX #9: Used to prevent the debounce effect from firing on initial mount.
-    // Without this guard, both the initial-load effect and the debounce effect
-    // fired immediately on mount, sending two identical API requests.
+    // Used to suppress the debounce effect on the very first render so it
+    // doesn't race with the initial-load effect below.
     const isFirstRender = useRef(true);
 
     // ---------------------------------------------------------------------------
-    // Fetch clients — supports pagination URL overrides and search queries
+    // fetchClients
+    //
+    // FIX #1 (Critical — unmount race condition):
+    // The original implementation declared a local `cancelled` flag INSIDE
+    // the async function body and returned `() => { cancelled = true }` as
+    // the Promise's resolved value.  React cannot use a Promise as a cleanup
+    // function, so the flag was never flipped and setState was called on
+    // unmounted components.
+    //
+    // The correct pattern — mirroring Dashboard.jsx — is:
+    //   1. Accept an optional AbortSignal as a parameter.
+    //   2. Pass it to api.get() so Axios can cancel the in-flight request.
+    //   3. Silently swallow CanceledError / AbortError (they are expected).
+    //   4. Create the AbortController INSIDE each useEffect and return
+    //      `controller.abort` as the synchronous cleanup React requires.
     // ---------------------------------------------------------------------------
-    const fetchClients = useCallback(async (urlOverride = null, query = '') => {
+    const fetchClients = useCallback(async (
+        urlOverride = null,
+        query       = '',
+        signal      = null,
+    ) => {
         setLoading(true);
         setFetchError(null);
-        let cancelled = false;
         try {
             let url;
             if (urlOverride) {
@@ -65,8 +84,9 @@ const Clients = () => {
                 if (query) queryParams.append('search', query);
                 url = `/clients/?${queryParams.toString()}`;
             }
-            const response = await api.get(url);
-            if (cancelled) return;
+
+            const response = await api.get(url, { signal });
+
             if (response.data.results) {
                 setClients(response.data.results);
                 setNextPage(response.data.next);
@@ -75,42 +95,49 @@ const Clients = () => {
                 setClients(response.data);
             }
         } catch (error) {
-            if (!cancelled) {
-                console.error('Failed to fetch clients:', error);
-                setFetchError('Failed to load athletes. Please try again.');
-            }
+            // An AbortError / CanceledError means the component unmounted while
+            // the request was in flight — this is expected and not an error.
+            if (error.name === 'CanceledError' || error.name === 'AbortError') return;
+            console.error('Failed to fetch clients:', error);
+            setFetchError('Failed to load athletes. Please try again.');
         } finally {
-            if (!cancelled) setLoading(false);
+            // Only update loading state when the request was not aborted.
+            // After an abort the component is gone; calling setState would warn.
+            if (!signal?.aborted) {
+                setLoading(false);
+            }
         }
-        // FIX #10: Return the cleanup function so React can call it on unmount.
-        // Previously fetchClients returned this function but the initial-load
-        // useEffect below didn't propagate the return value to React, meaning
-        // a fast navigation away (before the response arrived) would still
-        // attempt setState on an unmounted component and trigger a React warning.
-        return () => { cancelled = true; };
     }, []);
 
-    // Initial load
+    // ---------------------------------------------------------------------------
+    // Initial load — AbortController gives React a real synchronous cleanup fn.
+    // ---------------------------------------------------------------------------
     useEffect(() => {
-        fetchClients(); // استدعاء الدالة فقط بدون return
+        const controller = new AbortController();
+        fetchClients(null, '', controller.signal);
+        return () => controller.abort();
     }, [fetchClients]);
 
-    // Debounced search — clears previous timeout on every keystroke
-    // FIX #9: Skip on first render. The initial-load effect above already
-    // fetches on mount. Without this guard, both effects fired simultaneously,
-    // causing two identical GET /clients/?is_child=false requests every time
-    // the component mounted.
+    // ---------------------------------------------------------------------------
+    // Debounced search — skips the very first render (initial-load effect above
+    // already fetches on mount), debounces keystrokes, and cancels in-flight
+    // requests when the query changes again before the previous one resolves.
+    // ---------------------------------------------------------------------------
     useEffect(() => {
         if (isFirstRender.current) {
             isFirstRender.current = false;
             return;
         }
-        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-        searchDebounceRef.current = setTimeout(() => {
-            fetchClients(null, searchQuery);
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => {
+            fetchClients(null, searchQuery, controller.signal);
         }, 500);
+
+        // Cleanup: cancel both the pending timeout AND any in-flight request.
         return () => {
-            if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+            clearTimeout(timer);
+            controller.abort();
         };
     }, [searchQuery, fetchClients]);
 
@@ -120,13 +147,11 @@ const Clients = () => {
     const handleFileChange = useCallback((e) => {
         const file = e.target.files[0];
         if (!file) return;
-        // Revoke previous object URL to prevent memory leaks
         if (previewUrl) URL.revokeObjectURL(previewUrl);
         setFormData(prev => ({ ...prev, photo: file }));
         setPreviewUrl(URL.createObjectURL(file));
     }, [previewUrl]);
 
-    // Clean up object URL when modal closes
     const handleCloseModal = useCallback(() => {
         if (previewUrl) URL.revokeObjectURL(previewUrl);
         setIsModalOpen(false);
@@ -137,30 +162,21 @@ const Clients = () => {
     const handleSubmit = useCallback(async (e) => {
         e.preventDefault();
 
-        // Frontend validation
-        if (!formData.name.trim()) {
-            toast.error('Full name is required.');
-            return;
-        }
-        if (!formData.manual_id.trim()) {
-            toast.error('ID number is required.');
-            return;
-        }
-        if (!formData.phone.trim()) {
-            toast.error('Phone number is required.');
-            return;
-        }
+        if (!formData.name.trim())     { toast.error('Full name is required.');    return; }
+        if (!formData.manual_id.trim()) { toast.error('ID number is required.');    return; }
+        if (!formData.phone.trim())    { toast.error('Phone number is required.'); return; }
 
         setIsSaving(true);
         try {
             const data = new FormData();
-            data.append('name', formData.name.trim());
+            data.append('name',      formData.name.trim());
             data.append('manual_id', formData.manual_id.trim());
-            data.append('phone', formData.phone.trim());
+            data.append('phone',     formData.phone.trim());
             if (formData.photo) data.append('photo', formData.photo);
 
             await api.post('/clients/', data, { headers: { 'Content-Type': 'multipart/form-data' } });
             toast.success('Athlete profile created!');
+            // Refresh with current search — no signal needed (user-initiated action).
             fetchClients(null, searchQuery);
             handleCloseModal();
         } catch (error) {
@@ -173,6 +189,7 @@ const Clients = () => {
         }
     }, [formData, fetchClients, handleCloseModal, searchQuery]);
 
+    // Pagination — user-triggered, no unmount concern, no signal needed.
     const handlePrev = useCallback(() => { if (prevPage) fetchClients(prevPage); }, [prevPage, fetchClients]);
     const handleNext = useCallback(() => { if (nextPage) fetchClients(nextPage); }, [nextPage, fetchClients]);
 
@@ -275,7 +292,10 @@ const Clients = () => {
                                     <div className="flex-1 min-w-0">
                                         <h3 className="text-lg md:text-xl font-bold text-zinc-900 dark:text-white truncate group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors flex items-center gap-2 flex-wrap">
                                             <span className="truncate">{client.name}</span>
-                                            <span className={`text-[10px] px-2 py-0.5 rounded-full border uppercase tracking-wider shrink-0 ${client.is_subscribed ? 'bg-green-100 dark:bg-green-500/10 text-green-600 dark:text-green-500 border-green-200 dark:border-green-500/20' : 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-500 border-red-200 dark:border-red-500/20'}`}>
+                                            <span className={`text-[10px] px-2 py-0.5 rounded-full border uppercase tracking-wider shrink-0 ${client.is_subscribed
+                                                ? 'bg-green-100 dark:bg-green-500/10 text-green-600 dark:text-green-500 border-green-200 dark:border-green-500/20'
+                                                : 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-500 border-red-200 dark:border-red-500/20'}`}
+                                            >
                                                 {client.is_subscribed ? 'Active' : 'Inactive'}
                                             </span>
                                         </h3>
