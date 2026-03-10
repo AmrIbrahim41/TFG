@@ -157,7 +157,10 @@ class ClientSerializer(serializers.ModelSerializer):
         return None
 
     def get_is_subscribed(self, obj):
-        return obj.subscriptions.filter(is_active=True).exists()
+        # FIX B3: .filter().exists() creates a new DB query, bypassing the
+        # prefetch_related('subscriptions__trainer') cache in ClientViewSet.
+        # Python-level iteration reuses the prefetched data, keeping it 0 extra queries.
+        return any(sub.is_active for sub in obj.subscriptions.all())
 
     def validate(self, data):
         request = self.context.get('request')

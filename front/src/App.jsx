@@ -1,5 +1,5 @@
 import React, { useContext, Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { AuthProvider, AuthContext } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -22,10 +22,12 @@ const ChildDetails          = lazy(() => import('./pages/childrens/ChildDetails'
 const TrainerProfile        = lazy(() => import('./pages/TrainerProfile'));
 
 // ── NEW pages ────────────────────────────────────────────────────────────────
-// Trainer's own weekly schedule page
 const TrainerSchedulePage   = lazy(() => import('./pages/TrainerSchedule.jsx'));
-// Admin oversight detail page (schedule + clients/stats for a specific trainer)
 const AdminTrainerDetails   = lazy(() => import('./pages/Admintrainerdetails.jsx'));
+
+// ── Group Session Components ─────────────────────────────────────────────────
+const SessionPlanner        = lazy(() => import('./pages/childrens/SessionPlanner'));
+const LiveSession           = lazy(() => import('./pages/childrens/LiveSession'));
 
 // ── Loading fallback ─────────────────────────────────────────────────────────
 const LoadingFallback = () => (
@@ -49,6 +51,65 @@ const AdminRoute = ({ children }) => {
   if (!user) return <Navigate to="/login" replace />;
   if (!user.is_superuser) return <Navigate to="/" replace />;
   return children;
+};
+
+// ── Route Adapters for Group Session ─────────────────────────────────────────
+// These wrappers extract shared state from React Router's location object
+// and map them into the highly decoupled props required by the new components.
+
+const SessionPlannerPage = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const state = location.state || {};
+
+  const day = state.day || 'Today';
+  const childrenData = state.children || [];
+  const initialExercises = state.exercises || [];
+
+  return (
+    <SessionPlanner
+      day={day}
+      childrenCount={childrenData.length}
+      initialExercises={initialExercises}
+      // التعديل هنا: تم إزالة الحالة التي تسبب الـ Navigation Loop
+      onClose={() => navigate('/children')}
+      onStartLiveSession={(validExercises) => {
+        navigate('/group-session/live', {
+          state: { ...state, exercises: validExercises }
+        });
+      }}
+    />
+  );
+};
+
+const LiveSessionPage = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const state = location.state || {};
+
+  const day = state.day || 'Today';
+  const childrenData = state.children || [];
+  const exercises = state.exercises || [];
+
+  // Security fallback: if accessed directly without planning exercises, route back to setup
+  if (exercises.length === 0) {
+    return <Navigate to="/group-session/setup" state={state} replace />;
+  }
+
+  return (
+    <LiveSession
+      day={day}
+      children={childrenData}
+      exercises={exercises}
+      // التعديل هنا أيضاً للحماية من نفس المشكلة
+      onClose={() => navigate('/children')}
+      onEditPlan={() => {
+        navigate('/group-session/setup', {
+          state: { ...state, exercises }
+        });
+      }}
+    />
+  );
 };
 
 // ── Animated routes (must be inside Router to use useLocation) ───────────────
@@ -120,9 +181,6 @@ const AnimatedRoutes = () => {
                 <PrivateRoute><PageTransition><ChildDetails /></PageTransition></PrivateRoute>
               } />
 
-              {/* ── NEW: Trainer's own schedule ──
-                  Accessible by all authenticated users (trainers manage their own schedule).
-                  Route: /schedule */}
               <Route path="/schedule" element={
                 <PrivateRoute>
                   <PageTransition>
@@ -131,14 +189,25 @@ const AnimatedRoutes = () => {
                 </PrivateRoute>
               } />
 
+              {/* ── NEW: Group Session Split Routes ── */}
+              {/* تمت إزالة PageTransition لمنع تضارب الأنيميشن مع fixed inset-0 */}
+              <Route path="/group-session/setup" element={
+                <PrivateRoute>
+                  <SessionPlannerPage />
+                </PrivateRoute>
+              } />
+
+              <Route path="/group-session/live" element={
+                <PrivateRoute>
+                  <LiveSessionPage />
+                </PrivateRoute>
+              } />
+
               {/* ── Admin-only routes ── */}
               <Route path="/admin" element={
                 <AdminRoute><PageTransition><AdminTrainers /></PageTransition></AdminRoute>
               } />
 
-              {/* ── NEW: Admin Trainer Oversight ──
-                  Clicking a trainer card in AdminTrainers navigates here.
-                  Route: /admin/trainers/:trainerId */}
               <Route path="/admin/trainers/:trainerId" element={
                 <AdminRoute>
                   <PageTransition>

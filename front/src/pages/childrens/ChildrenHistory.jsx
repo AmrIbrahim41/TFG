@@ -197,7 +197,6 @@ const SessionModal = ({ session, onClose }) => {
                 >
                     {/* ── Gorgeous Header ── */}
                     <div className="relative p-6 sm:p-8 bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 text-white shrink-0 overflow-hidden">
-                        {/* Decorative Background Elements */}
                         <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
                         <div className="absolute bottom-0 left-0 w-40 h-40 bg-purple-400/20 rounded-full blur-2xl -ml-10 -mb-10 pointer-events-none" />
                         
@@ -343,10 +342,12 @@ const ChildrenHistory = () => {
     const [pagination, setPagination] = useState({ count: 0, next: null, previous: null, currentPage: 1, totalPages: 1 });
     const { user } = useContext(AuthContext);
 
+    // FIX F8: The correct endpoint is /group-training/ (the standard paginated list).
+    // There is no `history` custom action on GroupTrainingViewSet.
     const fetchHistory = useCallback(async (page = 1) => {
         setLoading(true); setError(null);
         try {
-            const res = await api.get(`/group-training/history/?page=${page}`);
+            const res = await api.get(`/group-training/?page=${page}`);
             if (res.data.results !== undefined) {
                 setHistory(res.data.results);
                 setPagination({ count: res.data.count, next: res.data.next, previous: res.data.previous, currentPage: page, totalPages: Math.ceil(res.data.count / PAGE_SIZE) });

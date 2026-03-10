@@ -3,9 +3,8 @@ import {
     Plus, Trash2, Play, Loader2, Clock, Calendar,
     X, ChevronRight, AlertCircle, Users
 } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../api';
-import ActiveGroupSession from './ActiveGroupSession';
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 const Toast = ({ message, type = 'error', onClose }) => (
@@ -63,6 +62,9 @@ const DayCardSkeleton = () => (
 
 // ─── Component ────────────────────────────────────────────────────────────────
 const ChildrenSchedule = () => {
+    const navigate = useNavigate();
+    const location = useLocation();
+    
     const [trainers, setTrainers] = useState([]);
     const [selectedCoach, setSelectedCoach] = useState(null);
     const [scheduleData, setScheduleData] = useState([]);
@@ -79,14 +81,12 @@ const ChildrenSchedule = () => {
     const [sessionTime, setSessionTime] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
 
-    // Workout Mode
-    const [activeWorkoutDay, setActiveWorkoutDay] = useState(null);
-    const [initialExercises, setInitialExercises] = useState([]);
-
     // Confirm delete
     const [pendingDelete, setPendingDelete] = useState(null);
+    
+    // Repeat Session State
+    const [pendingRepeat, setPendingRepeat] = useState(null);
 
-    const location = useLocation();
     const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
 
     const showToast = useCallback((message, type = 'error') => {
@@ -126,8 +126,8 @@ const ChildrenSchedule = () => {
         if (!selectedCoach) return;
         setLoading(true);
         try {
-            const res = await api.get(`/group-training/schedule/?coach_id=${selectedCoach}`);
-            setScheduleData(res.data);
+            const res = await api.get(`/coach-schedules/?trainer_id=${selectedCoach}`);
+            setScheduleData(res.data.results || res.data);
         } catch {
             showToast('Failed to load schedule.');
         } finally {
@@ -139,22 +139,49 @@ const ChildrenSchedule = () => {
         if (selectedCoach) fetchSchedule();
     }, [selectedCoach, fetchSchedule]);
 
+    // ── Get Children Helper ───────────────────────────────────────────────
+    const getChildrenForDay = useCallback(
+        (day) => {
+            const activeClientIds = new Set(activeChildren.map(c => c.id));
+            return scheduleData.filter(i => 
+                i.day === day && (activeClientIds.has(i.client) || activeClientIds.has(i.client_id))
+            );
+        },
+        [scheduleData, activeChildren]
+    );
+
     // ── Handle repeat session from location state ─────────────────────────
     useEffect(() => {
         if (location.state?.action === 'repeat_session') {
-            setSelectedDay(location.state.day);
-            setInitialExercises(location.state.exercises || []);
-            setActiveWorkoutDay(location.state.day);
+            setPendingRepeat({
+                day: location.state.day,
+                exercises: location.state.exercises || []
+            });
+            // Clear the state so it doesn't loop on re-renders
             window.history.replaceState({}, document.title);
         }
     }, [location.state]);
+
+    // Wait until data is loaded to execute the repeat session navigation
+    useEffect(() => {
+        if (pendingRepeat && !loading && !loadingInit) {
+            navigate('/group-session/setup', {
+                state: {
+                    day: pendingRepeat.day,
+                    children: getChildrenForDay(pendingRepeat.day),
+                    exercises: pendingRepeat.exercises
+                }
+            });
+            setPendingRepeat(null);
+        }
+    }, [pendingRepeat, loading, loadingInit, getChildrenForDay, navigate]);
 
     // ── Add child to schedule ─────────────────────────────────────────────
     const handleAdd = async () => {
         if (!childToAdd || !selectedDay) return;
         setActionLoading(true);
         try {
-            await api.post('/group-training/add_to_schedule/', {
+            await api.post('/coach-schedules/', {
                 coach: parseInt(selectedCoach),
                 client: parseInt(childToAdd),
                 day: selectedDay,
@@ -180,10 +207,7 @@ const ChildrenSchedule = () => {
         const kidsInDay = getChildrenForDay(selectedDay);
         try {
             await Promise.all(kidsInDay.map(kid =>
-                api.post('/group-training/add_to_schedule/', {
-                    coach: parseInt(selectedCoach),
-                    client: kid.client_id,
-                    day: selectedDay,
+                api.patch(`/coach-schedules/${kid.id}/`, {
                     session_time: sessionTime
                 })
             ));
@@ -201,34 +225,13 @@ const ChildrenSchedule = () => {
     // ── Remove ────────────────────────────────────────────────────────────
     const handleRemove = async (id) => {
         try {
-            await api.delete(`/group-training/remove_from_schedule/?id=${id}`);
+            await api.delete(`/coach-schedules/${id}/`);
             setScheduleData(prev => prev.filter(item => item.id !== id));
             setPendingDelete(null);
         } catch {
             showToast('Failed to remove athlete.');
         }
     };
-
-    const getChildrenForDay = useCallback(
-        (day) => scheduleData.filter(i => i.day === day),
-        [scheduleData]
-    );
-
-    // ── Active Session Mode ───────────────────────────────────────────────
-    if (activeWorkoutDay) {
-        return (
-            <ActiveGroupSession
-                day={activeWorkoutDay}
-                children={getChildrenForDay(activeWorkoutDay)}
-                initialExercises={initialExercises}
-                onClose={() => {
-                    setActiveWorkoutDay(null);
-                    setInitialExercises([]);
-                    fetchSchedule();
-                }}
-            />
-        );
-    }
 
     // ── Render ────────────────────────────────────────────────────────────
     return (
@@ -336,7 +339,15 @@ const ChildrenSchedule = () => {
                                             <Clock size={14} /> Time
                                         </button>
                                         <button
-                                            onClick={() => setActiveWorkoutDay(day)}
+                                            onClick={() => {
+                                                navigate('/group-session/setup', {
+                                                    state: {
+                                                        day: day,
+                                                        children: getChildrenForDay(day),
+                                                        exercises: [] // Start a fresh session
+                                                    }
+                                                });
+                                            }}
                                             disabled={kids.length === 0}
                                             className="w-10 flex items-center justify-center rounded-2xl bg-green-500 text-white hover:bg-green-600 shadow-lg shadow-green-500/20 disabled:opacity-50 disabled:shadow-none transition-all"
                                             title="Start Session"

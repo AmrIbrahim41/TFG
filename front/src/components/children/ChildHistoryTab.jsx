@@ -244,7 +244,7 @@ const ChildHistoryTab = ({ clientId }) => {
     const fetchHistory = async (page = 1) => {
         setLoading(true);
         try {
-            const res = await api.get(`/group-training/client_history/?client_id=${clientId}&page=${page}`);
+            const res = await api.get(`/group-training/child_history/?client_id=${clientId}&page=${page}`);
             if (res.data.results) {
                 setHistory(res.data.results);
                 setPagination({ count: res.data.count, next: res.data.next, previous: res.data.previous, currentPage: page, totalPages: Math.ceil(res.data.count / PAGE_SIZE) });
