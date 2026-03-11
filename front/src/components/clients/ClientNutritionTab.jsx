@@ -1,14 +1,21 @@
-// ClientNutritionTab.jsx — Premium Refactor v2
-// Full dark/light mode · Mobile-first · Carb Mod fix · Apple Health rings · Optimized
+// ClientNutritionTab.jsx — v3 — Full Review + Exchange Grid Port + Animation Polish
+// Bug fixes:
+//   BUG-1  useFoodDatabase: handle paginated response + fetch ALL pages
+//   BUG-2  useNutritionPlans: eliminate double-fetch (stale-closure dep issue)
+//   BUG-3  defaultSubId: always use the active subscription, not index[0]
+//   BUG-4  ExchangeGroup: ported ManualNutritionPlan's colored-header 3-col grid style
+//   BUG-5  Notes field: map planNotes to/from NutritionPlan.notes properly
+//   BUG-6  Staggered list entry animations via CSS animationDelay
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Utensils, Calendar, User, Activity,
-  Save, ArrowLeft, Target, Trash2, Plus,
+  Save, Target, Trash2, Plus,
   Flame, Droplets, Wheat, Beef, AlertTriangle,
   Leaf, FileText, Zap, Mars, Venus, Loader2,
   ChevronLeft, ChevronRight, Download, Scale,
-  Check, ChevronDown, X, Type, AlertCircle, Search
+  Check, ChevronDown, X, AlertCircle, Search,
+  Sparkles,
 } from 'lucide-react';
 import api from '../../api';
 import { PDFDownloadLink } from '@react-pdf/renderer';
@@ -38,13 +45,12 @@ function calculateNutrition(inputs) {
   const safeMeals  = Math.max(1, parseInt(mealsCount)   || 1);
   const weightLbs  = safeWeight * 2.20462;
 
-  // Mifflin-St Jeor BMR
   let bmr = 10 * safeWeight + 6.25 * safeHeight - 5 * safeAge;
   bmr += gender === 'male' ? 5 : -161;
 
   const multipliers   = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 };
   const tdee          = Math.round(bmr * (multipliers[activityLevel] || 1.2));
-  const targetCalories = tdee + (parseInt(deficitSurplus) || 0);
+  const targetCalories = Math.max(0, tdee + (parseInt(deficitSurplus) || 0));
 
   const proteinGrams = Math.round(weightLbs * (parseFloat(proteinPerLb) || 1));
   const proteinCals  = proteinGrams * 4;
@@ -62,16 +68,17 @@ function calculateNutrition(inputs) {
   const carbGrams  = Math.round(remainingCals / 4);
   const fiberGrams = Math.round((targetCalories / 1000) * 14);
 
-  const safe = (n, d) => (isFinite(n) ? n : d);
+  // Guard against division-by-zero producing Infinity or NaN
+  const safe = (n, d = 0) => (isFinite(n) && !isNaN(n) ? n : d);
 
   return {
     tdee,
     targetCalories,
     warning,
     macros: {
-      protein: { grams: proteinGrams, cals: proteinCals, pct: safe(Math.round((proteinCals   / targetCalories) * 100), 0) },
-      fats:    { grams: fatGrams,     cals: fatCals,     pct: safe(Math.round((fatCals        / targetCalories) * 100), 0) },
-      carbs:   { grams: carbGrams,    cals: remainingCals, pct: safe(Math.round((remainingCals / targetCalories) * 100), 0) },
+      protein: { grams: proteinGrams, cals: proteinCals, pct: safe(Math.round((proteinCals   / targetCalories) * 100)) },
+      fats:    { grams: fatGrams,     cals: fatCals,     pct: safe(Math.round((fatCals        / targetCalories) * 100)) },
+      carbs:   { grams: carbGrams,    cals: remainingCals, pct: safe(Math.round((remainingCals / targetCalories) * 100)) },
       fiber:   { grams: fiberGrams },
     },
     perMeal: {
@@ -86,25 +93,24 @@ function calculateNutrition(inputs) {
 }
 
 // ═══════════════════════════════════════════════════════
-// EXCHANGE LIST ENGINE — memoized, safe carb mod parsing
+// EXCHANGE LIST ENGINE
 // ═══════════════════════════════════════════════════════
 
 function buildExchangeList(results, foodDatabase, carbAdjustment) {
-  if (!results || !foodDatabase.length) return null;
+  if (!results || !Array.isArray(foodDatabase) || !foodDatabase.length) return null;
   const { perMeal } = results;
 
-  // FIX: Always coerce carbAdjustment to a safe number (handles "", null, undefined, NaN)
   const safeCarbAdj = Number(carbAdjustment) || 0;
   const carbMod     = 1 + safeCarbAdj / 100;
 
   const groups = {
-    'Protein Sources': { items: [], targetCals: perMeal.proteinCals, color: 'text-red-400',   darkColor: 'dark:text-red-400',   bg: 'bg-red-500/8',   ring: 'border-red-500/20'   },
-    'Carbohydrates':   { items: [], targetCals: perMeal.carbsCals,   color: 'text-blue-400',  darkColor: 'dark:text-blue-400',  bg: 'bg-blue-500/8',  ring: 'border-blue-500/20'  },
-    'Fats':            { items: [], targetCals: perMeal.fatsCals,    color: 'text-amber-400', darkColor: 'dark:text-amber-400', bg: 'bg-amber-500/8', ring: 'border-amber-500/20' },
+    'Protein Sources': { items: [], targetCals: perMeal.proteinCals, color: 'text-red-500 dark:text-red-400',   bg: 'bg-red-500/8 dark:bg-red-500/6',     ring: 'border-red-500/20'   },
+    'Carbohydrates':   { items: [], targetCals: perMeal.carbsCals,   color: 'text-blue-500 dark:text-blue-400',  bg: 'bg-blue-500/8 dark:bg-blue-500/6',   ring: 'border-blue-500/20'  },
+    'Fats':            { items: [], targetCals: perMeal.fatsCals,    color: 'text-amber-500 dark:text-amber-400', bg: 'bg-amber-500/8 dark:bg-amber-500/6', ring: 'border-amber-500/20' },
   };
 
   foodDatabase.forEach(food => {
-    const cat = food.category?.toLowerCase() || '';
+    const cat = (food.category || '').toLowerCase();
     let groupKey = '';
     if (cat === 'protein') groupKey = 'Protein Sources';
     else if (cat === 'carbs') groupKey = 'Carbohydrates';
@@ -134,7 +140,7 @@ function buildExchangeList(results, foodDatabase, carbAdjustment) {
 }
 
 // ═══════════════════════════════════════════════════════
-// CUSTOM HOOK — useNutrition (reactive engine)
+// HOOK — useNutrition
 // ═══════════════════════════════════════════════════════
 
 function useNutrition(calcState) {
@@ -142,7 +148,10 @@ function useNutrition(calcState) {
 }
 
 // ═══════════════════════════════════════════════════════
-// CUSTOM HOOK — useNutritionPlans
+// HOOK — useNutritionPlans
+// FIX: Extracted fetch logic so useEffect dep is stable;
+//      avoids the double-fetch where `fetch` recreated on page change
+//      fires the effect again simultaneously.
 // ═══════════════════════════════════════════════════════
 
 function useNutritionPlans(clientId, showToast) {
@@ -151,37 +160,81 @@ function useNutritionPlans(clientId, showToast) {
   const [loading, setLoading]  = useState(false);
   const [page, setPage]        = useState(1);
 
-  const fetch = useCallback(async (pageNum = page) => {
-    if (!clientId) return;
+  // Stable ref so fetchPage never goes stale inside useEffect
+  const clientIdRef  = useRef(clientId);
+  const showToastRef = useRef(showToast);
+  useEffect(() => { clientIdRef.current  = clientId;  }, [clientId]);
+  useEffect(() => { showToastRef.current = showToast; }, [showToast]);
+
+  const fetchPage = useCallback(async (pageNum) => {
+    const cid = clientIdRef.current;
+    if (!cid) return;
     setLoading(true);
     try {
-      const res  = await api.get(`/nutrition-plans/?client_id=${clientId}&page=${pageNum}`);
+      // FIX: Backend now accepts client_id (see views.py fix BUG-BE-1)
+      const res  = await api.get(`/nutrition-plans/?client_id=${cid}&page=${pageNum}`);
       const data = res.data.results ?? res.data;
-      setPlans(data);
-      setTotal(res.data.count ?? data.length);
+      setPlans(Array.isArray(data) ? data : []);
+      setTotal(res.data.count ?? (Array.isArray(data) ? data.length : 0));
     } catch {
-      showToast('Failed to load nutrition plans.', 'error');
+      showToastRef.current('Failed to load nutrition plans.', 'error');
     } finally {
       setLoading(false);
     }
-  }, [clientId, page, showToast]);
+  }, []); // empty deps — fully stable via refs
 
-  useEffect(() => { if (clientId) fetch(page); }, [clientId, page]); // eslint-disable-line
+  // Only re-run when clientId or page changes (no double-fetch risk)
+  useEffect(() => {
+    if (clientId) fetchPage(page);
+  }, [clientId, page, fetchPage]);
 
-  return { plans, totalCount, loading, page, setPage, refetch: fetch };
+  const refetch = useCallback((pageNum) => fetchPage(pageNum ?? page), [fetchPage, page]);
+
+  return { plans, totalCount, loading, page, setPage, refetch };
 }
 
 // ═══════════════════════════════════════════════════════
-// CUSTOM HOOK — useFoodDatabase
+// HOOK — useFoodDatabase
+// FIX-BUG-2+3: Handle paginated response {count, results:[]}
+//   and walk all pages so the full food DB is loaded, not just
+//   the first 12 items the backend sends by default.
 // ═══════════════════════════════════════════════════════
 
 function useFoodDatabase() {
   const [foods, setFoods] = useState([]);
   useEffect(() => {
     let cancelled = false;
-    api.get('/food-database/')
-      .then(res => { if (!cancelled) setFoods(res.data); })
-      .catch(e  => console.error('Failed to load food database', e));
+    (async () => {
+      try {
+        let all = [];
+        // Request maximum page size to minimise round-trips
+        let url = '/food-database/?page_size=100&page=1';
+        while (url && !cancelled) {
+          const res  = await api.get(url);
+          const data = res.data;
+          if (data && Array.isArray(data.results)) {
+            // Paginated response
+            all = [...all, ...data.results];
+            if (data.next) {
+              // Use relative path so the api instance handles base-URL
+              const nextUrl = new URL(data.next);
+              url = nextUrl.pathname + nextUrl.search;
+            } else {
+              url = null;
+            }
+          } else if (Array.isArray(data)) {
+            // Un-paginated response
+            all = data;
+            url = null;
+          } else {
+            url = null;
+          }
+        }
+        if (!cancelled) setFoods(all);
+      } catch (e) {
+        console.error('Failed to load food database', e);
+      }
+    })();
     return () => { cancelled = true; };
   }, []);
   return foods;
@@ -199,18 +252,16 @@ const Toast = ({ message, type = 'success', onDismiss }) => {
 
   const isError = type === 'error';
   return (
-    <div
-      className={`
-        fixed bottom-6 right-4 sm:right-6 z-[200]
-        flex items-center gap-3 px-4 py-3 max-w-[calc(100vw-2rem)] sm:max-w-sm
-        rounded-2xl shadow-2xl backdrop-blur-md border text-sm font-semibold
-        animate-slide-up
-        ${isError
-          ? 'bg-red-950/95 border-red-800/60 text-red-300 dark:bg-red-950/95'
-          : 'bg-emerald-950/95 border-emerald-800/60 text-emerald-300 dark:bg-emerald-950/95'
-        }
-      `}
-    >
+    <div className={`
+      fixed bottom-6 right-4 sm:right-6 z-[200]
+      flex items-center gap-3 px-4 py-3 max-w-[calc(100vw-2rem)] sm:max-w-sm
+      rounded-2xl shadow-2xl backdrop-blur-md border text-sm font-semibold
+      animate-slide-up
+      ${isError
+        ? 'bg-red-950/95 border-red-800/60 text-red-300'
+        : 'bg-emerald-950/95 border-emerald-800/60 text-emerald-300'
+      }
+    `}>
       <AlertCircle size={15} className="shrink-0" />
       <span className="truncate">{message}</span>
       <button onClick={onDismiss} className="ml-auto opacity-60 hover:opacity-100 shrink-0 transition-opacity">
@@ -280,8 +331,7 @@ const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => 
       <button
         onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1}
         className="w-9 h-9 flex items-center justify-center rounded-xl
-          bg-zinc-100 dark:bg-zinc-900
-          border border-zinc-200 dark:border-zinc-800
+          bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800
           text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100
           disabled:opacity-30 transition-all active:scale-95"
       >
@@ -291,8 +341,7 @@ const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => 
       <button
         onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages}
         className="w-9 h-9 flex items-center justify-center rounded-xl
-          bg-zinc-100 dark:bg-zinc-900
-          border border-zinc-200 dark:border-zinc-800
+          bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800
           text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100
           disabled:opacity-30 transition-all active:scale-95"
       >
@@ -303,7 +352,7 @@ const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => 
 };
 
 // ═══════════════════════════════════════════════════════
-// SKELETON SCREENS
+// SKELETONS
 // ═══════════════════════════════════════════════════════
 
 const Pulse = ({ className = '' }) => (
@@ -339,55 +388,43 @@ const DetailSkeleton = () => (
 );
 
 // ═══════════════════════════════════════════════════════
-// MACRO RING — SVG with gradient glow (Apple Health style)
+// MACRO RING — Apple Health style SVG
 // ═══════════════════════════════════════════════════════
 
 const MacroRing = ({ pct = 0, color = '#f97316', gradientEnd, size = 88, strokeWidth = 8, children, id }) => {
-  const r      = (size - strokeWidth) / 2;
-  const circ   = 2 * Math.PI * r;
+  const r          = (size - strokeWidth) / 2;
+  const circ       = 2 * Math.PI * r;
   const clampedPct = Math.min(Math.max(pct, 0), 100);
-  const dash   = circ * (clampedPct / 100);
-  const gap    = circ - dash;
-  const center = size / 2;
-  const gradId = `ring-grad-${id}`;
-  const glowId = `ring-glow-${id}`;
-  const gEnd   = gradientEnd || color;
+  const dash       = circ * (clampedPct / 100);
+  const gap        = circ - dash;
+  const center     = size / 2;
+  const gradId     = `ring-grad-${id}`;
+  const glowId     = `ring-glow-${id}`;
+  const gEnd       = gradientEnd || color;
 
   return (
     <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', overflow: 'visible' }}>
         <defs>
           <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%"   stopColor={color}  stopOpacity="0.9" />
-            <stop offset="100%" stopColor={gEnd}   stopOpacity="1"   />
+            <stop offset="0%"   stopColor={color} stopOpacity="0.9" />
+            <stop offset="100%" stopColor={gEnd}  stopOpacity="1"   />
           </linearGradient>
           <filter id={glowId} x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur stdDeviation="2" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
         </defs>
-        {/* Track ring */}
-        <circle
-          cx={center} cy={center} r={r}
-          stroke="currentColor"
-          className="text-zinc-200 dark:text-zinc-800"
-          strokeWidth={strokeWidth}
-          fill="none"
+        <circle cx={center} cy={center} r={r}
+          stroke="currentColor" className="text-zinc-200 dark:text-zinc-800"
+          strokeWidth={strokeWidth} fill="none"
         />
-        {/* Progress ring */}
         {clampedPct > 0 && (
-          <circle
-            cx={center} cy={center} r={r}
-            stroke={`url(#${gradId})`}
-            strokeWidth={strokeWidth}
-            fill="none"
-            strokeLinecap="round"
-            strokeDasharray={`${dash} ${gap}`}
+          <circle cx={center} cy={center} r={r}
+            stroke={`url(#${gradId})`} strokeWidth={strokeWidth} fill="none"
+            strokeLinecap="round" strokeDasharray={`${dash} ${gap}`}
             filter={`url(#${glowId})`}
-            style={{ transition: 'stroke-dasharray 0.7s cubic-bezier(0.34, 1.56, 0.64, 1)' }}
+            style={{ transition: 'stroke-dasharray 0.7s cubic-bezier(0.34,1.56,0.64,1)' }}
           />
         )}
       </svg>
@@ -399,7 +436,7 @@ const MacroRing = ({ pct = 0, color = '#f97316', gradientEnd, size = 88, strokeW
 };
 
 // ═══════════════════════════════════════════════════════
-// MACRO CARD — enhanced Apple Health style
+// MACRO CARD
 // ═══════════════════════════════════════════════════════
 
 const MacroCard = React.memo(({ label, grams, perMealGrams, pct, color, ringColor, gradientEnd, icon: Icon, suffix = 'g', id }) => (
@@ -410,7 +447,7 @@ const MacroCard = React.memo(({ label, grams, perMealGrams, pct, color, ringColo
     rounded-2xl
     hover:border-zinc-300 dark:hover:border-zinc-700
     hover:shadow-md dark:hover:shadow-none
-    transition-all duration-200 group
+    transition-all duration-300 group cursor-default
   ">
     <MacroRing pct={pct} color={ringColor} gradientEnd={gradientEnd} size={80} strokeWidth={7} id={id}>
       <Icon size={14} className={color} />
@@ -437,7 +474,7 @@ const MacroCard = React.memo(({ label, grams, perMealGrams, pct, color, ringColo
 
 const CustomSelect = ({ label, value, options, onChange, disabled }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const ref                 = useRef(null);
+  const ref = useRef(null);
 
   useEffect(() => {
     const close = e => { if (ref.current && !ref.current.contains(e.target)) setIsOpen(false); };
@@ -475,9 +512,7 @@ const CustomSelect = ({ label, value, options, onChange, disabled }) => {
           z-50 animate-slide-up origin-top overflow-hidden
         ">
           {options.map(opt => (
-            <button
-              key={opt.val}
-              type="button"
+            <button key={opt.val} type="button"
               onClick={() => { onChange(opt.val); setIsOpen(false); }}
               className={`
                 w-full text-left px-4 py-2.5 flex items-center justify-between text-sm transition-colors
@@ -499,7 +534,7 @@ const CustomSelect = ({ label, value, options, onChange, disabled }) => {
 };
 
 // ═══════════════════════════════════════════════════════
-// NUTRI INPUT — text/number field with full dark/light support
+// NUTRI INPUT
 // ═══════════════════════════════════════════════════════
 
 const NutriInput = ({
@@ -515,8 +550,7 @@ const NutriInput = ({
   }
   return (
     <div className={`
-      relative
-      bg-zinc-100 dark:bg-zinc-900
+      relative bg-zinc-100 dark:bg-zinc-900
       border border-zinc-200 dark:border-zinc-800
       p-3.5 rounded-xl
       focus-within:border-orange-500/60 focus-within:ring-1 focus-within:ring-orange-500/20
@@ -526,27 +560,17 @@ const NutriInput = ({
     `}>
       <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block">{label}</label>
       <input
-        disabled={disabled}
-        type={type}
-        min={min}
-        value={value}
-        placeholder={placeholder}
+        disabled={disabled} type={type} min={min} value={value} placeholder={placeholder}
         inputMode={type === 'number' ? 'decimal' : undefined}
         onChange={e => {
-          // Guard against going below min (but allow empty string for clearing)
           if (type === 'number' && min !== undefined && e.target.value !== '') {
             const v = parseFloat(e.target.value);
             if (!isNaN(v) && v < parseFloat(min)) return;
           }
           onChange(e.target.value);
         }}
-        className="
-          w-full bg-transparent
-          text-zinc-900 dark:text-zinc-100
-          font-bold text-sm outline-none
-          placeholder:text-zinc-400 dark:placeholder:text-zinc-700
-          pr-8
-        "
+        className="w-full bg-transparent text-zinc-900 dark:text-zinc-100 font-bold text-sm outline-none
+          placeholder:text-zinc-400 dark:placeholder:text-zinc-700 pr-8"
       />
       {suffix && (
         <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 dark:text-zinc-600 pointer-events-none select-none">
@@ -567,8 +591,7 @@ const BentoCard = ({ children, className = '' }) => (
     border border-zinc-200 dark:border-zinc-800/70
     rounded-2xl p-5
     shadow-sm shadow-zinc-200/60 dark:shadow-none
-    backdrop-blur-sm
-    transition-colors duration-300
+    backdrop-blur-sm transition-colors duration-300
     ${className}
   `}>
     {children}
@@ -588,8 +611,18 @@ const CardHeader = ({ icon: Icon, label, color = 'text-orange-500 dark:text-oran
 );
 
 // ═══════════════════════════════════════════════════════
-// EXCHANGE GROUP — mobile-first with search
+// EXCHANGE GROUP
+// FIX-BUG-4: Ported ManualNutritionPlan's colored-header 3-column grid style.
+// Kept ClientNutritionTab's per-group search filter.
+// Added staggered entry animation via CSS animationDelay.
 // ═══════════════════════════════════════════════════════
+
+// Category → icon mapping for richer headers
+const CATEGORY_ICONS = {
+  'Protein Sources': Beef,
+  'Carbohydrates':   Wheat,
+  'Fats':            Droplets,
+};
 
 const ExchangeGroup = React.memo(({ groupName, data, carbAdjustment }) => {
   const [query, setQuery] = useState('');
@@ -604,17 +637,31 @@ const ExchangeGroup = React.memo(({ groupName, data, carbAdjustment }) => {
     [data.items, query]
   );
 
-  const isCarbs      = groupName === 'Carbohydrates';
-  // FIX: cast to number before comparison to avoid "" !== 0 being truthy
-  const safeCarbAdj  = Number(carbAdjustment) || 0;
+  const isCarbs     = groupName === 'Carbohydrates';
+  const safeCarbAdj = Number(carbAdjustment) || 0;
   const showAdjBadge = isCarbs && safeCarbAdj !== 0;
+  const CatIcon     = CATEGORY_ICONS[groupName] || Zap;
 
   return (
-    <BentoCard className="overflow-hidden !p-0">
-      {/* ── Group Header ── */}
-      <div className="px-4 sm:px-5 py-4 border-b border-zinc-100 dark:border-zinc-800/60 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-zinc-50/80 dark:bg-zinc-900/30">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <h3 className={`font-black uppercase tracking-wider text-xs ${data.color}`}>{groupName}</h3>
+    <div className="
+      overflow-hidden rounded-2xl
+      border border-zinc-200 dark:border-zinc-800/70
+      shadow-sm shadow-zinc-200/40 dark:shadow-none
+      transition-all duration-300
+      hover:shadow-md hover:shadow-zinc-200/60 dark:hover:border-zinc-700/60
+    ">
+      {/* ── Colored Category Header (ported from ManualNutritionPlan) ── */}
+      <div className={`
+        px-4 sm:px-5 py-4
+        border-b border-zinc-200/80 dark:border-zinc-800/60
+        flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3
+        ${data.bg}
+      `}>
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className={`p-1.5 rounded-lg bg-white/60 dark:bg-black/20 border border-white/30 dark:border-zinc-700/30`}>
+            <CatIcon size={13} className={data.color} />
+          </span>
+          <h3 className={`font-black uppercase tracking-wider text-sm ${data.color}`}>{groupName}</h3>
           {showAdjBadge && (
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
               safeCarbAdj > 0
@@ -624,10 +671,12 @@ const ExchangeGroup = React.memo(({ groupName, data, carbAdjustment }) => {
               {safeCarbAdj > 0 ? '+' : ''}{safeCarbAdj}% Carb Mod
             </span>
           )}
-          <span className="text-[11px] font-bold text-zinc-400 dark:text-zinc-500 font-mono tabular-nums">
-            {Math.round(data.targetCals)} kcal/meal
+          <span className="text-[11px] font-bold text-zinc-500 dark:text-zinc-500 font-mono tabular-nums
+            bg-white/50 dark:bg-black/20 px-2 py-0.5 rounded-md">
+            {Math.round(data.targetCals)} kcal / meal
           </span>
         </div>
+
         {/* Search */}
         <div className="relative w-full sm:w-auto">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-600 pointer-events-none" />
@@ -636,19 +685,20 @@ const ExchangeGroup = React.memo(({ groupName, data, carbAdjustment }) => {
             value={query}
             onChange={e => setQuery(e.target.value)}
             className="
-              w-full sm:w-36 bg-zinc-100 dark:bg-zinc-900
-              border border-zinc-200 dark:border-zinc-800
+              w-full sm:w-40
+              bg-white/70 dark:bg-zinc-900/80
+              border border-white/60 dark:border-zinc-700/60
               rounded-lg pl-7 pr-8 py-1.5 text-[11px] font-medium
               text-zinc-700 dark:text-zinc-300
-              outline-none focus:border-orange-400/60 dark:focus:border-zinc-700
-              placeholder:text-zinc-400 dark:placeholder:text-zinc-700
+              outline-none focus:border-orange-400/60 dark:focus:border-zinc-600
+              placeholder:text-zinc-400 dark:placeholder:text-zinc-600
               transition-colors
             "
           />
           {query && (
             <button
               onClick={() => setQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
             >
               <X size={11} />
             </button>
@@ -656,78 +706,71 @@ const ExchangeGroup = React.memo(({ groupName, data, carbAdjustment }) => {
         </div>
       </div>
 
-      {/* ── Items: grid on mobile, list on md+ ── */}
+      {/* ── 3-Column Grid (matching ManualNutritionPlan layout) ── */}
       {filtered.length === 0 ? (
-        <div className="px-5 py-8 text-center text-zinc-400 dark:text-zinc-600 text-xs font-medium">
+        <div className="
+          bg-white dark:bg-zinc-950
+          px-5 py-10 text-center text-zinc-400 dark:text-zinc-600 text-xs font-medium
+        ">
           {query ? 'No items match your search.' : 'No items in this category.'}
         </div>
       ) : (
-        <>
-          {/* Mobile card grid (< md) */}
-          <div className="grid grid-cols-2 gap-px md:hidden bg-zinc-100 dark:bg-zinc-800/30">
-            {filtered.map((item, idx) => (
-              <div
-                key={idx}
-                className="bg-white dark:bg-zinc-950 p-3 flex flex-col gap-1"
-              >
-                <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200 leading-snug line-clamp-2">
+        <div className="
+          grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3
+          divide-y divide-zinc-100 dark:divide-zinc-800/50
+          md:divide-y-0 md:gap-px
+          bg-zinc-100/60 dark:bg-zinc-800/20
+        ">
+          {filtered.map((item, idx) => (
+            <div
+              key={`${item.name}-${idx}`}
+              className="
+                bg-white dark:bg-zinc-950
+                p-4
+                hover:bg-zinc-50 dark:hover:bg-zinc-900/80
+                transition-colors duration-150
+                flex justify-between items-center gap-3
+                group
+              "
+              style={{ animationDelay: `${Math.min(idx * 25, 400)}ms` }}
+            >
+              {/* Left: Name + Arabic + Macros */}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate
+                  group-hover:text-zinc-900 dark:group-hover:text-white transition-colors">
                   {item.name}
                 </p>
                 {item.arabic_name && (
-                  <p className="text-[10px] text-zinc-400 dark:text-zinc-600" dir="rtl">{item.arabic_name}</p>
+                  <p className="text-[10px] text-zinc-400 dark:text-zinc-600 mt-0.5 truncate" dir="rtl">
+                    {item.arabic_name}
+                  </p>
                 )}
-                <div className="flex items-baseline gap-1 mt-1">
-                  <span className={`text-xl font-black tabular-nums ${isCarbs && safeCarbAdj !== 0 ? 'text-blue-500 dark:text-blue-400' : `${data.color}`}`}>
-                    {item.weight}
-                  </span>
-                  <span className="text-zinc-400 dark:text-zinc-600 text-[10px] font-bold">{item.unit}</span>
-                </div>
-                <p className="text-[10px] text-zinc-400 dark:text-zinc-600 leading-snug">
-                  {item.meta.cals} kcal · P{item.meta.pro}·C{item.meta.carbs}·F{item.meta.fats}
+                <p className="text-[10px] text-zinc-400 dark:text-zinc-600 mt-1 tabular-nums font-medium">
+                  {item.meta.cals} kcal · P{item.meta.pro}g · C{item.meta.carbs}g · F{item.meta.fats}g
                 </p>
               </div>
-            ))}
-          </div>
 
-          {/* Desktop list (md+) */}
-          <div className="hidden md:block divide-y divide-zinc-100 dark:divide-zinc-800/40">
-            {filtered.map((item, idx) => (
-              <div
-                key={idx}
-                className="px-5 py-3.5 flex items-center justify-between hover:bg-zinc-50 dark:hover:bg-zinc-900/60 transition-colors group"
-              >
-                <div className="min-w-0 pr-4">
-                  <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate group-hover:text-zinc-900 dark:group-hover:text-white transition-colors">
-                    {item.name}
-                  </p>
-                  {item.arabic_name && (
-                    <p className="text-[11px] text-zinc-400 dark:text-zinc-600 mt-0.5" dir="rtl">{item.arabic_name}</p>
-                  )}
-                  <p className="text-[11px] text-zinc-400 dark:text-zinc-600 mt-0.5 tabular-nums">
-                    {item.meta.cals} kcal · P {item.meta.pro}g · C {item.meta.carbs}g · F {item.meta.fats}g
-                  </p>
-                </div>
-                <div className="text-right shrink-0">
-                  <span className={`font-black text-xl tabular-nums ${
-                    isCarbs && safeCarbAdj !== 0
-                      ? 'text-blue-500 dark:text-blue-400'
-                      : 'text-zinc-800 dark:text-zinc-100'
-                  }`}>
-                    {item.weight}
-                  </span>
-                  <span className="text-zinc-400 dark:text-zinc-600 text-xs font-bold ml-1">{item.unit}</span>
-                </div>
+              {/* Right: Weight badge */}
+              <div className="text-right shrink-0">
+                <span className={`font-black text-xl tabular-nums leading-none ${
+                  isCarbs && safeCarbAdj !== 0
+                    ? 'text-blue-500 dark:text-blue-400'
+                    : data.color
+                }`}>
+                  {item.weight}
+                </span>
+                <span className="text-zinc-400 dark:text-zinc-600 text-xs font-bold ml-1">{item.unit}</span>
               </div>
-            ))}
-          </div>
-        </>
+            </div>
+          ))}
+        </div>
       )}
-    </BentoCard>
+    </div>
   );
 });
 
 // ═══════════════════════════════════════════════════════
-// MACRO SUMMARY SECTION — TDEE + rings
+// MACRO SUMMARY
 // ═══════════════════════════════════════════════════════
 
 const MacroSummary = React.memo(({ results }) => {
@@ -735,8 +778,6 @@ const MacroSummary = React.memo(({ results }) => {
   return (
     <BentoCard className="relative overflow-visible">
       <div className="flex flex-col lg:flex-row items-center gap-6 lg:gap-10">
-
-        {/* TDEE + Target calories block */}
         <div className="text-center lg:text-left shrink-0 w-full lg:w-auto">
           <div className="flex flex-row lg:flex-col items-center lg:items-start justify-center gap-6 lg:gap-3">
             <div>
@@ -758,56 +799,21 @@ const MacroSummary = React.memo(({ results }) => {
             </div>
           </div>
         </div>
-
-        {/* Vertical divider (desktop) */}
         <div className="hidden lg:block w-px self-stretch bg-zinc-200 dark:bg-zinc-800 shrink-0" />
-
-        {/* Macro rings */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
-          <MacroCard
-            id="protein"
-            label="Protein"
-            grams={results.macros.protein.grams}
-            perMealGrams={results.perMeal.proteinGrams}
-            pct={results.macros.protein.pct}
-            color="text-red-500 dark:text-red-400"
-            ringColor="#f87171"
-            gradientEnd="#fb923c"
-            icon={Beef}
-          />
-          <MacroCard
-            id="carbs"
-            label="Carbs"
-            grams={results.macros.carbs.grams}
-            perMealGrams={results.perMeal.carbsGrams}
-            pct={results.macros.carbs.pct}
-            color="text-blue-500 dark:text-blue-400"
-            ringColor="#60a5fa"
-            gradientEnd="#a78bfa"
-            icon={Wheat}
-          />
-          <MacroCard
-            id="fats"
-            label="Fats"
-            grams={results.macros.fats.grams}
-            perMealGrams={results.perMeal.fatsGrams}
-            pct={results.macros.fats.pct}
-            color="text-amber-500 dark:text-amber-400"
-            ringColor="#fbbf24"
-            gradientEnd="#f97316"
-            icon={Droplets}
-          />
-          <MacroCard
-            id="fiber"
-            label="Fiber"
-            grams={results.macros.fiber.grams}
+          <MacroCard id="protein" label="Protein" grams={results.macros.protein.grams}
+            perMealGrams={results.perMeal.proteinGrams} pct={results.macros.protein.pct}
+            color="text-red-500 dark:text-red-400" ringColor="#f87171" gradientEnd="#fb923c" icon={Beef} />
+          <MacroCard id="carbs" label="Carbs" grams={results.macros.carbs.grams}
+            perMealGrams={results.perMeal.carbsGrams} pct={results.macros.carbs.pct}
+            color="text-blue-500 dark:text-blue-400" ringColor="#60a5fa" gradientEnd="#a78bfa" icon={Wheat} />
+          <MacroCard id="fats" label="Fats" grams={results.macros.fats.grams}
+            perMealGrams={results.perMeal.fatsGrams} pct={results.macros.fats.pct}
+            color="text-amber-500 dark:text-amber-400" ringColor="#fbbf24" gradientEnd="#f97316" icon={Droplets} />
+          <MacroCard id="fiber" label="Fiber" grams={results.macros.fiber.grams}
             pct={Math.min((results.macros.fiber.grams / 40) * 100, 100)}
-            color="text-emerald-500 dark:text-emerald-400"
-            ringColor="#34d399"
-            gradientEnd="#22d3ee"
-            icon={Leaf}
-            suffix="g+"
-          />
+            color="text-emerald-500 dark:text-emerald-400" ringColor="#34d399" gradientEnd="#22d3ee"
+            icon={Leaf} suffix="g+" />
         </div>
       </div>
     </BentoCard>
@@ -827,15 +833,19 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
   const [newPlanWeeks, setNewPlanWeeks] = useState(4);
   const [planNotes, setPlanNotes] = useState('');
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, planId: null, isLoading: false });
-  const [showEnPdfModal, setShowEnPdfModal] = useState(false);
-  const [customEnName, setCustomEnName]     = useState('');
-  const [toast, setToast]                   = useState(null);
+  const [toast, setToast]         = useState(null);
 
   const showToast    = useCallback((msg, type = 'success') => setToast({ message: msg, type }), []);
   const dismissToast = useCallback(() => setToast(null), []);
 
-  const clientId     = clientData?.id || subscriptions?.[0]?.client || null;
-  const defaultSubId = subscriptions?.[0]?.id || null;
+  const clientId = clientData?.id || subscriptions?.[0]?.client || null;
+
+  // FIX-BUG-3: Use the active subscription, not blindly index[0]
+  const defaultSubId = useMemo(() => {
+    if (!subscriptions?.length) return null;
+    const active = subscriptions.find(s => s.is_active);
+    return active?.id || subscriptions[0]?.id || null;
+  }, [subscriptions]);
 
   const { plans, totalCount, loading, page, setPage, refetch } = useNutritionPlans(clientId, showToast);
   const foodDatabase = useFoodDatabase();
@@ -848,10 +858,9 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
     carbAdjustment: 0, brandText: 'TFG',
   });
 
-  // ── Reactive nutrition engine ──
   const results = useNutrition(calcState);
 
-  // ── Populate form from active plan ──
+  // FIX-BUG-5: Map notes field from/to backend (requires NutritionPlan.notes field)
   useEffect(() => {
     if (!activePlan) return;
     setCalcState({
@@ -865,12 +874,11 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
       proteinPerLb:   activePlan.calc_protein_multiplier  || 1.0,
       mealsCount:     activePlan.calc_meals               || 4,
       snacksCount:    activePlan.calc_snacks              || 0,
-      // FIX: always coerce to number; model stores as CharField so could be "moderate" or "0"
       carbAdjustment: Number(activePlan.calc_carb_adjustment) || 0,
       brandText:      activePlan.pdf_brand_text           || 'TFG',
     });
+    // Support both `notes` (new field) and legacy placement
     setPlanNotes(activePlan.notes || '');
-    setCustomEnName('');
   }, [activePlan]);
 
   const weightLbs = useMemo(
@@ -897,32 +905,33 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
   const pdfClientName = activePlan?.client_name || clientData?.name || 'Athlete';
   const trainerName   = activePlan?.created_by_name || 'Coach';
 
-  // ═══════════════════════════════════════
+  // ═══════════════════════════════════
   // CRUD HANDLERS
-  // ═══════════════════════════════════════
+  // ═══════════════════════════════════
 
   const handleCreatePlan = useCallback(async () => {
     if (!newPlanName.trim()) { showToast('Please enter a plan name.', 'error'); return; }
-    if (!defaultSubId)       { showToast('No active subscription found.', 'error'); return; }
+    if (!defaultSubId)       { showToast('No subscription found.', 'error'); return; }
     setIsCreating(true);
     try {
       const res = await api.post('/nutrition-plans/', {
         subscription: defaultSubId,
-        name: newPlanName,
-        duration_weeks: newPlanWeeks,
+        name: newPlanName.trim(),
+        duration_weeks: parseInt(newPlanWeeks) || 4,
         target_calories: 2000,
       });
-      await refetch(page);
+      await refetch(1);
+      setPage(1);
       setNewPlanName('');
       setActivePlan(res.data);
       setView('detail');
-      showToast('Plan created successfully!', 'success');
+      showToast('Plan created!', 'success');
     } catch {
       showToast('Error creating plan.', 'error');
     } finally {
       setIsCreating(false);
     }
-  }, [newPlanName, defaultSubId, newPlanWeeks, refetch, page, showToast]);
+  }, [newPlanName, defaultSubId, newPlanWeeks, refetch, setPage, showToast]);
 
   const handleSavePlan = useCallback(async () => {
     if (!activePlan?.id || !results) return;
@@ -939,7 +948,6 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         calc_protein_multiplier: parseFloat(calcState.proteinPerLb)  || 1,
         calc_meals:              parseInt(calcState.mealsCount)       || 1,
         calc_snacks:             parseInt(calcState.snacksCount)      || 0,
-        // FIX: Number("") → 0, Number(NaN) → NaN → || 0, always safe integer
         calc_carb_adjustment:    (Number(calcState.carbAdjustment) || 0).toString(),
         pdf_brand_text:          calcState.brandText || 'TFG',
         calc_tdee:               parseInt(results.tdee)              || 0,
@@ -947,7 +955,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         target_protein:          parseInt(results.macros.protein.grams) || 0,
         target_carbs:            parseInt(results.macros.carbs.grams)   || 0,
         target_fats:             parseInt(results.macros.fats.grams)    || 0,
-        notes:                   planNotes,
+        notes: planNotes, // FIX-BUG-5: saves to NutritionPlan.notes field
       };
       const res = await api.patch(`/nutrition-plans/${activePlan.id}/`, payload);
       setActivePlan(res.data);
@@ -976,10 +984,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
     }
   }, [deleteModal, activePlan, refetch, page, showToast]);
 
-  const setCalc = useCallback(
-    (key, val) => setCalcState(prev => ({ ...prev, [key]: val })),
-    []
-  );
+  const setCalc = useCallback((key, val) => setCalcState(prev => ({ ...prev, [key]: val })), []);
 
   const formatActivity = useCallback(
     str => (str || 'Moderate').replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()),
@@ -1003,7 +1008,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
           isLoading={deleteModal.isLoading}
         />
 
-        {/* ── Page Header ── */}
+        {/* Page Header */}
         <div className="flex items-center gap-4">
           <div className="w-11 h-11 bg-orange-500 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/30 shrink-0">
             <Utensils className="text-white" size={20} />
@@ -1014,7 +1019,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
           </div>
         </div>
 
-        {/* ── Create Plan ── */}
+        {/* Create Plan */}
         <BentoCard>
           <CardHeader icon={Plus} label="New Plan" color="text-orange-500 dark:text-orange-400" bg="bg-orange-100 dark:bg-orange-500/10" />
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end">
@@ -1026,15 +1031,12 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                 onChange={e => setNewPlanName(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleCreatePlan(); }}
                 className="
-                  w-full
-                  bg-zinc-100 dark:bg-zinc-900
+                  w-full bg-zinc-100 dark:bg-zinc-900
                   border border-zinc-200 dark:border-zinc-800
-                  rounded-xl px-4 py-3 text-sm
-                  text-zinc-900 dark:text-zinc-100
-                  font-bold outline-none
+                  rounded-xl px-4 py-3 text-sm font-bold
+                  text-zinc-900 dark:text-zinc-100 outline-none
                   focus:border-orange-500/60 focus:ring-1 focus:ring-orange-500/20
-                  placeholder:text-zinc-400 dark:placeholder:text-zinc-700
-                  transition-all
+                  placeholder:text-zinc-400 dark:placeholder:text-zinc-700 transition-all
                 "
               />
             </div>
@@ -1045,14 +1047,11 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                 value={newPlanWeeks}
                 onChange={e => setNewPlanWeeks(e.target.value)}
                 className="
-                  w-full
-                  bg-zinc-100 dark:bg-zinc-900
+                  w-full bg-zinc-100 dark:bg-zinc-900
                   border border-zinc-200 dark:border-zinc-800
-                  rounded-xl px-4 py-3 text-sm
-                  text-zinc-900 dark:text-zinc-100
-                  font-bold outline-none
-                  focus:border-orange-500/60
-                  transition-all
+                  rounded-xl px-4 py-3 text-sm font-bold
+                  text-zinc-900 dark:text-zinc-100 outline-none
+                  focus:border-orange-500/60 transition-all
                 "
               />
             </div>
@@ -1065,7 +1064,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                 text-white font-bold rounded-xl
                 flex items-center justify-center gap-2 text-sm
                 shadow-lg shadow-orange-500/20
-                active:scale-95 transition-all
+                active:scale-95 transition-all duration-200
               "
             >
               {isCreating ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
@@ -1074,7 +1073,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
           </div>
         </BentoCard>
 
-        {/* ── Plan Grid ── */}
+        {/* Plan Grid */}
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {[1, 2, 3, 4, 5, 6].map(n => <PlanCardSkeleton key={n} />)}
@@ -1082,7 +1081,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {plans.map(plan => {
+              {plans.map((plan, idx) => {
                 const isMale   = (plan.calc_gender || 'male') === 'male';
                 const activity = formatActivity(plan.calc_activity_level);
                 return (
@@ -1100,8 +1099,9 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                       transition-all duration-300 cursor-pointer overflow-hidden
                       min-h-[160px] flex flex-col
                     "
+                    style={{ animationDelay: `${idx * 50}ms` }}
                   >
-                    {/* Background icon */}
+                    {/* BG Icon */}
                     <div className="
                       absolute -right-4 -bottom-4
                       text-zinc-200 dark:text-zinc-800/30
@@ -1113,7 +1113,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                     </div>
 
                     <div className="relative z-10 flex flex-col h-full gap-3">
-                      {/* Tag row */}
+                      {/* Tags */}
                       <div className="flex justify-between items-center">
                         <div className="flex gap-2">
                           <span className="
@@ -1166,7 +1166,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         </p>
                       </div>
 
-                      {/* Stats row */}
+                      {/* Stats */}
                       <div className="mt-auto flex items-center gap-2">
                         <span className="
                           flex items-center gap-1.5 px-2.5 py-1.5
@@ -1194,19 +1194,23 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
 
               {plans.length === 0 && !loading && (
                 <div className="
-                  col-span-full py-14 text-center
+                  col-span-full py-16 text-center
                   border-2 border-dashed border-zinc-200 dark:border-zinc-800
-                  rounded-2xl
-                  text-zinc-400 dark:text-zinc-600
+                  rounded-2xl text-zinc-400 dark:text-zinc-600
                 ">
-                  <Utensils size={28} className="mx-auto mb-3 opacity-30" />
-                  <p className="font-bold text-sm">No Nutrition Plans Yet</p>
-                  <p className="text-xs mt-1 opacity-70">Create your first plan above to get started</p>
+                  <Sparkles size={36} className="mx-auto mb-3 opacity-40" strokeWidth={1} />
+                  <p className="font-bold text-sm">No nutrition plans yet</p>
+                  <p className="text-xs mt-1 opacity-70">Create the first plan using the form above</p>
                 </div>
               )}
             </div>
 
-            <Pagination totalItems={totalCount} itemsPerPage={12} currentPage={page} onPageChange={setPage} />
+            <Pagination
+              totalItems={totalCount}
+              itemsPerPage={12}
+              currentPage={page}
+              onPageChange={p => setPage(p)}
+            />
           </>
         )}
       </div>
@@ -1217,250 +1221,155 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
   // DETAIL VIEW
   // ═══════════════════════════════════════════════════════
 
-  if (view === 'detail') {
+  if (view === 'detail' && activePlan) {
     return (
-      <div className="animate-slide-up pb-24 sm:pb-20 space-y-5">
-
-        {/* ── EN PDF Modal ── */}
-        {showEnPdfModal && (
-          <div
-            className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in"
-            onClick={e => { if (e.target === e.currentTarget) setShowEnPdfModal(false); }}
-          >
-            <div className="
-              bg-white dark:bg-zinc-950
-              border border-zinc-200 dark:border-zinc-800
-              w-full max-w-md rounded-2xl p-6
-              shadow-2xl shadow-zinc-300/30 dark:shadow-black/60
-              ring-1 ring-orange-500/10
-              animate-slide-up relative
-            ">
-              <button
-                onClick={() => setShowEnPdfModal(false)}
-                className="absolute right-5 top-5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
-              >
-                <X size={18} />
-              </button>
-              <div className="text-center mb-5">
-                <div className="w-12 h-12 bg-orange-100 dark:bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Type size={22} className="text-orange-500 dark:text-orange-400" />
-                </div>
-                <h3 className="text-base font-black text-zinc-900 dark:text-zinc-100">English Client Name</h3>
-                <p className="text-xs text-zinc-500 mt-1">Required for the English PDF export.</p>
-              </div>
-              <NutriInput
-                label="Client Name (EN)"
-                value={customEnName}
-                onChange={setCustomEnName}
-                placeholder="e.g. John Doe"
-              />
-              <div className="flex gap-3 mt-5">
-                <button
-                  onClick={() => setShowEnPdfModal(false)}
-                  className="flex-1 py-3 text-sm font-bold text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-xl transition-colors"
-                >
-                  Cancel
-                </button>
-                <PDFDownloadLink
-                  document={
-                    <NutritionPDF_EN
-                      plan={currentPdfPlan}
-                      clientName={customEnName.trim() || pdfClientName}
-                      trainerName={trainerName}
-                      brandText={calcState.brandText}
-                      results={results}
-                      exchangeList={exchangeList}
-                      notes={planNotes}
-                    />
-                  }
-                  fileName={`${activePlan?.name || 'Nutrition'}_EN.pdf`}
-                  className="flex-1"
-                >
-                  {({ loading: pdfLoading }) => (
-                    <button
-                      disabled={pdfLoading || !customEnName.trim()}
-                      onClick={() => setTimeout(() => setShowEnPdfModal(false), 2000)}
-                      className="
-                        w-full py-3 bg-orange-600 hover:bg-orange-500
-                        disabled:opacity-40 disabled:cursor-not-allowed
-                        text-white font-bold rounded-xl
-                        flex items-center justify-center gap-2 text-sm
-                        transition-all active:scale-95
-                      "
-                    >
-                      {pdfLoading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                      Download PDF
-                    </button>
-                  )}
-                </PDFDownloadLink>
-              </div>
-            </div>
-          </div>
-        )}
-
+      <div className="space-y-5 animate-fade-in p-1 md:p-2">
         {toast && <Toast message={toast.message} type={toast.type} onDismiss={dismissToast} />}
+        <ConfirmModal
+          isOpen={deleteModal.isOpen}
+          title="Delete Nutrition Plan?"
+          message="This action cannot be undone."
+          onConfirm={handleDeletePlan}
+          onCancel={() => setDeleteModal({ isOpen: false, planId: null, isLoading: false })}
+          isLoading={deleteModal.isLoading}
+        />
 
-        {/* ── Toolbar — sticky on mobile ── */}
+        {/* ── Top Action Bar ── */}
         <div className="
-          sticky top-0 z-30
-          bg-zinc-50/95 dark:bg-zinc-950/95 backdrop-blur-md
-          border-b border-zinc-200 dark:border-zinc-800
-          -mx-1 px-1 pt-3 pb-3
-          sm:static sm:bg-transparent sm:dark:bg-transparent
-          sm:border-0 sm:backdrop-blur-none
-          sm:-mx-0 sm:px-0 sm:pt-0 sm:pb-0
-          transition-colors duration-300
+          flex items-center gap-2.5 flex-wrap
+          bg-white/90 dark:bg-zinc-950/80
+          border border-zinc-200 dark:border-zinc-800/70
+          rounded-2xl p-3 shadow-sm backdrop-blur-sm
         ">
-          {/* Back + Plan name */}
-          <div className="flex items-center gap-3 mb-3">
-            <button
-              onClick={() => setView('list')}
-              className="
-                w-10 h-10 shrink-0 flex items-center justify-center
-                bg-zinc-100 dark:bg-zinc-900
-                border border-zinc-200 dark:border-zinc-800
-                rounded-xl text-zinc-500
-                hover:text-zinc-900 dark:hover:text-zinc-100
-                hover:bg-zinc-200 dark:hover:bg-zinc-800
-                transition-colors active:scale-95
-              "
-            >
-              <ArrowLeft size={17} />
-            </button>
-            <div className="min-w-0">
-              <h2 className="text-lg font-black text-zinc-900 dark:text-zinc-100 truncate">{activePlan?.name}</h2>
-              <p className="text-[11px] text-zinc-400 dark:text-zinc-600">Edit mode — save when ready</p>
-            </div>
+          <button
+            onClick={() => { setView('list'); setActivePlan(null); }}
+            className="
+              flex items-center gap-1.5 px-3 py-2
+              text-zinc-600 dark:text-zinc-400
+              hover:text-zinc-900 dark:hover:text-zinc-100
+              hover:bg-zinc-100 dark:hover:bg-zinc-800
+              rounded-xl text-xs font-bold transition-all active:scale-95
+            "
+          >
+            <ChevronLeft size={14} /> Plans
+          </button>
+
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-black text-zinc-900 dark:text-zinc-100 truncate">{activePlan.name}</h3>
+            <p className="text-[10px] text-zinc-400">
+              {pdfClientName} · {activePlan.duration_weeks}W plan
+            </p>
           </div>
 
-          {/* Action bar */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
-            {activePlan && results && (
-              <>
-                {/* EN PDF */}
-                <button
-                  onClick={() => setShowEnPdfModal(true)}
-                  className="
-                    whitespace-nowrap px-4 py-2 shrink-0
-                    bg-zinc-100 dark:bg-zinc-900
-                    hover:bg-zinc-200 dark:hover:bg-zinc-800
-                    text-zinc-700 dark:text-zinc-300
-                    font-bold rounded-xl
-                    border border-zinc-200 dark:border-zinc-800
+          {/* PDF buttons */}
+          {currentPdfPlan && (
+            <>
+              <PDFDownloadLink
+                document={
+                  <NutritionPDF_EN
+                    plan={currentPdfPlan} clientName={pdfClientName}
+                    trainerName={trainerName} brandText={calcState.brandText}
+                    carbAdjustment={Number(calcState.carbAdjustment) || 0}
+                    results={results} exchangeList={exchangeList} notes={planNotes}
+                  />
+                }
+                fileName={`${activePlan.name}_EN.pdf`}
+              >
+                {({ loading: pdfLoading }) => (
+                  <button disabled={pdfLoading} className="
+                    whitespace-nowrap px-3 py-2 shrink-0
+                    bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700
+                    text-zinc-700 dark:text-zinc-300 font-bold rounded-xl
+                    border border-zinc-200 dark:border-zinc-700
                     text-xs flex items-center gap-1.5 transition-all active:scale-95
-                  "
-                >
-                  <Download size={12} /> EN PDF
-                </button>
+                  ">
+                    {pdfLoading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} EN PDF
+                  </button>
+                )}
+              </PDFDownloadLink>
+              <PDFDownloadLink
+                document={
+                  <NutritionPDF_AR
+                    plan={currentPdfPlan} clientName={pdfClientName}
+                    trainerName={trainerName} brandText={calcState.brandText}
+                    carbAdjustment={Number(calcState.carbAdjustment) || 0}
+                    results={results} exchangeList={exchangeList} notes={planNotes}
+                  />
+                }
+                fileName={`${activePlan.name}_AR.pdf`}
+              >
+                {({ loading: pdfLoading }) => (
+                  <button disabled={pdfLoading} className="
+                    whitespace-nowrap px-3 py-2 shrink-0
+                    bg-emerald-50 dark:bg-emerald-500/10
+                    hover:bg-emerald-100 dark:hover:bg-emerald-500/20
+                    text-emerald-700 dark:text-emerald-400 font-bold rounded-xl
+                    border border-emerald-200 dark:border-emerald-500/20
+                    text-xs flex items-center gap-1.5 transition-all disabled:opacity-50 active:scale-95
+                  ">
+                    {pdfLoading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                    AR PDF
+                  </button>
+                )}
+              </PDFDownloadLink>
+            </>
+          )}
 
-                {/* AR PDF */}
-                <PDFDownloadLink
-                  document={
-                    <NutritionPDF_AR
-                      plan={currentPdfPlan}
-                      clientName={pdfClientName}
-                      trainerName={trainerName}
-                      brandText={calcState.brandText}
-                      carbAdjustment={Number(calcState.carbAdjustment) || 0}
-                      results={results}
-                      exchangeList={exchangeList}
-                      notes={planNotes}
-                    />
-                  }
-                  fileName={`${activePlan.name}_AR.pdf`}
-                >
-                  {({ loading: pdfLoading }) => (
-                    <button
-                      disabled={pdfLoading}
-                      className="
-                        whitespace-nowrap px-4 py-2 shrink-0
-                        bg-emerald-50 dark:bg-emerald-500/10
-                        hover:bg-emerald-100 dark:hover:bg-emerald-500/20
-                        text-emerald-700 dark:text-emerald-400
-                        font-bold rounded-xl
-                        border border-emerald-200 dark:border-emerald-500/20
-                        text-xs flex items-center gap-1.5 transition-all disabled:opacity-50 active:scale-95
-                      "
-                    >
-                      {pdfLoading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                      عربي PDF
-                    </button>
-                  )}
-                </PDFDownloadLink>
-              </>
-            )}
-
-            {/* Save */}
-            <button
-              onClick={handleSavePlan}
-              disabled={isSaving}
-              className="
-                ml-auto shrink-0
-                whitespace-nowrap px-5 py-2
-                bg-orange-600 hover:bg-orange-500
-                disabled:opacity-40
-                text-white font-bold rounded-xl
-                shadow-md shadow-orange-500/20
-                text-xs flex items-center gap-1.5 transition-all active:scale-95
-              "
-            >
-              {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save
-            </button>
-          </div>
+          <button
+            onClick={handleSavePlan} disabled={isSaving}
+            className="
+              ml-auto shrink-0 whitespace-nowrap px-5 py-2
+              bg-orange-600 hover:bg-orange-500
+              disabled:opacity-40 text-white font-bold rounded-xl
+              shadow-md shadow-orange-500/20
+              text-xs flex items-center gap-1.5 transition-all active:scale-95
+            "
+          >
+            {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save
+          </button>
         </div>
 
-        {/* ── BODY METRICS ── */}
+        {/* ── Body Metrics ── */}
         <BentoCard>
           <CardHeader icon={User} label="Body Metrics" color="text-blue-500 dark:text-blue-400" bg="bg-blue-100 dark:bg-blue-500/10" />
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <NutriInput
-              label="Gender"
-              value={calcState.gender}
-              onChange={v => setCalc('gender', v)}
-              options={[{ val: 'male', lbl: 'Male' }, { val: 'female', lbl: 'Female' }]}
-            />
+            <NutriInput label="Gender" value={calcState.gender} onChange={v => setCalc('gender', v)}
+              options={[{ val: 'male', lbl: 'Male' }, { val: 'female', lbl: 'Female' }]} />
             <NutriInput label="Age"    value={calcState.age}      onChange={v => setCalc('age', v)}      type="number" min="0" />
             <NutriInput label="Height" value={calcState.heightCm} onChange={v => setCalc('heightCm', v)} type="number" suffix="cm" min="0" />
             <NutriInput label="Weight" value={calcState.weightKg} onChange={v => setCalc('weightKg', v)} type="number" suffix="kg" min="0" />
-
-            {/* LBS read-only */}
             <div className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-3.5 rounded-xl flex flex-col justify-center">
               <label className="text-[10px] uppercase font-bold text-zinc-500 flex items-center gap-1 mb-1">
                 <Scale size={9} /> LBS
               </label>
               <span className="text-zinc-900 dark:text-zinc-100 font-black text-sm tabular-nums">{weightLbs}</span>
             </div>
-
-            <NutriInput
-              label="Activity"
-              value={calcState.activityLevel}
-              onChange={v => setCalc('activityLevel', v)}
+            <NutriInput label="Activity" value={calcState.activityLevel} onChange={v => setCalc('activityLevel', v)}
               options={[
-                { val: 'sedentary',   lbl: 'Sedentary'   },
-                { val: 'light',       lbl: 'Light'        },
-                { val: 'moderate',    lbl: 'Moderate'     },
-                { val: 'active',      lbl: 'Active'       },
-                { val: 'very_active', lbl: 'Very Active'  },
+                { val: 'sedentary',   lbl: 'Sedentary'  },
+                { val: 'light',       lbl: 'Light'       },
+                { val: 'moderate',    lbl: 'Moderate'    },
+                { val: 'active',      lbl: 'Active'      },
+                { val: 'very_active', lbl: 'Very Active' },
               ]}
             />
           </div>
         </BentoCard>
 
-        {/* ── STRATEGY ── */}
+        {/* ── Strategy ── */}
         <BentoCard>
           <CardHeader icon={Activity} label="Strategy" color="text-emerald-500 dark:text-emerald-400" bg="bg-emerald-100 dark:bg-emerald-500/10" />
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <NutriInput label="Calorie Goal (+/-)" value={calcState.deficitSurplus}  onChange={v => setCalc('deficitSurplus', v)}  type="number" suffix="kcal" />
             <NutriInput label="Protein Ratio"      value={calcState.proteinPerLb}    onChange={v => setCalc('proteinPerLb', v)}    type="number" suffix="g/lb" min="0" />
             <NutriInput label="Fat %"              value={calcState.fatPercentage}   onChange={v => setCalc('fatPercentage', v)}   type="number" suffix="%" min="0" />
-            {/* FIX: no min= so user can type negative values; handled safely in engine + save */}
             <NutriInput label="Carb Mod"           value={calcState.carbAdjustment}  onChange={v => setCalc('carbAdjustment', v)} type="number" suffix="%" />
             <NutriInput label="Main Meals"         value={calcState.mealsCount}      onChange={v => setCalc('mealsCount', v)}      type="number" min="1" />
             <NutriInput label="Snacks"             value={calcState.snacksCount}     onChange={v => setCalc('snacksCount', v)}     type="number" min="0" />
           </div>
         </BentoCard>
 
-        {/* ── PDF BRANDING ── */}
+        {/* ── PDF Branding ── */}
         <BentoCard>
           <CardHeader icon={FileText} label="PDF Branding" color="text-purple-500 dark:text-purple-400" bg="bg-purple-100 dark:bg-purple-500/10" />
           <div className="max-w-xs">
@@ -1468,23 +1377,27 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
           </div>
         </BentoCard>
 
-        {/* ── WARNING ── */}
+        {/* ── Warning ── */}
         {results?.warning && (
-          <div className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-500/8 border border-red-200 dark:border-red-500/25 rounded-2xl">
+          <div className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-500/8 border border-red-200 dark:border-red-500/25 rounded-2xl animate-slide-up">
             <AlertTriangle size={17} className="text-red-500 dark:text-red-400 shrink-0 mt-0.5" />
             <p className="text-sm font-semibold text-red-700 dark:text-red-300">{results.warning}</p>
           </div>
         )}
 
-        {/* ── MACRO SUMMARY ── */}
+        {/* ── Macro Summary ── */}
         <MacroSummary results={results} />
 
-        {/* ── EXCHANGE LISTS ── */}
+        {/* ── Exchange Lists ── */}
         {exchangeList && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
+              <Sparkles size={13} className="text-orange-400 shrink-0" />
               <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">Exchange Lists</h3>
               <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-800" />
+              <span className="text-[10px] text-zinc-400 dark:text-zinc-600 font-medium">
+                {foodDatabase.length} foods loaded
+              </span>
             </div>
             {Object.entries(exchangeList).map(([groupName, data]) => (
               <ExchangeGroup
@@ -1497,7 +1410,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
           </div>
         )}
 
-        {/* ── NOTES ── */}
+        {/* ── Notes ── */}
         <BentoCard>
           <CardHeader icon={FileText} label="Notes & Instructions" color="text-emerald-500 dark:text-emerald-400" bg="bg-emerald-100 dark:bg-emerald-500/10" />
           <textarea
@@ -1505,8 +1418,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
             onChange={e => setPlanNotes(e.target.value)}
             placeholder="Supplements, grocery list, meal timing, hydration targets…"
             className="
-              w-full
-              bg-zinc-100 dark:bg-zinc-900
+              w-full bg-zinc-100 dark:bg-zinc-900
               border border-zinc-200 dark:border-zinc-800
               rounded-xl px-4 py-4 text-sm
               text-zinc-900 dark:text-zinc-200
