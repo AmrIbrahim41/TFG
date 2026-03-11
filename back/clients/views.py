@@ -804,10 +804,24 @@ class NutritionPlanViewSet(viewsets.ModelViewSet):
         return NutritionPlanSerializer
 
     def get_queryset(self):
+        # FIX-BUG-BE-2: always add prefetch to prevent N+1 at list level
+        qs = (
+            NutritionPlan.objects
+            .select_related('subscription__client', 'subscription__plan', 'created_by')
+            .prefetch_related('meal_plans__foods')
+        )
+
+        # FIX-BUG-BE-1: support client_id (what the frontend sends)
+        client_id = self.request.query_params.get("client_id")
+        if client_id:
+            return qs.filter(subscription__client_id=client_id)
+
+        # Fallback: also keep subscription_id for any internal callers
         subscription_id = self.request.query_params.get("subscription_id")
         if subscription_id:
-            return NutritionPlan.objects.filter(subscription_id=subscription_id)
-        return NutritionPlan.objects.all()
+            return qs.filter(subscription_id=subscription_id)
+
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -820,8 +834,11 @@ class MealPlanViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         nutrition_plan_id = self.request.query_params.get("nutrition_plan_id")
         if nutrition_plan_id:
-            return MealPlan.objects.filter(nutrition_plan_id=nutrition_plan_id)
-        return MealPlan.objects.all()
+            # FIX-BUG-BE-3: prefetch foods to eliminate N+1
+            return MealPlan.objects.filter(
+                nutrition_plan_id=nutrition_plan_id
+            ).prefetch_related('foods')
+        return MealPlan.objects.all().prefetch_related('foods')
 
 
 class FoodItemViewSet(viewsets.ModelViewSet):
@@ -846,12 +863,17 @@ class NutritionProgressViewSet(viewsets.ModelViewSet):
         return NutritionProgress.objects.all()
 
 
+class FoodDatabasePagination(PageNumberPagination):
+    page_size = 100
+    page_size_query_param = "page_size"
+    max_page_size = 500
+
 class FoodDatabaseViewSet(viewsets.ModelViewSet):
     serializer_class = FoodDatabaseSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [filters.SearchFilter]
     search_fields = ["name", "arabic_name", "category"]
-    pagination_class = StandardResultsSetPagination
+    pagination_class = FoodDatabasePagination   # FIX-BUG-BE-5
 
     def get_queryset(self):
         qs = FoodDatabase.objects.all().order_by("name")
@@ -1306,6 +1328,7 @@ class SessionTransferRequestViewSet(viewsets.ModelViewSet):
 class ManualNutritionSaveViewSet(viewsets.ModelViewSet):
     serializer_class = ManualNutritionSaveSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None   # FIX-BUG-BE-4: always return flat list
 
     def get_queryset(self):
         return ManualNutritionSave.objects.filter(user=self.request.user).order_by(

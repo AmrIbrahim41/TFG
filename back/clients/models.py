@@ -365,6 +365,13 @@ class NutritionPlan(models.Model):
     target_carbs = models.FloatField(default=200.0)
     target_fats = models.FloatField(default=60.0)
 
+    # FIX-BUG-9: Coach notes field — was missing, causing silent data loss
+    notes = models.TextField(
+        blank=True,
+        default='',
+        help_text="Coach notes, supplement recommendations, grocery list, etc."
+    )
+
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

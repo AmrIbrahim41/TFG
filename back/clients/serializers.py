@@ -385,6 +385,7 @@ class NutritionPlanSerializer(serializers.ModelSerializer):
             'calc_protein_multiplier', 'calc_protein_advance', 'calc_meals', 'calc_snacks',
             'calc_carb_adjustment', 'pdf_brand_text',
             'target_calories', 'target_protein', 'target_carbs', 'target_fats',
+            'notes',          # ← FIX: exposed to frontend
             'meal_plans', 'client_name', 'created_at', 'updated_at',
         ]
 
@@ -405,6 +406,7 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
             'calc_protein_multiplier', 'calc_protein_advance', 'calc_meals', 'calc_snacks',
             'calc_carb_adjustment', 'pdf_brand_text',
             'target_calories', 'target_protein', 'target_carbs', 'target_fats',
+            'notes',          # ← FIX: saveable from frontend
             'meal_plans',
         ]
 
@@ -447,7 +449,7 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
                 MealPlan.objects.filter(id__in=ids_to_delete).delete()
 
             for meal_data in meal_plans_data:
-                meal_id = meal_data.get('id')
+                meal_id    = meal_data.get('id')
                 foods_data = meal_data.pop('foods', [])
 
                 if meal_id and meal_id in existing_meal_ids:
@@ -460,10 +462,8 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
                     meal_data.pop('id', None)
                     meal_obj = MealPlan.objects.create(nutrition_plan=instance, **meal_data)
 
-                # Upsert FoodItems — update existing, create new, delete removed.
-                existing_food_ids = set(meal_obj.foods.values_list('id', flat=True))
-                incoming_food_ids = {f['id'] for f in foods_data if f.get('id')}
-
+                existing_food_ids  = set(meal_obj.foods.values_list('id', flat=True))
+                incoming_food_ids  = {f['id'] for f in foods_data if f.get('id')}
                 food_ids_to_delete = existing_food_ids - incoming_food_ids
                 if food_ids_to_delete:
                     FoodItem.objects.filter(id__in=food_ids_to_delete).delete()
