@@ -61,6 +61,12 @@ const WorkoutEditor = () => {
   const searchParams = new URLSearchParams(location.search);
   const subId = searchParams.get('sub');
   const sessionNum = searchParams.get('session');
+  // BUG FIX: the split's day name (e.g. "Push", "Pull", "Legs") is now passed
+  // from ClientTrainingTab via URL so we can use it as the default name for
+  // sessions that have never been saved yet. Without this, the backend returns
+  // "Session N" for any session with no DB row, so sessions beyond the first
+  // 7 days always showed "Session N" instead of their actual day name.
+  const defaultSessionName = searchParams.get('defaultName') || '';
 
   const [loading, setLoading] = useState(true);
   const [sessionName, setSessionName] = useState('');
@@ -152,7 +158,7 @@ const WorkoutEditor = () => {
         if (cancelled) return;
 
         const data = res.data;
-        setSessionName(data.name || `Session ${sessionNum}`);
+        setSessionName(data.name || defaultSessionName || `Session ${sessionNum}`);
         setIsSessionCompleted(data.is_completed || false);
 
         if (data.is_completed) {
@@ -762,7 +768,7 @@ const WorkoutEditor = () => {
               <PDFDownloadLink
                 document={
                   <WorkoutPDF_EN
-                    sessionName={debouncedSessionName || `Session ${sessionNum}`}
+                    sessionName={debouncedSessionName || defaultSessionName || `Session ${sessionNum}`}
                     sessionNumber={parseInt(sessionNum) || 1}
                     clientName={pdfManualClientName || 'Client'}
                     trainerName={trainerName || 'Trainer'}

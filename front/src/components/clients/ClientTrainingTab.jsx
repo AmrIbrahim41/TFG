@@ -286,7 +286,15 @@ const ClientTrainingTab = ({ subscriptions }) => {
                                 return (
                                     <div
                                         key={sIndex}
-                                        onClick={() => navigate(`/training-plan/${trainingPlan.id}/day/${session.templateId}?sub=${selectedSub.id}&session=${session.number}`)}
+                                        onClick={() => navigate(
+                                            `/training-plan/${trainingPlan.id}/day/${session.templateId}` +
+                                            `?sub=${selectedSub.id}&session=${session.number}` +
+                                            // BUG FIX: pass the split's day name so WorkoutEditor can use it
+                                            // as the default session name for sessions that haven't been saved
+                                            // yet. Without this, WorkoutEditor always defaults to "Session N"
+                                            // because the backend has no row to return a name from on first open.
+                                            `&defaultName=${encodeURIComponent(session.name)}`
+                                        )}
                                         className={`group relative rounded-2xl cursor-pointer border transition-all duration-300 overflow-hidden flex flex-col justify-between min-h-[140px]
                                             ${isCompleted
                                                 ? 'bg-zinc-50 dark:bg-[#121214] border-emerald-500/30 hover:bg-emerald-500/5 hover:border-emerald-500/50'

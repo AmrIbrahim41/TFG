@@ -69,6 +69,11 @@ def _build_client_dict(sub: ClientSubscription, request) -> dict:
         "id": sub.client.id,
         "subscription_id": sub.id,
         "name": sub.client.name,
+        # BUG FIX: manual_id and is_child were missing from this dict,
+        # causing the Dashboard to always show 'N/A' for the client ID badge
+        # and to never navigate to /children/:id for child clients.
+        "manual_id": sub.client.manual_id,
+        "is_child": sub.client.is_child,
         "plan": sub.plan.name if sub.plan else "No Plan",
         "sessions_used": sub.sessions_used,
         "total_sessions": sub.plan.units if sub.plan else 0,
