@@ -129,7 +129,8 @@ class ClientAdmin(ModelAdmin):
     @display(description="Location")
     def country_flag(self, obj):
         return f"{obj.country}"
-
+    
+    @display(description="Active Plan")
     def active_plan(self, obj):
         sub = obj.subscriptions.filter(is_active=True).select_related('plan').first()
         return sub.plan.name if sub else "-"
@@ -223,7 +224,8 @@ class NutritionPlanAdmin(ModelAdmin):
             'fields': ('calc_gender', 'calc_tdee', 'calc_weight', 'calc_activity_level')
         }),
     )
-
+    
+    @display(description="Client") 
     def client_name(self, obj):
         return obj.subscription.client.name
 

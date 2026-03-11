@@ -214,6 +214,8 @@ class ClientSubscriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ClientSubscription
         fields = '__all__'
+        # ADDED: Prevents direct manipulation of business-critical counters
+        read_only_fields = ['sessions_used', 'created_at']
 
     def validate(self, data):
         if self.instance:
@@ -441,7 +443,9 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
             return instance
 
         with transaction.atomic():
-            existing_meal_ids = set(instance.meal_plans.values_list('id', flat=True))
+            # تحسين الأداء: استعلام واحد لجلب كل الوجبات الحالية وحفظها في قاموس (Dictionary)
+            existing_meals = {m.id: m for m in instance.meal_plans.prefetch_related('foods').all()}
+            existing_meal_ids = set(existing_meals.keys())
             incoming_meal_ids = {item['id'] for item in meal_plans_data if item.get('id')}
 
             ids_to_delete = existing_meal_ids - incoming_meal_ids
@@ -453,7 +457,8 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
                 foods_data = meal_data.pop('foods', [])
 
                 if meal_id and meal_id in existing_meal_ids:
-                    meal_obj = MealPlan.objects.get(id=meal_id)
+                    # استخدام القاموس من الذاكرة بدلاً من عمل استعلام جديد من قاعدة البيانات
+                    meal_obj = existing_meals[meal_id]
                     for k, v in meal_data.items():
                         if k != 'id':
                             setattr(meal_obj, k, v)
@@ -462,6 +467,7 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
                     meal_data.pop('id', None)
                     meal_obj = MealPlan.objects.create(nutrition_plan=instance, **meal_data)
 
+                # منطق تحديث أصناف الطعام (Food items)
                 existing_food_ids  = set(meal_obj.foods.values_list('id', flat=True))
                 incoming_food_ids  = {f['id'] for f in foods_data if f.get('id')}
                 food_ids_to_delete = existing_food_ids - incoming_food_ids
@@ -480,7 +486,6 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
                     FoodItem.objects.bulk_create(foods_to_create)
 
         return instance
-
 
 # ---------------------------------------------------------------------------
 # NUTRITION – PROGRESS

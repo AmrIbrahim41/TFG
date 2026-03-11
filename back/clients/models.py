@@ -64,7 +64,7 @@ class Country(models.Model):
 # ---------------------------------------------------------------------------
 
 class Subscription(models.Model):
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=100, blank=True, default="")
     units = models.IntegerField(help_text="Number of sessions/visits")
     duration_days = models.IntegerField(help_text="Duration in days (e.g. 30 for 1 month)")
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
@@ -82,11 +82,11 @@ class Subscription(models.Model):
 class ClientSubscription(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='subscriptions')
     plan = models.ForeignKey(Subscription, on_delete=models.SET_NULL, null=True)
-    trainer = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-
+    trainer = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                db_index=True)  # ← ADDED
     start_date = models.DateField(default=timezone.now)
-    end_date = models.DateField(blank=True, null=True)
-    is_active = models.BooleanField(default=True)
+    end_date = models.DateField(blank=True, null=True, db_index=True)  # ← ADDED
+    is_active = models.BooleanField(default=True, db_index=True)  # ← ADDED
     sessions_used = models.IntegerField(default=0, help_text="Number of sessions attended")
 
     inbody_height = models.FloatField(default=0.0)
@@ -112,13 +112,28 @@ class ClientSubscription(models.Model):
     inbody_notes = models.TextField(blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        indexes = [
+            # Composite index covers the most common query pattern:
+            # filter(trainer=X, is_active=True)
+            models.Index(fields=['trainer', 'is_active'], name='idx_sub_trainer_active'),
+        ]
 
     def save(self, *args, **kwargs):
-        # Auto-calculate end_date when creating a brand-new subscription.
+        # 1. تحويل start_date إلى تاريخ فقط إذا كان يحتوي على وقت
+        if hasattr(self.start_date, 'date'):
+            self.start_date = self.start_date.date()
+
+        # 2. حساب تاريخ الانتهاء تلقائياً لو مش موجود
         if not self.end_date and self.plan:
             self.end_date = self.start_date + timedelta(days=self.plan.duration_days)
 
-        # Auto-deactivate at save time if the subscription has expired.
+        # 3. تحويل end_date إلى تاريخ فقط لتجنب أخطاء المقارنة
+        if hasattr(self.end_date, 'date'):
+            self.end_date = self.end_date.date()
+
+        # 4. إلغاء التفعيل تلقائياً لو الاشتراك انتهى
         if self.is_active and self.end_date and self.end_date < timezone.now().date():
             self.is_active = False
 
@@ -157,7 +172,7 @@ class TrainingPlan(models.Model):
 class TrainingDaySplit(models.Model):
     plan = models.ForeignKey(TrainingPlan, on_delete=models.CASCADE, related_name='splits')
     order = models.IntegerField(help_text="Day 1, Day 2, etc.")
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=100, blank=True, default="")
 
     class Meta:
         ordering = ['order']
@@ -230,9 +245,9 @@ class TrainingSession(models.Model):
         ClientSubscription, on_delete=models.CASCADE, related_name='sessions'
     )
     session_number = models.IntegerField()
-    name = models.CharField(max_length=100)
-    date_completed = models.DateField(blank=True, null=True)
-    is_completed = models.BooleanField(default=False)
+    name = models.CharField(max_length=100, blank=True, default="")
+    date_completed = models.DateField(blank=True, null=True, db_index=True)  # ← ADDED
+    is_completed = models.BooleanField(default=False, db_index=True)  # ← ADDED
     created_at = models.DateTimeField(auto_now_add=True)
     completed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
 
@@ -481,7 +496,7 @@ EXERCISE_CATEGORY_CHOICES = [
 
 class GroupSessionLog(models.Model):
     coach = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
-    date = models.DateTimeField(default=timezone.now)
+    date = models.DateTimeField(default=timezone.now, db_index=True)  # ← ADDED
     day_name = models.CharField(max_length=20)
     exercises_summary = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -494,7 +509,7 @@ class GroupSessionParticipant(models.Model):
     session = models.ForeignKey(GroupSessionLog, on_delete=models.CASCADE, related_name='participants')
     client = models.ForeignKey(Client, on_delete=models.SET_NULL, null=True)
     note = models.CharField(max_length=255, blank=True)
-    deducted = models.BooleanField(default=False)
+    deducted = models.BooleanField(default=False, db_index=True)  # ← ADDED
 
     def save(self, *args, **kwargs):
         # Determine if `deducted` is transitioning from False → True so we only

@@ -130,7 +130,7 @@ const ClientTrainingTab = ({ subscriptions }) => {
         try {
             const [planRes, logRes] = await Promise.all([
                 api.get(`/training-plans/?subscription_id=${subId}`),
-                api.get(`/training-sessions/?subscription=${subId}&is_completed=true`),
+                api.get(`/training-sessions/?subscription_id=${subId}&is_completed=true`),
             ]);
             if (!cancelled) {
                 const planData = planRes.data.results ?? planRes.data;

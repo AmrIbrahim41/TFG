@@ -2,7 +2,7 @@ import calendar
 import json
 from datetime import timedelta
 from decimal import Decimal
-
+from rest_framework.exceptions import PermissionDenied 
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.db.models import (
@@ -18,6 +18,11 @@ from django.db.models import (
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
+from django_filters.rest_framework import DjangoFilterBackend
+import django_filters
+from rest_framework.exceptions import ValidationError
+
+
 from rest_framework import viewsets, permissions, filters, status
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
@@ -27,63 +32,8 @@ from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .models import (
-    Client,
-    Country,
-    Subscription,
-    ClientSubscription,
-    TrainingPlan,
-    TrainingDaySplit,
-    TrainingExercise,
-    TrainingSet,
-    SessionLog,
-    TrainingSession,
-    SessionExercise,
-    SessionSet,
-    FoodItem,
-    MealPlan,
-    NutritionPlan,
-    NutritionProgress,
-    FoodDatabase,
-    CoachSchedule,
-    GroupSessionLog,
-    GroupSessionParticipant,
-    GroupWorkoutTemplate,
-    SessionTransferRequest,
-    ManualNutritionSave,
-    ManualWorkoutSave,
-    TrainerShift,
-    TrainerSchedule,
-)
-from .serializers import (
-    # FIX #22: TrainerSerializer now lives in serializers.py where it belongs.
-    TrainerSerializer,
-    TrainerPublicSerializer,
-    ClientSerializer,
-    CountrySerializer,
-    SubscriptionSerializer,
-    ClientSubscriptionSerializer,
-    TrainingPlanSerializer,
-    TrainingExerciseSerializer,
-    SessionLogSerializer,
-    TrainingSessionSerializer,
-    FoodItemSerializer,
-    MealPlanSerializer,
-    MealPlanCreateSerializer,
-    NutritionPlanSerializer,
-    NutritionPlanCreateSerializer,
-    NutritionProgressSerializer,
-    FoodDatabaseSerializer,
-    CoachScheduleSerializer,
-    GroupSessionLogSerializer,
-    GroupSessionParticipantSerializer,
-    GroupWorkoutTemplateSerializer,
-    SessionTransferRequestSerializer,
-    ManualNutritionSaveSerializer,
-    ManualWorkoutSaveSerializer,
-    TrainerShiftSerializer,
-    TrainerScheduleSerializer,
-)
+from .models import *
+from .serializers import *
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +54,27 @@ class HistoryPagination(PageNumberPagination):
     page_size_query_param = "page_size"
     max_page_size = 100
 
-
+def _build_client_dict(sub: ClientSubscription, request) -> dict:
+    """
+    Converts a ClientSubscription instance to a standardised dict for API responses.
+    Requires sub to be select_related with 'client' and 'plan'.
+    """
+    photo_url = None
+    if sub.client.photo:
+        try:
+            photo_url = request.build_absolute_uri(sub.client.photo.url)
+        except Exception:
+            pass
+    return {
+        "id": sub.client.id,
+        "subscription_id": sub.id,
+        "name": sub.client.name,
+        "plan": sub.plan.name if sub.plan else "No Plan",
+        "sessions_used": sub.sessions_used,
+        "total_sessions": sub.plan.units if sub.plan else 0,
+        "photo": photo_url,
+        "end_date": sub.end_date,
+    }
 # ---------------------------------------------------------------------------
 # AUTH – JWT with custom claims + login-rate throttle
 # FIX #16: LoginRateThrottle limits unauthenticated login attempts to 10/min
@@ -185,6 +155,7 @@ class ManageTrainersViewSet(viewsets.ModelViewSet):
 
 class ClientViewSet(viewsets.ModelViewSet):
     serializer_class = ClientSerializer
+    permission_classes = [permissions.IsAuthenticated]  # ← ADDED
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     filter_backends = [filters.SearchFilter]
     search_fields = ["name", "phone", "manual_id"]
@@ -201,6 +172,19 @@ class ClientViewSet(viewsets.ModelViewSet):
         elif is_child == "false":
             queryset = queryset.filter(is_child=False)
         return queryset
+
+
+# ---------------------------------------------------------------------------
+# FilterSet for TrainingSession to support filtering by subscription_id and is_completed
+# ---------------------------------------------------------------------------
+
+class TrainingSessionFilter(django_filters.FilterSet):
+    class Meta:
+        model = TrainingSession
+        fields = {
+            "subscription_id": ["exact"],
+            "is_completed": ["exact"],
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -356,29 +340,7 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
                 trainer=user, is_active=True
             ).select_related("client", "plan")
 
-            client_list = []
-            for sub in subs:
-                photo_full_url = None
-                if sub.client.photo:
-                    try:
-                        photo_full_url = request.build_absolute_uri(
-                            sub.client.photo.url
-                        )
-                    except Exception:
-                        photo_full_url = None
-
-                client_list.append(
-                    {
-                        "id": sub.client.id,
-                        "subscription_id": sub.id,
-                        "name": sub.client.name,
-                        "plan": sub.plan.name if sub.plan else "No Plan",
-                        "sessions_used": sub.sessions_used,
-                        "total_sessions": sub.plan.units if sub.plan else 0,
-                        "photo": photo_full_url,
-                        "end_date": sub.end_date,
-                    }
-                )
+            client_list = [_build_client_dict(sub, request) for sub in subs]
 
             return Response(
                 {
@@ -675,32 +637,67 @@ class SessionLogViewSet(viewsets.ModelViewSet):
 class TrainingSessionViewSet(viewsets.ModelViewSet):
     serializer_class = TrainingSessionSerializer
     permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = TrainingSessionFilter
 
     def get_queryset(self):
-        subscription_id = self.request.query_params.get("subscription_id")
-        if subscription_id:
-            return TrainingSession.objects.filter(
-                subscription_id=subscription_id
-            ).prefetch_related("exercises__sets")
-        return TrainingSession.objects.all().prefetch_related("exercises__sets")
+        # 1. الجلب الأساسي مع تحسين الأداء (Prefetch)
+        qs = TrainingSession.objects.prefetch_related("exercises__sets")
+
+        # 2. السماح لأي مدرب برؤية وتعديل جلسات أي عميل لتطبيق سيستم العمل، 
+        # ولكن لحماية البيانات، إذا كان الطلب قائمة (List) يجب إرسال رقم الاشتراك
+        is_list_action = self.action == 'list'
+        has_sub_id = self.request.query_params.get('subscription_id')
+        
+        if not self.request.user.is_superuser:
+            if is_list_action:
+                if has_sub_id:
+                    qs = qs.filter(subscription_id=has_sub_id)
+                else:
+                    # نرفض الطلب لو مفيش رقم اشتراك عشان المدرب ميقدرش يسحب كل بيانات الجيم
+                    raise ValidationError({"subscription_id": "رقم الاشتراك مطلوب لعرض الجلسات."})
+
+        return qs
 
     def perform_update(self, serializer):
         instance = serializer.instance
-        was_completed = instance.is_completed
-        updated = serializer.save()
 
-        if not was_completed and updated.is_completed:
-            sub = updated.subscription
-            sub.sessions_used = F("sessions_used") + 1
-            sub.save(update_fields=["sessions_used"])
-            sub.refresh_from_db()
+        # --- الحماية هنا ---
+        # لو الجلسة خلصانة، ومينفعش يعدلها غير الأدمن أو المدرب اللي قفلها بنفسه
+        if instance.is_completed and not self.request.user.is_superuser:
+            if instance.completed_by != self.request.user:
+                raise PermissionDenied("لا يمكنك تعديل جلسة تم إنهاؤها بالفعل بواسطة مدرب آخر.")
+        # ------------------
 
-            if sub.plan and sub.sessions_used >= sub.plan.units:
-                sub.is_active = False
-                sub.save(update_fields=["is_active"])
+        # Wrap the entire read-check-write cycle in an atomic transaction
+        # and lock the TrainingSession row to prevent concurrent completions.
+        with transaction.atomic():
+            # Re-read the session inside the transaction with a row-level lock
+            locked_session = TrainingSession.objects.select_for_update().get(pk=instance.pk)
+            
+            # If already completed by a concurrent request, abort gracefully
+            if locked_session.is_completed and serializer.validated_data.get('is_completed'):
+                return  # Idempotent — no double deduction
+            
+            was_completed = locked_session.is_completed
+            updated = serializer.save()
 
-            updated.completed_by = self.request.user
-            updated.save(update_fields=["completed_by"])
+            if not was_completed and updated.is_completed:
+                # F() expression is atomic at DB level; select_for_update ensures
+                # the condition check and the update are in the same transaction.
+                ClientSubscription.objects.filter(pk=updated.subscription_id).update(
+                    sessions_used=F("sessions_used") + 1
+                )
+                updated.subscription.refresh_from_db(fields=["sessions_used"])
+
+                sub = updated.subscription
+                if sub.plan and sub.sessions_used >= sub.plan.units:
+                    sub.is_active = False
+                    sub.save(update_fields=["is_active"])
+
+                # تسجيل الجلسة باسم المدرب الحالي الذي قام بإنهاء الجلسة
+                updated.completed_by = self.request.user
+                updated.save(update_fields=["completed_by"])
 
     @action(detail=False, methods=["get"], url_path="get-data")
     def get_data(self, request):
@@ -727,37 +724,64 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
         data = request.data
         sub_id = data.get("subscription")
         session_num = data.get("session_number")
+
+        # Input validation to prevent ValueError / unhandled 500 errors
+        if not sub_id or not session_num:
+            raise ValidationError({"detail": "subscription and session_number are required."})
+        try:
+            sub_id = int(sub_id)
+            session_num = int(session_num)
+        except (ValueError, TypeError):
+            raise ValidationError({"detail": "subscription and session_number must be integers."})
+
+        # --- الحماية هنا ---
+        # نتأكد الأول إذا كانت الجلسة دي موجودة ومقفولة أصلاً
+        existing_session = TrainingSession.objects.filter(
+            subscription_id=sub_id, 
+            session_number=session_num
+        ).first()
+
+        if existing_session and existing_session.is_completed:
+            if not request.user.is_superuser and existing_session.completed_by != request.user:
+                return Response(
+                    {"error": "لا يمكنك تعديل بيانات جلسة تم إكمالها بالفعل بواسطة مدرب آخر."}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        # ------------------
+
         mark_complete = data.get("mark_complete", False)
 
-        session, created = TrainingSession.objects.get_or_create(
-            subscription_id=sub_id,
-            session_number=session_num,
-            defaults={"name": data.get("name", f"Session {session_num}")},
-        )
-
-        session.name = data.get("name", session.name)
-
-        if mark_complete and not session.is_completed:
-            session.is_completed = True
-            session.date_completed = timezone.now().date()
-            session.completed_by = request.user
-
-            sub = session.subscription
-            # FIX B4: Replace read-modify-write (race condition) with an atomic
-            # F() expression update, then refresh_from_db to get the real value
-            # before checking whether the plan limit has been reached.
-            ClientSubscription.objects.filter(pk=sub.pk).update(
-                sessions_used=F("sessions_used") + 1
+        # Use select_for_update inside atomic transaction to prevent
+        # two simultaneous save_data calls both marking the session complete.
+        with transaction.atomic():
+            session, created = TrainingSession.objects.select_for_update().get_or_create(
+                subscription_id=sub_id,
+                session_number=session_num,
+                defaults={"name": data.get("name", f"Session {session_num}")},
             )
-            sub.refresh_from_db(fields=["sessions_used"])
-            if sub.plan and sub.sessions_used >= sub.plan.units:
-                sub.is_active = False
-            sub.save()
 
-        session.save()
+            session.name = data.get("name", session.name)
 
+            if mark_complete and not session.is_completed:
+                session.is_completed = True
+                session.date_completed = timezone.now().date()
+                
+                # تسجيل الجلسة باسم المدرب الحالي الذي قام بإنهاء الجلسة
+                session.completed_by = request.user
+
+                ClientSubscription.objects.filter(pk=sub_id).update(
+                    sessions_used=F("sessions_used") + 1
+                )
+                sub = ClientSubscription.objects.get(pk=sub_id)
+                sub.refresh_from_db(fields=["sessions_used"])
+                if sub.plan and sub.sessions_used >= sub.plan.units:
+                    sub.is_active = False
+                    sub.save(update_fields=["is_active"])
+
+            session.save()
+
+        # Update exercises outside select_for_update constraint
         session.exercises.all().delete()
-
         exercises_data = data.get("exercises", [])
         for ex_idx, ex_data in enumerate(exercises_data):
             exercise = SessionExercise.objects.create(
@@ -1490,26 +1514,7 @@ class TrainerScheduleViewSet(viewsets.ModelViewSet):
                 trainer=user, is_active=True
             ).select_related("client", "plan")
 
-        clients = []
-        for sub in qs:
-            photo_url = None
-            if sub.client.photo:
-                try:
-                    photo_url = request.build_absolute_uri(sub.client.photo.url)
-                except Exception:
-                    pass
-            clients.append(
-                {
-                    "id": sub.client.id,
-                    "subscription_id": sub.id,
-                    "name": sub.client.name,
-                    "plan": sub.plan.name if sub.plan else "No Plan",
-                    "sessions_used": sub.sessions_used,
-                    "total_sessions": sub.plan.units if sub.plan else 0,
-                    "photo": photo_url,
-                    "end_date": sub.end_date,
-                }
-            )
+        clients = [_build_client_dict(sub, request) for sub in qs]
 
         return Response(clients)
 
@@ -1627,28 +1632,22 @@ class AdminTrainerOversightViewSet(viewsets.ViewSet):
 
         clients_data = []
         for sub in active_subs:
-            photo_url = None
-            if sub.client.photo:
-                try:
-                    photo_url = request.build_absolute_uri(sub.client.photo.url)
-                except Exception:
-                    pass
-
-            total = sub.plan.units if sub.plan else 0
-            used = sub.sessions_used
+            base_data = _build_client_dict(sub, request)
+            total = base_data["total_sessions"]
+            used = base_data["sessions_used"]
 
             clients_data.append(
                 {
-                    "client_id": sub.client.id,
-                    "client_name": sub.client.name,
-                    "client_photo": photo_url,
-                    "plan_name": sub.plan.name if sub.plan else "No Plan",
+                    "client_id": base_data["id"],
+                    "client_name": base_data["name"],
+                    "client_photo": base_data["photo"],
+                    "plan_name": base_data["plan"],
                     "sessions_used": used,
                     "total_sessions": total,
                     "remaining": max(total - used, 0) if total else None,
                     "progress_pct": sub.progress_percentage,
-                    "end_date": sub.end_date,
-                    "subscription_id": sub.id,
+                    "end_date": base_data["end_date"],
+                    "subscription_id": base_data["subscription_id"],
                 }
             )
 
