@@ -209,8 +209,21 @@ const ClientTrainingTab = ({ subscriptions }) => {
     // --- PROGRESS BAR ---
     const renderProgressBar = useCallback(() => {
         if (!selectedSub) return null;
-        const total     = selectedSub.plan_total_sessions;
-        const completed = logs.length;
+        const total = selectedSub.plan_total_sessions;
+
+        // BUG-4 FIX: `logs.length` only counts however many completed-session
+        // rows were returned from the last fetch, which can be less than the
+        // real number if the response was ever paginated or if the query ran
+        // before all sessions were loaded.
+        //
+        // `sessions_used` is the authoritative counter on the subscription row.
+        // It is incremented atomically by the backend every time a session is
+        // marked complete, and is already present in the subscription object
+        // that was fetched when the user selected this subscription card.
+        //
+        // We still keep `logs` for the grid checkmarks — but use sessions_used
+        // here so the progress bar always reflects the true completion count.
+        const completed = selectedSub.sessions_used ?? logs.length;
         const percentage = Math.min((completed / total) * 100, 100);
 
         return (

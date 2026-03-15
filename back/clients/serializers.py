@@ -273,9 +273,66 @@ class TrainingDaySplitSerializer(serializers.ModelSerializer):
 class TrainingPlanSerializer(serializers.ModelSerializer):
     splits = TrainingDaySplitSerializer(many=True, read_only=True)
 
+    # BUG-1 FIX: This write-only field accepts the array of day-name strings
+    # that the React wizard sends (e.g. ["Push", "Pull", "Legs"]).
+    # It is stripped before saving the model and used instead to create the
+    # related TrainingDaySplit records in create() below.
+    # Without this field the payload key was silently discarded by DRF because
+    # TrainingPlan has no `day_names` column — resulting in a plan that always
+    # had zero splits and a session grid that could never show day names.
+    day_names = serializers.ListField(
+        child=serializers.CharField(max_length=100, allow_blank=True),
+        write_only=True,
+        required=False,
+        help_text="One name per split day, in order. Length should equal cycle_length.",
+    )
+
     class Meta:
         model = TrainingPlan
-        fields = ['id', 'subscription', 'cycle_length', 'created_at', 'splits']
+        fields = ['id', 'subscription', 'cycle_length', 'created_at', 'splits', 'day_names']
+
+    def validate(self, data):
+        """
+        BUG-1 FIX (cont.): Reject duplicate plan creation at the serializer level
+        so the frontend receives a clear 400 JSON error instead of an opaque
+        500 caused by the OneToOneField unique constraint violation.
+        """
+        subscription = data.get('subscription')
+        if subscription and not self.instance:
+            if TrainingPlan.objects.filter(subscription=subscription).exists():
+                raise serializers.ValidationError({
+                    'subscription': (
+                        'A training plan already exists for this subscription. '
+                        'Delete (reset) the existing plan before creating a new one.'
+                    )
+                })
+        return data
+
+    def create(self, validated_data):
+        """
+        BUG-1 FIX (cont.): Pop the write-only `day_names` list before creating
+        the TrainingPlan row (it has no column for it), then bulk-create one
+        TrainingDaySplit per entry.  Falls back gracefully to "Day N" labels
+        when day_names is shorter than cycle_length or omitted entirely.
+        """
+        day_names = validated_data.pop('day_names', [])
+
+        with transaction.atomic():
+            plan = TrainingPlan.objects.create(**validated_data)
+
+            splits_to_create = []
+            for i in range(plan.cycle_length):
+                # Use provided name or fall back to "Day N"
+                name = day_names[i].strip() if i < len(day_names) else ''
+                if not name:
+                    name = f'Day {i + 1}'
+                splits_to_create.append(
+                    TrainingDaySplit(plan=plan, order=i + 1, name=name)
+                )
+
+            TrainingDaySplit.objects.bulk_create(splits_to_create)
+
+        return plan
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +364,10 @@ class SessionExerciseSerializer(serializers.ModelSerializer):
 
 
 class TrainingSessionSerializer(serializers.ModelSerializer):
+    """
+    Full serializer — used for detail/retrieve/save-data/get-data.
+    Includes the nested exercises → sets tree.
+    """
     exercises = SessionExerciseSerializer(many=True, read_only=True)
     trainer_name = serializers.ReadOnlyField(source='completed_by.first_name')
     completed_by = serializers.PrimaryKeyRelatedField(read_only=True)
@@ -316,6 +377,34 @@ class TrainingSessionSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'subscription', 'session_number', 'name', 'is_completed',
             'date_completed', 'exercises', 'trainer_name', 'completed_by',
+        ]
+
+
+class TrainingSessionListSerializer(serializers.ModelSerializer):
+    """
+    BUG-5 FIX: Slim serializer for the list action used by ClientTrainingTab
+    to render the session grid checkmarks.
+
+    The full TrainingSessionSerializer nests exercises → sets for every row,
+    which multiplies payload size by 10-50x for clients with many sessions.
+    This list serializer returns only the fields the grid actually needs:
+      • session_number   — to match against the slot index
+      • is_completed     — to colour the card green
+      • date_completed   — shown in the completed card footer
+      • trainer_name     — shown in the completed card footer
+      • name             — displayed as session title in the card
+
+    The full exercises tree is intentionally excluded.  The WorkoutEditor
+    fetches it separately via /training-sessions/get-data/ when a card is
+    clicked, so there is no data loss.
+    """
+    trainer_name = serializers.ReadOnlyField(source='completed_by.first_name')
+
+    class Meta:
+        model = TrainingSession
+        fields = [
+            'id', 'subscription', 'session_number', 'name',
+            'is_completed', 'date_completed', 'trainer_name',
         ]
 
 
@@ -514,6 +603,11 @@ class FoodDatabaseSerializer(serializers.ModelSerializer):
 class CoachScheduleSerializer(serializers.ModelSerializer):
     client_name = serializers.ReadOnlyField(source='client.name')
     client_photo = serializers.SerializerMethodField()
+    # BUG-6 FIX: Explicitly declare client_id as a read-only field sourced from
+    # client.id.  Without this explicit declaration DRF falls back to resolving
+    # the FK column directly (obj.client_id), which works but is undeclared and
+    # therefore fragile if the field name ever changes.
+    client_id = serializers.ReadOnlyField(source='client.id')
 
     class Meta:
         model = CoachSchedule

@@ -129,8 +129,8 @@ const EMPTY_EXERCISE = () => ({
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFIRM MODAL  [UI-10]
 // ─────────────────────────────────────────────────────────────────────────────
-const ConfirmModal = memo(({ isOpen, title, message, confirmLabel, onConfirm, onCancel, variant = 'default' }) => {
-  if (!isOpen) return null;
+const ConfirmModal = memo(({ open, title, message, confirmLabel, onConfirm, onCancel, variant = 'default' }) => {
+  if (!open) return null;
   const isDestructive = variant === 'destructive';
   const btnCls = isDestructive
     ? 'bg-red-600 hover:bg-red-500 text-white'

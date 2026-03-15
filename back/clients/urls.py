@@ -67,4 +67,9 @@ urlpatterns = [
     # ── Auth ────────────────────────────────────────────────────────────────
     path('auth/login/', MyTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    # BUG-2 FIX: WorkoutEditor.jsx calls GET /auth/users/me/ to get the logged-in
+    # user's id for the isReadOnly guard. This endpoint was missing entirely,
+    # causing a 404 that was swallowed silently, leaving currentUserId as null
+    # and permanently disabling the read-only protection on completed sessions.
+    path('auth/users/me/', CurrentUserView.as_view(), name='current_user'),
 ]

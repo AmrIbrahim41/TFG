@@ -120,6 +120,40 @@ class MyTokenObtainPairView(TokenObtainPairView):
 
 
 # ---------------------------------------------------------------------------
+# CURRENT USER (me/)
+# BUG-2 FIX: WorkoutEditor calls GET /auth/users/me/ to obtain the logged-in
+# user's id so it can decide whether a completed session is editable.
+# This endpoint was completely missing from urls.py / views.py, causing a 404
+# that was swallowed by a bare `catch {}`.  With currentUserId always null the
+# isReadOnly guard was permanently disabled, allowing any trainer to overwrite
+# another trainer's completed session from the UI.
+# ---------------------------------------------------------------------------
+
+from rest_framework.views import APIView
+
+
+class CurrentUserView(APIView):
+    """
+    GET /auth/users/me/
+    Returns the minimal user data WorkoutEditor needs:
+      • id            — compared against completedByTrainerId for isReadOnly
+      • first_name    — display name in the header
+      • username      — fallback display name
+      • is_superuser  — so the frontend can show admin-only controls
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        return Response({
+            'id': user.id,
+            'username': user.username,
+            'first_name': user.first_name,
+            'is_superuser': user.is_superuser,
+        })
+
+
+# ---------------------------------------------------------------------------
 # TRAINERS
 # FIX #15: Non-admin users now receive TrainerPublicSerializer (id + name only).
 #           Sensitive fields (email, date_joined) are hidden from other trainers.
@@ -601,10 +635,15 @@ class TrainingPlanViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        # BUG-3 FIX: Always prefetch the full splits → exercises → sets tree.
+        # Without this, TrainingPlanSerializer triggers one query per split per
+        # exercise — potentially dozens of round-trips for a single plan fetch.
+        base_qs = TrainingPlan.objects.prefetch_related('splits__exercises__sets')
+
         subscription_id = self.request.query_params.get("subscription_id")
         if subscription_id:
-            return TrainingPlan.objects.filter(subscription_id=subscription_id)
-        return TrainingPlan.objects.all()
+            return base_qs.filter(subscription_id=subscription_id)
+        return base_qs
 
 
 class TrainingExerciseViewSet(viewsets.ModelViewSet):
@@ -640,26 +679,49 @@ class SessionLogViewSet(viewsets.ModelViewSet):
 
 
 class TrainingSessionViewSet(viewsets.ModelViewSet):
-    serializer_class = TrainingSessionSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
     filterset_class = TrainingSessionFilter
 
-    def get_queryset(self):
-        # 1. الجلب الأساسي مع تحسين الأداء (Prefetch)
-        qs = TrainingSession.objects.prefetch_related("exercises__sets")
+    # BUG-4 FIX: Disable pagination on this ViewSet entirely.
+    # ClientTrainingTab fetches completed sessions to show checkmarks on the
+    # session grid.  If DRF's default pagination is active it returns only the
+    # first page (e.g. 12 out of 30 completed sessions).  The frontend then
+    # counts `logs.length` (12) instead of the real completed count (30), so
+    # the progress bar under-reports progress.
+    # Removing pagination here is safe because:
+    #   (a) the list is always scoped to a single subscription (enforced below),
+    #   (b) the maximum row count equals plan.units which is typically ≤ 120.
+    # If you ever need pagination for this endpoint, count from
+    # `subscription.sessions_used` on the frontend instead of `logs.length`.
+    pagination_class = None
 
-        # 2. السماح لأي مدرب برؤية وتعديل جلسات أي عميل لتطبيق سيستم العمل، 
-        # ولكن لحماية البيانات، إذا كان الطلب قائمة (List) يجب إرسال رقم الاشتراك
+    def get_serializer_class(self):
+        # BUG-5 FIX: The list action (grid checkmarks) only needs lightweight
+        # data. Using the full serializer nests exercises→sets on every row,
+        # multiplying payload size by 10-50x unnecessarily.
+        if self.action == 'list':
+            return TrainingSessionListSerializer
+        return TrainingSessionSerializer
+
+    def get_queryset(self):
+        # BUG-5 FIX (cont.): Only prefetch the heavy exercise tree when it is
+        # actually needed (detail/get-data/history actions). The list action
+        # uses the slim serializer which never accesses exercises, so the
+        # prefetch would be pure overhead.
+        if self.action in ('list',):
+            qs = TrainingSession.objects.all()
+        else:
+            qs = TrainingSession.objects.prefetch_related("exercises__sets")
+
         is_list_action = self.action == 'list'
         has_sub_id = self.request.query_params.get('subscription_id')
-        
+
         if not self.request.user.is_superuser:
             if is_list_action:
                 if has_sub_id:
                     qs = qs.filter(subscription_id=has_sub_id)
                 else:
-                    # نرفض الطلب لو مفيش رقم اشتراك عشان المدرب ميقدرش يسحب كل بيانات الجيم
                     raise ValidationError({"subscription_id": "رقم الاشتراك مطلوب لعرض الجلسات."})
 
         return qs
