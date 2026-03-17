@@ -379,10 +379,14 @@ const ChildrenHistory = () => {
                 </div>
                 <div>
                     <p className={`text-sm font-bold mb-1 ${user?.is_superuser ? 'text-purple-900 dark:text-purple-100' : 'text-blue-900 dark:text-blue-100'}`}>
-                        {user?.is_superuser ? 'Admin View — All Coaches' : 'Your Session Records'}
+                        {/* BUG #7 FIX: تحديث نص الـ banner ليعكس المتطلبات الفعلية.
+                            جميع المدربين يشوفون كل السجلات — وده أساسي في الشغل. */}
+                        {user?.is_superuser ? 'Admin View — All Coaches' : 'All Session Records'}
                     </p>
                     <p className={`text-xs leading-relaxed ${user?.is_superuser ? 'text-purple-700 dark:text-purple-300' : 'text-blue-700 dark:text-blue-300'}`}>
-                        {user?.is_superuser ? 'Showing all group session records. Trainers only see their own.' : 'Click any card below for a detailed breakdown of the session and attendees.'}
+                        {/* BUG #7 FIX: الرسالة القديمة كانت "Trainers only see their own" وده خطأ
+                            بعد الإصلاح — دلوقتي كل المدربين يشوفوا كل الجلسات. */}
+                        Click any card below for a detailed breakdown of the session and attendees.
                     </p>
                 </div>
             </motion.div>
@@ -424,7 +428,9 @@ const ChildrenHistory = () => {
                     {pagination.totalPages > 1 && (
                         <div className="flex justify-center gap-2 pt-8 pb-4">
                             <button onClick={() => handlePageChange(pagination.currentPage - 1)} disabled={!pagination.previous} className="px-4 py-2 rounded-xl text-sm font-bold bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50 transition-all shadow-sm">Prev</button>
-                            <div className="flex gap-1 hidden sm:flex">
+                            {/* BUG #8 FIX: تصحيح CSS — كان فيه تعارض بين `hidden` و `flex` على نفس العنصر.
+                                الصح هو `hidden sm:flex` بدون `flex` منفصل قبلها. */}
+                            <div className="hidden sm:flex gap-1">
                                 {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).filter(p => p === 1 || p === pagination.totalPages || Math.abs(p - pagination.currentPage) <= 1).map((p, i, arr) => (
                                     <React.Fragment key={p}>
                                         {i > 0 && arr[i - 1] !== p - 1 && <span className="px-2 self-center text-zinc-400">...</span>}

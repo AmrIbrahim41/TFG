@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useContext } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -9,7 +9,7 @@ import {
   Trash2, Search, Moon,
 } from 'lucide-react';
 import api from '../api';
-import { AuthContext } from '../context/AuthContext';
+// AuthContext import removed — FIX #13: لم يعد مستخدماً في هذا الـ component
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -224,15 +224,20 @@ const EmptySlot = ({ onClick }) => (
 /**
  * ClientPickerModal
  *
- * FIX #8 (AnimatePresence missing key):
- * The original component wrapped its content in <AnimatePresence> but the
- * inner <motion.div> had no `key` prop.  Without a stable key, Framer Motion
- * cannot reliably track the element's mount/unmount lifecycle — the `exit`
- * animation never fires when the modal is closed and re-open animations
- * can stutter if React decides to reuse the DOM node.
+ * FIX #3 (Double AnimatePresence):
+ * الكود السابق كان يحتوي على <AnimatePresence> مزدوجة:
+ *   1. في الـ parent (TrainerSchedule) تلف الـ {modal && <ClientPickerModal />}
+ *   2. داخل هذا الـ component نفسه تلف الـ backdrop والـ modal panel
  *
- * Fix: add `key="client-picker-modal"` to the outermost motion element so
- * AnimatePresence always gets a unique identity to track.
+ * النتيجة: عند إغلاق الـ modal (modal → null)، الـ outer AnimatePresence
+ * تحذف الـ component فوراً من الـ DOM بدون أن تُعطي الـ inner AnimatePresence
+ * فرصةً لتشغيل exit animations. الـ modal كان يختفي فجأة بدون animation.
+ *
+ * الحل: حذف الـ <AnimatePresence> الداخلية وإبقاء motion.div مباشرةً.
+ * الـ parent's AnimatePresence كافية وحدها لإدارة دورة حياة الـ component.
+ *
+ * FIX #8 (AnimatePresence missing key — من التعليق السابق):
+ * المشكلة الأصلية من إضافة key="client-picker-modal" تم حلها أيضاً بهذا الإصلاح.
  */
 const ClientPickerModal = ({ clients, onPick, onClose, loading }) => {
   const [search, setSearch] = useState('');
@@ -241,26 +246,25 @@ const ClientPickerModal = ({ clients, onPick, onClose, loading }) => {
   );
 
   return (
-    <AnimatePresence>
+    <motion.div
+      key="client-picker-backdrop"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4
+                 bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
       <motion.div
-        key="client-picker-backdrop"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4
-                   bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
+        key="client-picker-modal"
+        initial={{ opacity: 0, y: 32, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0,  scale: 1 }}
+        exit={{ opacity: 0, y: 32, scale: 0.95 }}
+        transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+        className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl
+                   border border-zinc-200 dark:border-zinc-700 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
       >
-        <motion.div
-          key="client-picker-modal"
-          initial={{ opacity: 0, y: 32, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0,  scale: 1 }}
-          exit={{ opacity: 0, y: 32, scale: 0.95 }}
-          transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-          className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl
-                     border border-zinc-200 dark:border-zinc-700 overflow-hidden"
-          onClick={(e) => e.stopPropagation()}
-        >
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b
                           border-zinc-100 dark:border-zinc-800">
@@ -344,7 +348,6 @@ const ClientPickerModal = ({ clients, onPick, onClose, loading }) => {
           </div>
         </motion.div>
       </motion.div>
-    </AnimatePresence>
   );
 };
 
@@ -360,11 +363,11 @@ const ClientPickerModal = ({ clients, onPick, onClose, loading }) => {
 const TrainerSchedule = ({ trainerId: propTrainerId, readOnly = false }) => {
   const navigate = useNavigate();
 
-  // FIX #4 (Dead code): `user` was destructured from AuthContext but never
-  // used — `isAdminMode` derives solely from `propTrainerId`, not from the
-  // auth user object.  Removed the unused destructure entirely.
-  useContext(AuthContext); // keep context subscription in case children need it
-
+  // FIX #13: حذف useContext(AuthContext) الذي كان يستدعى بدون استخدام القيمة المُرجَعة.
+  // التعليق الأصلي كان "keep context subscription in case children need it" لكن
+  // هذا المنطق خاطئ — كل child يشترك في الـ context بشكل مستقل تلقائياً،
+  // ولا حاجة للاشتراك في الـ parent لصالحهم. إزالته تُزيل حسابات غير ضرورية.
+  // isAdminMode يعتمد فقط على propTrainerId وليس على أي بيانات من AuthContext.
   const isAdminMode = !!propTrainerId;
 
   // ── State ────────────────────────────────────────────────────────────────
@@ -421,7 +424,10 @@ const TrainerSchedule = ({ trainerId: propTrainerId, readOnly = false }) => {
     try {
       const params = isAdminMode ? { trainer_id: propTrainerId } : {};
       const res = await api.get('/trainer-schedule/', { params });
-      setScheduleSlots(Array.isArray(res.data) ? res.data : (res.data.results || []));
+      // FIX #2 (frontend): The backend now sets pagination_class = None so this
+      // endpoint always returns a flat array.  The fallback to .results is kept
+      // as a belt-and-suspenders guard in case of a mismatched deploy window.
+      setScheduleSlots(Array.isArray(res.data) ? res.data : (res.data.results ?? []));
     } catch (err) {
       console.error('Schedule fetch error:', err);
     }

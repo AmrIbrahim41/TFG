@@ -155,7 +155,15 @@ const ManualTrainingPlan = () => {
   const fetchHistory = useCallback(async () => {
     try {
       const res = await api.get('/manual-workouts/');
-      setSavedWorkouts(res.data);
+      // Guard against paginated { count, next, results } response shape in case
+      // of a deploy-window mismatch, identical to ManualNutritionPlan.jsx pattern.
+      const data = res.data;
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.results)
+          ? data.results
+          : [];
+      setSavedWorkouts(list);
       setShowHistory(true);
     } catch {
       toast.error('Failed to load history');
@@ -202,8 +210,10 @@ const ManualTrainingPlan = () => {
   const handleLoad = useCallback((w) => {
     setCurrentId(w.id);
     const nc = w.client_name, np = w.phone || '', ns = w.session_name;
-    const nt = w.data.trainerName || '', nb = w.data.brandName || '';
-    const ne = w.data.exercises || [];
+    // BUG #9 FIX: إضافة optional chaining على w.data لتفادي TypeError
+    // عند تحميل سجل قديم لا يحتوي على data.trainerName أو data.exercises.
+    const nt = w.data?.trainerName || '', nb = w.data?.brandName || '';
+    const ne = w.data?.exercises || [];
 
     setClientName(nc); setPhone(np); setSessionName(ns);
     setTrainerName(nt); setBrandName(nb); setExercises(ne);

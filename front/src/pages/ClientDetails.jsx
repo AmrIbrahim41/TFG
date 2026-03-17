@@ -520,7 +520,7 @@ const ClientDetails = () => {
                                         onChange={(e) => setNewSubData({ ...newSubData, trainer: e.target.value })}
                                     >
                                         <option value="">-- Auto (Me) --</option>
-                                        {trainers.map(t => (<option key={t.id} value={t.id}>{t.username}</option>))}
+                                        {trainers.map(t => (<option key={t.id} value={t.id}>{t.first_name || t.username}</option>))}
                                     </select>
                                 </div>
                             )}

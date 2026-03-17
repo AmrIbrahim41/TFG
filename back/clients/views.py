@@ -14,6 +14,8 @@ from django.db.models import (
     When,
     DecimalField,
     ExpressionWrapper,
+    OuterRef,
+    Subquery,
 )
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
@@ -164,6 +166,13 @@ class CurrentUserView(APIView):
 
 class ManageTrainersViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
+    # FIX #3: Disable pagination so the trainer dropdown in TrainerProfile always
+    # receives the complete list.  With StandardResultsSetPagination (page_size=12)
+    # a gym with more than 12 trainers would silently truncate the dropdown,
+    # making it impossible for a trainer to transfer a session to one of the
+    # "hidden" trainers.  The trainer roster is small and bounded in practice,
+    # so a flat list is both safe and correct here.
+    pagination_class = None
 
     def get_queryset(self):
         return User.objects.filter(is_superuser=False).order_by("-date_joined")
@@ -234,6 +243,10 @@ class TrainingSessionFilter(django_filters.FilterSet):
 class SubscriptionViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     serializer_class = SubscriptionSerializer
+    # Subscription plan lists are small and unbounded — always return a flat list.
+    # Explicit declaration prevents a future global DEFAULT_PAGINATION_CLASS from
+    # silently breaking Subscriptions.jsx (which does setSubs(response.data)).
+    pagination_class = None
 
     def get_queryset(self):
         queryset = Subscription.objects.all().order_by("is_child_plan", "price")
@@ -252,25 +265,44 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
 
 def _compute_group_adjustments(month: int, year: int) -> dict:
     """
-    FIX #18: Replaces the original nested Python loops + two-phase subscription
-    lookup with a single annotated queryset.
-
     Returns { trainer_id: Decimal } representing net revenue adjustments for
     cross-trainer group-session completions in the given month/year.
     A positive value means the trainer *gained* revenue (completed someone else's
-    client sessions); a negative value means they *lost* it.
+    client's session); a negative value means they *lost* it.
 
-    Design decisions:
-    • We only consider participants where the client has an ACTIVE subscription.
-      The original code had a fallback to the most-recent inactive sub for edge
-      cases of just-expired subscriptions.  That path is intentionally removed
-      here because: (a) the management command deactivates subscriptions nightly
-      so the window is very small, and (b) the model's save() also deactivates on
-      expiry — so by the time a group log is saved, the sub should already be
-      correct.  If your business requires the fallback, add a Coalesce subquery.
-    • Using .values().distinct() returns one flat dict per (coach, owner, price,
-      units) combination rather than full ORM instances — minimal memory use.
+    FIX (Issue C — HIGH severity financial miscalculation):
+    The previous JOIN-based approach used:
+        .filter(client__subscriptions__is_active=True, ...)
+        .values("coach_id_ann", "owner_id_ann", "price_ann", "units_ann")
+        .distinct()
+
+    This had two compounding problems:
+      1. Fan-out: joining GroupSessionParticipant to ClientSubscription via a
+         reverse FK multiplied each participant row by the number of active
+         subscriptions that client has (edge case but real).
+      2. Collapse: .distinct() on the (coach, owner, price, units) tuple treats
+         every session attended by the same client under the same coach as
+         identical — collapsing N distinct group sessions into 1 row and
+         under-reporting the financial adjustment by a factor of N.
+
+    Fix: Use a correlated Subquery (one per annotated field) to look up the
+    subscription data for each participant at the SQL level.  This guarantees
+    exactly one result row per GroupSessionParticipant row — no fan-out, no
+    collapsing, and .distinct() is no longer needed.
+
+    The subquery picks the most-recent active subscription with a valid plan
+    and an assigned trainer.  Participants with no matching subscription are
+    excluded by the .filter(owner_id_ann__isnull=False, ...) guard below.
     """
+    # Correlated subquery — evaluated once per participant row in SQL.
+    # order_by('-start_date')[:1] picks the most recent qualifying subscription.
+    active_sub = ClientSubscription.objects.filter(
+        client=OuterRef("client"),
+        is_active=True,
+        plan__units__gt=0,
+        trainer__isnull=False,
+    ).order_by("-start_date")
+
     qs = (
         GroupSessionParticipant.objects.filter(
             deducted=True,
@@ -278,26 +310,33 @@ def _compute_group_adjustments(month: int, year: int) -> dict:
             session__date__month=month,
             session__date__year=year,
             session__coach__isnull=False,
-            # Only where the client has an active subscription with a valid plan
-            client__subscriptions__is_active=True,
-            client__subscriptions__plan__units__gt=0,
-            client__subscriptions__trainer__isnull=False,
         )
         .annotate(
             coach_id_ann=F("session__coach_id"),
-            owner_id_ann=F("client__subscriptions__trainer_id"),
-            price_ann=F("client__subscriptions__plan__price"),
-            units_ann=F("client__subscriptions__plan__units"),
+            # Subquery: pull one value per participant — no JOIN fan-out
+            owner_id_ann=Subquery(active_sub.values("trainer_id")[:1]),
+            price_ann=Subquery(active_sub.values("plan__price")[:1]),
+            units_ann=Subquery(active_sub.values("plan__units")[:1]),
+        )
+        # Exclude participants whose client has no qualifying subscription
+        .filter(
+            owner_id_ann__isnull=False,
+            price_ann__isnull=False,
+            units_ann__isnull=False,
         )
         # Only adjust when the session coach ≠ the subscription owner
         .exclude(coach_id_ann=F("owner_id_ann"))
-        .values("coach_id_ann", "owner_id_ann", "price_ann", "units_ann")
-        .distinct()
+        # Select by PK — each participant row is now inherently distinct;
+        # no .distinct() needed because there is no fan-out join to collapse.
+        .values("id", "coach_id_ann", "owner_id_ann", "price_ann", "units_ann")
     )
 
     adjustments: dict = {}
     for row in qs:
-        # Both price and units are guaranteed non-None/non-zero by the filters above
+        # units_ann is guaranteed > 0 by the active_sub filter above,
+        # but guard anyway to avoid a ZeroDivisionError on stale data.
+        if not row["units_ann"]:
+            continue
         session_value = Decimal(str(row["price_ann"])) / Decimal(str(row["units_ann"]))
         owner = row["owner_id_ann"]
         coach = row["coach_id_ann"]
@@ -409,8 +448,12 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
             checkins_today = TrainingSession.objects.filter(
                 is_completed=True, date_completed=today
             ).count()
+            # BUG #6 FIX: إضافة deducted=True لحساب المشاركين الفعليين فقط.
+            # الكود السابق كان يحسب كل المشاركين حتى اللي لم تُخصم جلساتهم،
+            # مما يُعطي رقم زيارات مُضخّم في لوحة الاستقبال.
             group_checkins_today = GroupSessionParticipant.objects.filter(
-                session__date__date=today
+                session__date__date=today,
+                deducted=True,
             ).count()
 
             recent_subs = current_month_qs.select_related(
@@ -613,6 +656,30 @@ class ClientSubscriptionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
+    def perform_create(self, serializer):
+        """
+        FIX: Auto-assign the requesting trainer when a non-admin trainer creates
+        a subscription and does not explicitly provide a trainer in the payload.
+        Without this, subscriptions created by trainers had trainer=None, causing
+        the client to be invisible on the trainer's dashboard and breaking the
+        TrainerSchedule validation (which requires client to have an active sub
+        with the specific trainer).
+
+        - Admins and receptionists can freely set any trainer (or leave it null).
+        - Regular trainers: injected as trainer if payload omits the field.
+        """
+        user = self.request.user
+        is_admin = user.is_superuser
+        is_rec = user.groups.filter(name='REC').exists()
+
+        if not is_admin and not is_rec:
+            # Only inject if the frontend did not explicitly send a trainer value
+            if not serializer.validated_data.get('trainer'):
+                serializer.save(trainer=user)
+                return
+
+        serializer.save()
+
 
 # ---------------------------------------------------------------------------
 # COUNTRIES
@@ -709,10 +776,20 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
         # actually needed (detail/get-data/history actions). The list action
         # uses the slim serializer which never accesses exercises, so the
         # prefetch would be pure overhead.
+        #
+        # FIX: For non-list actions, add select_related for completed_by and
+        # subscription__plan.  Without this, TrainingSessionSerializer's
+        # trainer_name = ReadOnlyField(source='completed_by.first_name') and
+        # perform_update's plan.units check each fire a separate SQL query per
+        # session row — classic N+1 even when there's only one row.
         if self.action in ('list',):
             qs = TrainingSession.objects.all()
         else:
-            qs = TrainingSession.objects.prefetch_related("exercises__sets")
+            qs = (
+                TrainingSession.objects
+                .select_related('completed_by', 'subscription__plan', 'subscription__client')
+                .prefetch_related("exercises__sets")
+            )
 
         is_list_action = self.action == 'list'
         has_sub_id = self.request.query_params.get('subscription_id')
@@ -727,25 +804,33 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_update(self, serializer):
-        instance = serializer.instance
-
-        # --- الحماية هنا ---
-        # لو الجلسة خلصانة، ومينفعش يعدلها غير الأدمن أو المدرب اللي قفلها بنفسه
-        if instance.is_completed and not self.request.user.is_superuser:
-            if instance.completed_by != self.request.user:
-                raise PermissionDenied("لا يمكنك تعديل جلسة تم إنهاؤها بالفعل بواسطة مدرب آخر.")
-        # ------------------
-
         # Wrap the entire read-check-write cycle in an atomic transaction
         # and lock the TrainingSession row to prevent concurrent completions.
         with transaction.atomic():
-            # Re-read the session inside the transaction with a row-level lock
-            locked_session = TrainingSession.objects.select_for_update().get(pk=instance.pk)
-            
+            # Re-read the session inside the transaction with a row-level lock.
+            # This is now the single authoritative source of truth for
+            # is_completed / completed_by — not serializer.instance, which was
+            # fetched before the transaction and could be stale.
+            locked_session = TrainingSession.objects.select_for_update().get(pk=serializer.instance.pk)
+
+            # ISSUE A FIX — Authorization check against the locked row.
+            # Moving this guard INSIDE the atomic + select_for_update block
+            # closes the TOCTOU race: if two requests race to complete the same
+            # session, the second one reads the already-committed is_completed=True
+            # and completed_by from the locked row before checking — not from a
+            # stale Django ORM cache read outside the transaction.
+            #
+            # Business rule: a completed session may only be edited by the trainer
+            # who completed it, or by a superuser. Read access remains unrestricted
+            # (any authenticated user may view all sessions as per business logic).
+            if locked_session.is_completed and not self.request.user.is_superuser:
+                if locked_session.completed_by != self.request.user:
+                    raise PermissionDenied("لا يمكنك تعديل جلسة تم إنهاؤها بالفعل بواسطة مدرب آخر.")
+
             # If already completed by a concurrent request, abort gracefully
             if locked_session.is_completed and serializer.validated_data.get('is_completed'):
                 return  # Idempotent — no double deduction
-            
+
             was_completed = locked_session.is_completed
             updated = serializer.save()
 
@@ -755,9 +840,14 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
                 ClientSubscription.objects.filter(pk=updated.subscription_id).update(
                     sessions_used=F("sessions_used") + 1
                 )
-                updated.subscription.refresh_from_db(fields=["sessions_used"])
-
-                sub = updated.subscription
+                # BUG #7 FIX: حذف refresh_from_db الزيادة.
+                # الكود كان يُطلق استعلامين متتاليين على نفس الصف:
+                #   1) refresh_from_db(fields=["sessions_used"])
+                #   2) .select_related('plan').get(pk=...)
+                # الاستعلام الأول زيادة تمامًا — الثاني يجلب كل ما نحتاجه.
+                sub = ClientSubscription.objects.select_related('plan').get(
+                    pk=updated.subscription_id
+                )
                 if sub.plan and sub.sessions_used >= sub.plan.units:
                     sub.is_active = False
                     sub.save(update_fields=["is_active"])
@@ -801,21 +891,6 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
         except (ValueError, TypeError):
             raise ValidationError({"detail": "subscription and session_number must be integers."})
 
-        # --- الحماية هنا ---
-        # نتأكد الأول إذا كانت الجلسة دي موجودة ومقفولة أصلاً
-        existing_session = TrainingSession.objects.filter(
-            subscription_id=sub_id, 
-            session_number=session_num
-        ).first()
-
-        if existing_session and existing_session.is_completed:
-            if not request.user.is_superuser and existing_session.completed_by != request.user:
-                return Response(
-                    {"error": "لا يمكنك تعديل بيانات جلسة تم إكمالها بالفعل بواسطة مدرب آخر."}, 
-                    status=status.HTTP_403_FORBIDDEN
-                )
-        # ------------------
-
         mark_complete = data.get("mark_complete", False)
 
         # Use select_for_update inside atomic transaction to prevent
@@ -826,6 +901,22 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
                 session_number=session_num,
                 defaults={"name": data.get("name", f"Session {session_num}")},
             )
+
+            # ISSUE A FIX — Authorization check against the locked row.
+            # Previously this check was performed BEFORE the atomic block on a
+            # potentially stale `existing_session` object (two separate DB reads:
+            # one to check, one to lock). Moving it here, after select_for_update,
+            # guarantees we read the committed is_completed/completed_by values
+            # under the row lock — eliminating the TOCTOU window.
+            #
+            # Business rule: a completed session may only be modified by the
+            # trainer who completed it, or by a superuser.
+            if not created and session.is_completed:
+                if not request.user.is_superuser and session.completed_by != request.user:
+                    return Response(
+                        {"error": "لا يمكنك تعديل بيانات جلسة تم إكمالها بالفعل بواسطة مدرب آخر."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
 
             session.name = data.get("name", session.name)
 
@@ -839,43 +930,67 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
                 ClientSubscription.objects.filter(pk=sub_id).update(
                     sessions_used=F("sessions_used") + 1
                 )
-                sub = ClientSubscription.objects.get(pk=sub_id)
-                sub.refresh_from_db(fields=["sessions_used"])
+                # BUG #7 FIX: The previous code called .get(pk=sub_id) and
+                # then immediately .refresh_from_db(fields=["sessions_used"]),
+                # firing two SQL queries against the same fresh row.
+                # A single .select_related('plan').get() fetches the updated
+                # row plus the related plan object in one JOIN query.
+                sub = ClientSubscription.objects.select_related('plan').get(pk=sub_id)
                 if sub.plan and sub.sessions_used >= sub.plan.units:
                     sub.is_active = False
                     sub.save(update_fields=["is_active"])
 
             session.save()
 
-        # Update exercises outside select_for_update constraint
-        session.exercises.all().delete()
-        exercises_data = data.get("exercises", [])
-        for ex_idx, ex_data in enumerate(exercises_data):
-            exercise = SessionExercise.objects.create(
-                training_session=session,
-                order=ex_idx + 1,
-                name=ex_data.get("name", ""),
-                note=ex_data.get("note", ""),
-            )
-            for set_idx, set_data in enumerate(ex_data.get("sets", [])):
-                SessionSet.objects.create(
-                    exercise=exercise,
-                    order=set_idx + 1,
-                    reps=set_data.get("reps", ""),
-                    weight=set_data.get("weight", ""),
-                    technique=set_data.get("technique", "Regular"),
-                    equipment=set_data.get("equipment", ""),
+            # FIX #6: استبدال الـ individual INSERTs بـ bulk_create لتحسين الأداء.
+            # الكود السابق كان ينشئ كل exercise وكل set على حدة داخل نفس
+            # الـ transaction، مما أنتج ~40 INSERT منفصل لجلسة عادية
+            # (10 exercises × 4 sets). الآن نجمعها في INSERT واحد لكل جدول.
+            # ملاحظة: نستخدم bulk_create ثم نعيد قراءة الـ IDs الناتجة لربط
+            # الـ sets بالـ exercises الصحيحة.
+            session.exercises.all().delete()
+            exercises_data = data.get("exercises", [])
+
+            # المرحلة 1: إنشاء كل الـ exercises دفعة واحدة
+            exercises_to_create = [
+                SessionExercise(
+                    training_session=session,
+                    order=ex_idx + 1,
+                    name=ex_data.get("name", ""),
+                    note=ex_data.get("note", ""),
                 )
+                for ex_idx, ex_data in enumerate(exercises_data)
+            ]
+            created_exercises = SessionExercise.objects.bulk_create(exercises_to_create)
+
+            # المرحلة 2: إنشاء كل الـ sets دفعة واحدة مرتبطة بالـ exercises الصحيحة
+            sets_to_create = []
+            for ex_obj, ex_data in zip(created_exercises, exercises_data):
+                for set_idx, set_data in enumerate(ex_data.get("sets", [])):
+                    sets_to_create.append(SessionSet(
+                        exercise=ex_obj,
+                        order=set_idx + 1,
+                        reps=set_data.get("reps", ""),
+                        weight=set_data.get("weight", ""),
+                        technique=set_data.get("technique", "Regular"),
+                        equipment=set_data.get("equipment", ""),
+                    ))
+            if sets_to_create:
+                SessionSet.objects.bulk_create(sets_to_create)
 
         return Response({"status": "success", "session_id": session.id})
 
     @action(detail=False, methods=["get"])
     def history(self, request):
         sub_id = request.query_params.get("subscription")
+        # FIX #5: إضافة prefetch_related لتجنب N+1 queries.
+        # الـ history action يستخدم TrainingSessionSerializer الكامل الذي
+        # يتداخل مع exercises → sets. بدون prefetch كان يُطلق ~150 query
+        # لـ 10 sessions × 5 exercises × 3 sets بدلاً من 3 فقط.
         sessions = TrainingSession.objects.filter(
             subscription_id=sub_id,
             is_completed=True,
-        ).order_by("-date_completed")[:10]
+        ).prefetch_related("exercises__sets").order_by("-date_completed")[:10]
 
         serializer = self.get_serializer(sessions, many=True)
         return Response(serializer.data)
@@ -990,18 +1105,29 @@ class CoachScheduleViewSet(viewsets.ModelViewSet):
         # FIX B2: Added select_related('client') to prevent N+1 queries from
         # CoachScheduleSerializer.get_client_photo() accessing obj.client.photo
         # per row without a JOIN.
+        #
+        # BUG #1 FIX: أي مدرب مصادَق عليه يحق له رؤية جدول أي مدرب آخر عبر trainer_id.
+        # الكود السابق كان يتجاهل trainer_id تمامًا لغير الـ superuser،
+        # مما يخالف متطلبات الشغل الأساسية:
+        #   "أي مدرب يقدر يشوف بيانات وجداول المدربين الآخرين وده أساسي في الشغل."
+        # الإصلاح: نتحقق من trainer_id أولًا لأي مستخدم مصادَق عليه.
+        # لو مفيش trainer_id محدد، نرجع جدول المستخدم الحالي (أو كل الجداول للـ admin).
+        trainer_id = self.request.query_params.get("trainer_id")
+        if trainer_id:
+            return CoachSchedule.objects.filter(coach_id=trainer_id).select_related(
+                "client"
+            )
         user = self.request.user
         if user.is_superuser:
-            trainer_id = self.request.query_params.get("trainer_id")
-            if trainer_id:
-                return CoachSchedule.objects.filter(coach_id=trainer_id).select_related(
-                    "client"
-                )
             return CoachSchedule.objects.all().select_related("client")
         return CoachSchedule.objects.filter(coach=user).select_related("client")
 
     def perform_create(self, serializer):
-        if self.request.user.is_superuser:
+        # BUG #2 FIX: الكود السابق كان يفرض coach=request.user دايمًا لغير الـ admin،
+        # مما يمنع مدربًا من إضافة طفل لجدول مدرب آخر حتى لو بعت coach_id صريح
+        # في الـ payload. الإصلاح: لو الـ payload فيه coach، استخدمه كما هو.
+        # لو مفيش coach في الـ payload، حط request.user كـ fallback.
+        if serializer.validated_data.get('coach'):
             serializer.save()
         else:
             serializer.save(coach=self.request.user)
@@ -1013,15 +1139,18 @@ class GroupTrainingViewSet(viewsets.ModelViewSet):
     pagination_class = HistoryPagination
 
     def get_queryset(self):
-        user = self.request.user
+        # BUG #7 FIX: إزالة قيد filter(coach=user) للمدربين العاديين.
+        # المتطلبات الأساسية للنظام تنص على أن أي مدرب مصادَق عليه يحق له
+        # رؤية سجلات كل الجلسات الجماعية بغض النظر عن المدرب المُنفّذ.
+        # الكود السابق كان يعرض للمدرب العادي جلساته هو فقط، وده خطأ منطقي
+        # يخالف متطلبات الشغل المذكورة صراحةً.
+        # الـ admin لا يزال يرى كل شيء كالسابق (لم يتغير السلوك له).
         qs = (
             GroupSessionLog.objects.all()
             .prefetch_related("participants__client")
             .select_related("coach")
             .order_by("-date")
         )
-        if not user.is_superuser:
-            qs = qs.filter(coach=user)
         return qs
 
     def perform_create(self, serializer):
@@ -1048,8 +1177,10 @@ class GroupTrainingViewSet(viewsets.ModelViewSet):
             .order_by("-session__date")
         )
 
-        if not request.user.is_superuser:
-            participations = participations.filter(session__coach=request.user)
+        # BUG #5 FIX: حذف الـ filter على session__coach للمدربين غير الـ superuser.
+        # بالمتطلبات الأساسية للنظام: أي مدرب يحق له رؤية تاريخ جلسات أي عميل
+        # بغض النظر عن المدرب الذي أجرى الجلسة. الفلتر السابق كان يخفي جلسات
+        # الطفل التي أجراها مدرب آخر وهذا خطأ منطقي يخالف متطلبات العمل.
 
         page = paginator.paginate_queryset(participations, request)
         history_data = []
@@ -1142,8 +1273,9 @@ class GroupTrainingViewSet(viewsets.ModelViewSet):
             .order_by("-session__date")
         )
 
-        if not user.is_superuser:
-            participations = participations.filter(session__coach=user)
+        # BUG #5 FIX (bulk_exercise_history): نفس مبدأ child_history —
+        # أي مدرب يحق له رؤية بيانات أي عميل بغض النظر عن المدرب المُنفّذ.
+        # (تعليق شرح مهم: نفس السبب المذكور في child_history أعلاه)
 
         # 2. تهيئة قاموس النتائج بالأسماء الأصلية كما طلبها الـ Frontend
         result = {
@@ -1247,6 +1379,11 @@ class GroupTrainingViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # ملاحظة تصميمية: لا يوجد قيد على ملكية العميل هنا عن قصد.
+        # الجلسات الجماعية (Group Sessions) مصممة لتسمح لمدرب بتدريب عملاء
+        # ينتمون لمدربين آخرين — وهو سيناريو مدعوم ومحسوب مالياً عبر
+        # دالة _compute_group_adjustments التي تحسب التسويات بين المدربين
+        # عندما يكون coach_id مختلفاً عن owner_id (مالك الاشتراك).
         with transaction.atomic():
             session = GroupSessionLog.objects.create(
                 coach=request.user,
@@ -1303,6 +1440,13 @@ class GroupWorkoutTemplateViewSet(viewsets.ModelViewSet):
 class SessionTransferRequestViewSet(viewsets.ModelViewSet):
     serializer_class = SessionTransferRequestSerializer
     permission_classes = [permissions.IsAuthenticated]
+    # FIX #1: Disable pagination so TrainerProfile.jsx can safely spread the
+    # response into an array.  With DRF's default pagination the response shape
+    # is { count, next, results } — an object, not an array — causing
+    # `[...transfersRes.data].sort(...)` to throw a TypeError and crash the
+    # page entirely.  Transfer lists are always scoped to a single trainer and
+    # are small enough that a flat list is safe.
+    pagination_class = None
 
     def get_queryset(self):
         user = self.request.user
@@ -1374,6 +1518,15 @@ class SessionTransferRequestViewSet(viewsets.ModelViewSet):
             if plan and source_sub.sessions_used >= plan.units:
                 source_sub.is_active = False
                 source_sub.save(update_fields=["is_active"])
+            else:
+                # BUG #1 FIX: حتى لو الـ source_sub لم يصل للـ limit، يجب
+                # deactivate قبل إنشاء target_sub جديد لأن قيد قاعدة البيانات
+                # unique_active_subscription_per_client يمنع وجود أكثر من
+                # اشتراك نشط واحد لنفس العميل. كان الكود السابق ينشئ target_sub
+                # بـ is_active=True بينما source_sub لا يزال active →
+                # IntegrityError مع كل transfer لا يستنزف الجلسات بالكامل.
+                source_sub.is_active = False
+                source_sub.save(update_fields=["is_active"])
 
             target_sub = (
                 ClientSubscription.objects.select_for_update()
@@ -1392,9 +1545,7 @@ class SessionTransferRequestViewSet(viewsets.ModelViewSet):
             else:
                 today = timezone.now().date()
                 new_sessions_used = max(plan.units - sessions_count, 0) if plan else 0
-                new_end_date = (
-                    today + timedelta(days=plan.duration_days) if plan else None
-                )
+                new_end_date = source_sub.end_date
                 ClientSubscription.objects.create(
                     client=source_sub.client,
                     plan=plan,
@@ -1433,6 +1584,12 @@ class ManualNutritionSaveViewSet(viewsets.ModelViewSet):
 class ManualWorkoutSaveViewSet(viewsets.ModelViewSet):
     serializer_class = ManualWorkoutSaveSerializer
     permission_classes = [permissions.IsAuthenticated]
+    # FIX: Match ManualNutritionSaveViewSet — disable pagination so the
+    # history drawer always receives the complete flat list.  Without this,
+    # a trainer with more than 12 saved workouts triggers a TypeError crash
+    # when fetchHistory sets savedWorkouts to a paginated object and
+    # filteredHistory calls .filter() on it.
+    pagination_class = None
 
     def get_queryset(self):
         return ManualWorkoutSave.objects.filter(user=self.request.user).order_by(
@@ -1528,17 +1685,30 @@ class TrainerScheduleViewSet(viewsets.ModelViewSet):
 
     serializer_class = TrainerScheduleSerializer
     permission_classes = [permissions.IsAuthenticated]
+    # FIX #2: Disable pagination to prevent silent data loss.
+    # With StandardResultsSetPagination (page_size=12) a trainer's weekly
+    # schedule is silently truncated after the 12th slot.  A typical trainer
+    # with 5 days × 3+ clients per day already exceeds this limit, causing
+    # slots to vanish from the UI with no error or warning.
+    # The schedule is always scoped to a single trainer (at most 7 days ×
+    # slots-per-day), so returning the full flat list is both correct and safe.
+    pagination_class = None
 
     def get_queryset(self):
         user = self.request.user
 
+        # BUG #4 FIX: الكود السابق كان يستخدم JOIN مزدوج على نفس الـ FK مع F()
+        # مما ينتج تكرارًا يتطلب .distinct() وقد يُفوّت حالات حافّة.
+        # الحل: استخدام Exists() subquery تمامًا كما هو مُصلَح في admin.py (FIX #20).
+        from django.db.models import Exists, OuterRef
+        active_sub_exists = ClientSubscription.objects.filter(
+            client=OuterRef('client'),
+            trainer=OuterRef('trainer'),
+            is_active=True,
+        )
         base_qs = (
             TrainerSchedule.objects.select_related("client", "trainer")
-            .filter(
-                client__subscriptions__is_active=True,
-                client__subscriptions__trainer=F("trainer"),
-            )
-            .distinct()
+            .filter(Exists(active_sub_exists))
             .order_by("day_of_week", "time_slot")
         )
 
@@ -1675,7 +1845,12 @@ class AdminTrainerOversightViewSet(viewsets.ViewSet):
                 }
             )
             if d in day_map:
-                day_map[d] += 1
+                # FIX #18: احتساب كل مشارك كتفاعل منفصل في الـ chart بدلاً من
+                # احتساب الجلسة الجماعية كوحدة واحدة بغض النظر عن عدد المشاركين.
+                # مثال: جلسة بـ 15 مشارك + 2 فردية = 17 تفاعل في الـ chart
+                # بدلاً من 3 فقط. هذا يعطي صورة أدق عن نشاط المدرب اليومي.
+                participant_count = len(participant_names) or 1
+                day_map[d] += participant_count
 
         chart_data = [
             {"date": d.strftime("%a %d"), "sessions": count}

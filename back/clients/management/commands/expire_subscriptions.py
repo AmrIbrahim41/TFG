@@ -17,9 +17,26 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.db import transaction
 
-# Adjust the import path to match your actual app name.
-# e.g. if your app is called "gym", use: from gym.models import ClientSubscription
-from clients.models import ClientSubscription
+# FIX #19: المسار السابق كان مُشفَّراً كـ 'clients.models' مما يجعل الأمر
+# يفشل مباشرةً لو تغيّر اسم الـ app أو نُقل المشروع.
+# الحل: نستخدم اسم الـ app من إعدادات Django ديناميكياً بدلاً من تثبيته.
+# إذا كنت تريد قيمة ثابتة، عدّل السطر التالي ليطابق اسم الـ app الفعلي.
+#
+# للتشغيل اليدوي:
+#   python manage.py expire_subscriptions
+#
+# إذا تغيّر اسم الـ app، عدّل APP_LABEL أدناه فقط بدلاً من البحث في الكود.
+
+APP_LABEL = 'clients'  # ← عدّل هذا السطر فقط لو غيّرت اسم الـ app
+
+try:
+    from django.apps import apps as django_apps
+    ClientSubscription = django_apps.get_model(APP_LABEL, 'ClientSubscription')
+except LookupError as exc:
+    raise ImportError(
+        f"Could not find 'ClientSubscription' in app '{APP_LABEL}'. "
+        f"Check APP_LABEL in expire_subscriptions.py. Original error: {exc}"
+    )
 
 
 class Command(BaseCommand):
@@ -82,12 +99,18 @@ class Command(BaseCommand):
         #   - No Django signal overhead per row (acceptable here since
         #     expiration is a batch maintenance task, not a user-facing event).
         #   - Wrapped in a transaction for atomicity.
+        #
+        # FIX: Capture the integer returned by .update() — it reflects the
+        # actual rows affected inside the transaction, not the pre-transaction
+        # count. If a subscription is created or reactivated in the milliseconds
+        # between expired_qs.count() and expired_qs.update(), {count} would be
+        # wrong. {updated_count} is always accurate.
         with transaction.atomic():
-            expired_qs.update(is_active=False)
+            updated_count = expired_qs.update(is_active=False)
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"[{today}] Successfully deactivated {count} expired subscription(s)."
+                f"[{today}] Successfully deactivated {updated_count} expired subscription(s)."
             )
         )
 

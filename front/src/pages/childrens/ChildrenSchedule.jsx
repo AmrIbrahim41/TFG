@@ -100,17 +100,49 @@ const ChildrenSchedule = () => {
         let cancelled = false;
         const init = async () => {
             try {
-                const [trainersRes, childrenRes] = await Promise.all([
-                    api.get('/manage-trainers/'),
-                    api.get('/clients/?is_child=true&page_size=100')
-                ]);
+                const trainersRes = await api.get('/manage-trainers/');
                 if (cancelled) return;
                 const trainerList = trainersRes.data.results || trainersRes.data;
                 setTrainers(trainerList);
-                if (trainerList.length > 0) setSelectedCoach(trainerList[0].id);
 
-                const all = childrenRes.data.results || childrenRes.data;
-                setActiveChildren(all.filter(c => c.is_subscribed));
+                // BUG #5 FIX: ابدأ بـ tab المدرب الحالي لو موجود في القائمة،
+                // بدل ما تبدأ دايمًا بأول مدرب في القائمة.
+                // الكود السابق كان يحدد trainerList[0] دايمًا، لو المدرب الحالي
+                // مش الأول هيشوف جدول مدرب تاني أول ما يفتح الصفحة.
+                if (trainerList.length > 0) {
+                    // نحاول نجيب user من الـ token المحلي أو من أي context متاح
+                    const storedUser = JSON.parse(localStorage.getItem('user') || 'null');
+                    const currentUserId = storedUser?.id;
+                    const matchedTrainer = currentUserId
+                        ? trainerList.find(t => t.id === currentUserId)
+                        : null;
+                    setSelectedCoach((matchedTrainer || trainerList[0]).id);
+                }
+
+                // BUG #4 FIX: جلب كل الأطفال مع pagination كاملة بدل تحديد 100 فقط.
+                // الكود السابق: api.get('/clients/?is_child=true&page_size=100')
+                // كان يُفوّت الأطفال بعد الـ 100 الأول وده bug صامت.
+                // الإصلاح: loop على كل الصفحات حتى ما يبقاش في next page.
+                let allChildren = [];
+                let url = '/clients/?is_child=true&page_size=100';
+                while (url) {
+                    const res = await api.get(url);
+                    if (cancelled) return;
+                    const pageData = res.data.results ?? res.data;
+                    allChildren = [...allChildren, ...pageData];
+                    if (res.data.next) {
+                        // نستخدم فقط الـ search params من الـ next URL لتجنب CORS أو domain issues
+                        try {
+                            const nextUrlObj = new URL(res.data.next);
+                            url = `/clients/${nextUrlObj.search}`;
+                        } catch {
+                            url = null;
+                        }
+                    } else {
+                        url = null;
+                    }
+                }
+                setActiveChildren(allChildren.filter(c => c.is_subscribed));
             } catch (err) {
                 if (!cancelled) showToast('Failed to load initial data.');
             } finally {
@@ -142,10 +174,18 @@ const ChildrenSchedule = () => {
     // ── Get Children Helper ───────────────────────────────────────────────
     const getChildrenForDay = useCallback(
         (day) => {
+            // BUG #6 FIX: الكود السابق كان يُخفي الأطفال اللي انتهت اشتراكاتهم
+            // بصمت تام — فالمدرب مش عارف ليه اختفى الطفل من الجدول.
+            // الإصلاح: نرجع كل الأطفال في اليوم المطلوب بغض النظر عن حالة الاشتراك،
+            // ونضيف خاصية is_expired لكل طفل عشان الـ UI يعرض badge "Expired".
+            // المعالجة البصرية موجودة في الـ render أدناه.
             const activeClientIds = new Set(activeChildren.map(c => c.id));
-            return scheduleData.filter(i => 
-                i.day === day && (activeClientIds.has(i.client) || activeClientIds.has(i.client_id))
-            );
+            return scheduleData
+                .filter(i => i.day === day)
+                .map(i => ({
+                    ...i,
+                    is_expired: !(activeClientIds.has(i.client) || activeClientIds.has(i.client_id))
+                }));
         },
         [scheduleData, activeChildren]
     );
@@ -374,7 +414,11 @@ const ChildrenSchedule = () => {
                                         </div>
                                     ) : (
                                         kids.map(k => (
-                                            <div key={k.id} className="group relative flex items-center gap-3.5 p-3 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 shadow-sm hover:shadow-md hover:border-orange-200 dark:hover:border-orange-900/50 transition-all duration-200">
+                                            <div key={k.id} className={`group relative flex items-center gap-3.5 p-3 rounded-2xl border shadow-sm transition-all duration-200 ${
+                                                k.is_expired
+                                                    ? 'bg-zinc-50 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800 opacity-70'
+                                                    : 'bg-white dark:bg-zinc-900 border-zinc-100 dark:border-zinc-800 hover:shadow-md hover:border-orange-200 dark:hover:border-orange-900/50'
+                                            }`}>
                                                 <div className="relative shrink-0">
                                                     {k.client_photo ? (
                                                         <img
@@ -388,11 +432,17 @@ const ChildrenSchedule = () => {
                                                             <Users size={16} />
                                                         </div>
                                                     )}
-                                                    <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-zinc-900 rounded-full" />
+                                                    {/* BUG #6 FIX: إظهار مؤشر ملوّن حسب حالة الاشتراك */}
+                                                    <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 border-2 border-white dark:border-zinc-900 rounded-full ${k.is_expired ? 'bg-zinc-400' : 'bg-green-500'}`} />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <h4 className="text-sm font-bold text-zinc-900 dark:text-white truncate">{k.client_name}</h4>
-                                                    {k.session_time ? (
+                                                    {/* BUG #6 FIX: إظهار badge "Expired" للأطفال المنتهية اشتراكاتهم */}
+                                                    {k.is_expired ? (
+                                                        <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-1.5 py-0.5 rounded-md mt-0.5 block w-fit">
+                                                            Subscription Expired
+                                                        </span>
+                                                    ) : k.session_time ? (
                                                         <div className="flex items-center gap-1 text-[11px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 px-1.5 py-0.5 rounded-md mt-0.5 w-fit">
                                                             <Clock size={10} />{formatTime12Hour(k.session_time)}
                                                         </div>

@@ -92,65 +92,104 @@ const FoodDatabase = () => {
     // ---------------------------------------------------------------------------
     // Fetch — with Pagination & Server-side filtering
     // ---------------------------------------------------------------------------
-    const fetchFoods = useCallback(async (urlOverride = null, query = '', category = 'All') => {
-        let cancelled = false;
+    // ---------------------------------------------------------------------------
+    // BUG #5 FIX: fetchFoods now accepts an AbortSignal so callers can cancel
+    // in-flight requests cleanly.  The old pattern declared `cancelled = false`
+    // inside the async body and returned `() => { cancelled = true }` as the
+    // Promise's resolved value.  React's useEffect ignores Promise resolved
+    // values entirely — it only reads the *synchronous* return of its callback —
+    // so the flag was never flipped and state updates kept firing on unmounted
+    // components, producing "Can't perform a React state update on an unmounted
+    // component" warnings and potential stale-state bugs.
+    //
+    // BUG #6 FIX: DRF's PageNumberPagination returns absolute URLs for next /
+    // previous (e.g. "https://api.example.com/api/food-database/?page=2").
+    // Passing those directly to api.get() caused Axios to prepend the configured
+    // baseURL a second time, building a double-prefixed path → 404.
+    // Fix: parse the absolute URL with new URL(), extract only the query-string
+    // portion (.search), and prefix it with the known relative path.
+    // ---------------------------------------------------------------------------
+    const fetchFoods = useCallback(async (urlOverride = null, query = '', category = 'All', signal = null) => {
         setLoading(true);
         try {
-            let url = urlOverride;
-            
-            // Build URL if not using a direct next/prev link
-            if (!url) {
+            let url;
+            if (urlOverride) {
+                // BUG #6 FIX: extract only the query-string from the absolute
+                // pagination URL so Axios does not double-prepend the baseURL.
+                const urlObj = new URL(urlOverride);
+                url = `/food-database/${urlObj.search}`;
+            } else {
                 const params = new URLSearchParams();
                 if (query) params.append('search', query);
                 if (category !== 'All') params.append('category', category);
                 url = `/food-database/?${params.toString()}`;
             }
 
-            const res = await api.get(url);
-            
-            if (!cancelled) {
-                if (res.data.results) {
-                    setFoods(res.data.results);
-                    setNextPage(res.data.next);
-                    setPrevPage(res.data.previous);
-                } else {
-                    // Fallback in case pagination is disabled globally
-                    setFoods(res.data);
-                    setNextPage(null);
-                    setPrevPage(null);
-                }
+            // BUG #5 FIX: pass the AbortSignal to Axios so the request is
+            // cancelled when the component unmounts or a newer fetch supersedes it.
+            const res = await api.get(url, { signal });
+
+            if (res.data.results) {
+                setFoods(res.data.results);
+                setNextPage(res.data.next);
+                setPrevPage(res.data.previous);
+            } else {
+                // Fallback in case pagination is disabled globally
+                setFoods(res.data);
+                setNextPage(null);
+                setPrevPage(null);
             }
         } catch (error) {
-            if (!cancelled) {
-                console.error(error);
-                toast.error('Failed to load food database.');
+            // BUG #5 FIX: intentional cancellations must be swallowed silently.
+            // They fire on unmount or when a newer request aborts this one and
+            // are not real errors — showing a toast here would be noise.
+            if (
+                error.name === 'AbortError'    ||  // native fetch / browser
+                error.name === 'CanceledError' ||  // axios < 1.x
+                error.code  === 'ERR_CANCELED'     // axios >= 1.x
+            ) {
+                return;
             }
+            console.error(error);
+            toast.error('Failed to load food database.');
         } finally {
-            if (!cancelled) setLoading(false);
+            setLoading(false);
         }
-        return () => { cancelled = true; };
     }, []);
 
     // 1. Initial Load
+    // BUG #5 FIX: controller.abort() is returned as the *synchronous* cleanup
+    // function so React calls it on unmount, cancelling the in-flight request.
     useEffect(() => {
-        fetchFoods();
+        const controller = new AbortController();
+        fetchFoods(null, '', 'All', controller.signal);
+        return () => controller.abort();
     }, [fetchFoods]);
 
     // 2. Search & Category Filter (Debounced)
+    // BUG #5 FIX: the controller is created inside the debounce callback so we
+    // can still abort it in the cleanup even after the timeout has fired.
     useEffect(() => {
         if (isFirstRender.current) {
             isFirstRender.current = false;
             return;
         }
-        
+
         if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-        
+
+        // Declared in the outer effect scope so the cleanup closure can reach
+        // it whether the debounce fired or not.
+        let controller = null;
+
         searchDebounceRef.current = setTimeout(() => {
-            fetchFoods(null, searchTerm, activeCategory);
+            controller = new AbortController();
+            fetchFoods(null, searchTerm, activeCategory, controller.signal);
         }, 500);
 
         return () => {
             if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+            // If the debounce already fired and a request is in-flight, abort it.
+            if (controller) controller.abort();
         };
     }, [searchTerm, activeCategory, fetchFoods]);
 
@@ -244,8 +283,19 @@ const FoodDatabase = () => {
         setFormData(prev => ({ ...prev, [key]: val }));
     }, []);
 
-    const handlePrev = useCallback(() => { if (prevPage) fetchFoods(prevPage); }, [prevPage, fetchFoods]);
-    const handleNext = useCallback(() => { if (nextPage) fetchFoods(nextPage); }, [nextPage, fetchFoods]);
+    // BUG #5 FIX (cont.): Pagination button handlers also get their own
+    // AbortController so navigating quickly between pages cancels stale requests.
+    const handlePrev = useCallback(() => {
+        if (!prevPage) return;
+        const controller = new AbortController();
+        fetchFoods(prevPage, '', 'All', controller.signal);
+    }, [prevPage, fetchFoods]);
+
+    const handleNext = useCallback(() => {
+        if (!nextPage) return;
+        const controller = new AbortController();
+        fetchFoods(nextPage, '', 'All', controller.signal);
+    }, [nextPage, fetchFoods]);
 
     // ---------------------------------------------------------------------------
     // Render

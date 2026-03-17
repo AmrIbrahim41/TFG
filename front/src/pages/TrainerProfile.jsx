@@ -31,8 +31,15 @@ const TrainerProfile = () => {
   const { user } = useContext(AuthContext);
 
   // Stable currentUserId (never re-computed unless user changes)
+  // FIX #16: تطبيع currentUserId إلى Number صراحةً لتمكين استخدام === بأمان.
+  // الكود السابق كان يعتمد على == (type coercion) لأن to_trainer من الـ API
+  // قد يكون String أو Number. الآن نُحوّل للـ Number مرة واحدة هنا ونستخدم ===
+  // في كل المقارنات، وهو أوضح وأقل عرضة للأخطاء المستقبلية.
   const currentUserId = useMemo(
-    () => user?.user_id ?? user?.id ?? null,
+    () => {
+      const id = user?.user_id ?? user?.id ?? null;
+      return id != null ? Number(id) : null;
+    },
     [user]
   );
 
@@ -45,7 +52,11 @@ const TrainerProfile = () => {
 
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
-  const [respondingId, setRespondingId] = useState(null);
+  // FIX #9: استبدال respondingId (يتتبع الـ id فقط) بـ respondingAction (يتتبع الـ id + نوع الـ action).
+  // الكود السابق كان يُعطّل كلا الزرين (Accept و Reject) بـ spinner واحد عند
+  // الضغط على أي منهما، مما يُربك المستخدم — لا يعرف أي زر ضغط.
+  // الآن كل زر يعرض spinner خاص به بينما الزر الآخر يبقى ظاهراً بشكل طبيعي.
+  const [respondingAction, setRespondingAction] = useState(null); // { id, action } | null
   const [selectedSubForTransfer, setSelectedSubForTransfer] = useState(null);
   const [selectedRequestDetail, setSelectedRequestDetail] = useState(null);
 
@@ -62,10 +73,23 @@ const TrainerProfile = () => {
     try {
       const [transfersRes, clientsRes] = await Promise.all([
         api.get('/transfers/'),
-        // تم التعديل هنا: استخدام المسار الصحيح لجلب العملاء النشطين للمدرب
         api.get('/client-subscriptions/active/'),
       ]);
-      const sorted = [...transfersRes.data].sort(
+
+      // FIX #1 (frontend): Guard against a paginated response shape.
+      // If the backend returns { count, next, results } instead of a flat
+      // array (e.g. during a rolling deploy), spreading the object literal
+      // throws a TypeError and crashes the entire page.  Extract .results
+      // when present; fall back to the raw value only when it is already an
+      // array.  Default to [] so .sort() never receives a non-array.
+      const transfersRaw = transfersRes.data;
+      const transfersArray = Array.isArray(transfersRaw)
+        ? transfersRaw
+        : Array.isArray(transfersRaw?.results)
+          ? transfersRaw.results
+          : [];
+
+      const sorted = [...transfersArray].sort(
         (a, b) => new Date(b.created_at) - new Date(a.created_at)
       );
       setTransferHistory(sorted);
@@ -94,7 +118,11 @@ const TrainerProfile = () => {
 
   useEffect(() => {
     let cancelled = false;
-    fetchData().then(() => { if (!cancelled) fetchTrainers(); });
+    // FIX #10: استخدام finally بدلاً من .then() لضمان استدعاء fetchTrainers
+    // حتى لو فشل fetchData (network error). الكود السابق كان يربط fetchTrainers
+    // بنجاح fetchData فقط، مما يجعل قائمة المدربين فارغة عند أي خطأ في الشبكة
+    // ويمنع المدرب من اختيار وجهة التحويل حتى لو المشكلة كانت مؤقتة.
+    fetchData().finally(() => { if (!cancelled) fetchTrainers(); });
     return () => { cancelled = true; };
   }, [fetchData, fetchTrainers]);
 
@@ -141,8 +169,16 @@ const TrainerProfile = () => {
         setIsTransferModalOpen(false);
         fetchData();
       } catch (error) {
-        const msg = error.response?.data?.sessions_count?.[0]
-          || error.response?.data?.detail
+        // FIX #15: توسيع error handling ليغطي جميع مفاتيح الأخطاء التي يُعيدها
+        // الـ serializer. الكود السابق كان يتحقق فقط من sessions_count وdetail،
+        // مما يعني أن أخطاء subscription أو to_trainer كانت تصل للمستخدم كرسالة
+        // عامة "Failed to send request." بدلاً من النص الوصفي من الباك اند.
+        const data = error.response?.data;
+        const msg = data?.sessions_count?.[0]
+          || data?.subscription?.[0]
+          || data?.to_trainer?.[0]
+          || data?.non_field_errors?.[0]
+          || data?.detail
           || 'Failed to send request.';
         toast.error(msg);
       } finally {
@@ -155,7 +191,7 @@ const TrainerProfile = () => {
   const handleRespond = useCallback(
     async (id, status, e) => {
       if (e) e.stopPropagation();
-      setRespondingId(id);
+      setRespondingAction({ id, action: status });
       try {
         await api.post(`/transfers/${id}/respond/`, { status });
         toast.success(`Request ${status}`);
@@ -164,7 +200,7 @@ const TrainerProfile = () => {
       } catch {
         toast.error('Action failed');
       } finally {
-        setRespondingId(null);
+        setRespondingAction(null);
       }
     },
     [fetchData, selectedRequestDetail]
@@ -173,7 +209,7 @@ const TrainerProfile = () => {
   // ── PENDING INCOMING COUNT (badge) ────────────────────────────────────
   const pendingCount = useMemo(
     () =>
-      transferHistory.filter((r) => r.to_trainer == currentUserId && r.status === 'pending').length,
+      transferHistory.filter((r) => r.to_trainer === currentUserId && r.status === 'pending').length,
     [transferHistory, currentUserId]
   );
 
@@ -189,14 +225,17 @@ const TrainerProfile = () => {
     }
 
     return myClients.map((sub) => {
-      const isOwner = sub.trainer == currentUserId;
-      // Progress bar – capped at 100 by the backend, render accordingly
-      const progressPct = Math.min(
-        sub.plan_total_sessions > 0
-          ? Math.round((sub.sessions_used / sub.plan_total_sessions) * 100)
-          : 0,
-        100
-      );
+      const isOwner = sub.trainer === currentUserId;
+      // FIX #4: Guard plan_total_sessions > 0 strictly before dividing to
+      // prevent NaN (0/0) or Infinity (n/0) from leaking into the CSS `width`
+      // style.  Both values are valid numbers to JS but browsers silently
+      // ignore `width: NaN%` / `width: Infinity%`, leaving the bar either
+      // invisible or pinned at 100%.  The `|| 0` fallback also handles the
+      // case where plan_total_sessions is undefined or null.
+      const totalSessions = Number(sub.plan_total_sessions) || 0;
+      const progressPct = totalSessions > 0
+        ? Math.min(Math.round((Number(sub.sessions_used) / totalSessions) * 100), 100)
+        : 0;
       const isComplete = progressPct >= 100;
 
       return (
@@ -295,8 +334,11 @@ const TrainerProfile = () => {
     return (
       <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4">
         {transferHistory.map((req) => {
-          const isIncoming = req.to_trainer == currentUserId;
-          const isResponding = respondingId === req.id;
+          const isIncoming = req.to_trainer === currentUserId;
+          // FIX #9: كل زر له حالة spinner منفصلة
+          const isAccepting = respondingAction?.id === req.id && respondingAction?.action === 'accepted';
+          const isRejecting = respondingAction?.id === req.id && respondingAction?.action === 'rejected';
+          const isResponding = isAccepting || isRejecting;
 
           return (
             <div
@@ -366,7 +408,8 @@ const TrainerProfile = () => {
                         className="p-1.5 rounded-lg bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-500 hover:bg-green-500 hover:text-white transition-colors disabled:opacity-50"
                         title="Accept"
                       >
-                        {isResponding ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} strokeWidth={3} />}
+                        {/* FIX #9: spinner يظهر فقط على زر Accept لما يكون هو المضغوط */}
+                        {isAccepting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} strokeWidth={3} />}
                       </button>
                       <button
                         onClick={(e) => handleRespond(req.id, 'rejected', e)}
@@ -374,7 +417,8 @@ const TrainerProfile = () => {
                         className="p-1.5 rounded-lg bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-500 hover:bg-red-500 hover:text-white transition-colors disabled:opacity-50"
                         title="Reject"
                       >
-                        {isResponding ? <Loader2 size={14} className="animate-spin" /> : <X size={14} strokeWidth={3} />}
+                        {/* FIX #9: spinner يظهر فقط على زر Reject لما يكون هو المضغوط */}
+                        {isRejecting ? <Loader2 size={14} className="animate-spin" /> : <X size={14} strokeWidth={3} />}
                       </button>
                     </div>
                   )}
@@ -604,22 +648,26 @@ const TrainerProfile = () => {
             </div>
 
             {selectedRequestDetail.status === 'pending' &&
-              selectedRequestDetail.to_trainer == currentUserId && (
+              selectedRequestDetail.to_trainer === currentUserId && (
                 <div className="grid grid-cols-2 gap-4 mt-6">
                   <button
                     onClick={() => handleRespond(selectedRequestDetail.id, 'rejected')}
-                    disabled={respondingId === selectedRequestDetail.id}
+                    disabled={respondingAction?.id === selectedRequestDetail.id}
                     className="py-3 rounded-xl border border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/50 font-bold disabled:opacity-60 flex items-center justify-center gap-2"
                   >
-                    {respondingId === selectedRequestDetail.id ? <Loader2 size={16} className="animate-spin" /> : null}
+                    {/* FIX #9: spinner مخصص لـ Reject فقط */}
+                    {respondingAction?.id === selectedRequestDetail.id && respondingAction?.action === 'rejected'
+                      ? <Loader2 size={16} className="animate-spin" /> : null}
                     Reject
                   </button>
                   <button
                     onClick={() => handleRespond(selectedRequestDetail.id, 'accepted')}
-                    disabled={respondingId === selectedRequestDetail.id}
+                    disabled={respondingAction?.id === selectedRequestDetail.id}
                     className="py-3 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold shadow-lg disabled:opacity-60 flex items-center justify-center gap-2"
                   >
-                    {respondingId === selectedRequestDetail.id ? <Loader2 size={16} className="animate-spin" /> : null}
+                    {/* FIX #9: spinner مخصص لـ Accept فقط */}
+                    {respondingAction?.id === selectedRequestDetail.id && respondingAction?.action === 'accepted'
+                      ? <Loader2 size={16} className="animate-spin" /> : null}
                     Accept
                   </button>
                 </div>

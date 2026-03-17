@@ -136,20 +136,30 @@ const ClientsStatsTab = ({ trainerId }) => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    const controller = new AbortController();
+
     const load = async () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await api.get(`/admin-trainer-oversight/${trainerId}/details/`);
+        const res = await api.get(`/admin-trainer-oversight/${trainerId}/details/`, {
+          signal: controller.signal,
+        });
         setData(res.data);
       } catch (err) {
+        // Swallow AbortError / CanceledError — they are expected on unmount
+        if (err.name === 'AbortError' || err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
         setError('Failed to load trainer details.');
         console.error(err);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     };
+
     if (trainerId) load();
+    return () => controller.abort();
   }, [trainerId]);
 
   if (loading) {
@@ -182,7 +192,7 @@ const ClientsStatsTab = ({ trainerId }) => {
         <StatCard icon={Users} label="Active Clients" value={clients.length} color="orange" delay={0} />
         <StatCard icon={Activity} label="Sessions (7 days)" value={totalSessions} color="blue" delay={0.05} />
         <StatCard icon={Calendar} label="Active Days" value={activeDays} color="green" delay={0.10} />
-        <StatCard icon={Award} label="Total Assigned" value={clients.length} color="violet" delay={0.15} />
+        <StatCard icon={Award} label="Sessions / Client" value={clients.length > 0 ? (totalSessions / clients.length).toFixed(1) : '0'} color="violet" delay={0.15} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
@@ -388,18 +398,25 @@ const AdminTrainerDetails = () => {
 
   // Fetch trainer basic info on mount
   useEffect(() => {
+    const controller = new AbortController();
+
     const load = async () => {
       setTrainerLoading(true);
       try {
-        const res = await api.get(`/manage-trainers/${trainerId}/`);
+        const res = await api.get(`/manage-trainers/${trainerId}/`, { signal: controller.signal });
         setTrainer(res.data);
       } catch (err) {
+        if (err.name === 'AbortError' || err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
         console.error('Failed to load trainer:', err);
       } finally {
-        setTrainerLoading(false);
+        if (!controller.signal.aborted) {
+          setTrainerLoading(false);
+        }
       }
     };
+
     if (trainerId) load();
+    return () => controller.abort();
   }, [trainerId]);
 
   return (

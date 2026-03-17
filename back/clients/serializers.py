@@ -76,10 +76,22 @@ class TrainerSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         role = validated_data.pop('role', 'trainer')
+
+        # FIX #4: الحقل password معرَّف كـ required=False في Meta، مما يعني أن
+        # validated_data.get('password') قد يُعيد None بدلاً من رمي KeyError.
+        # استخدام validated_data['password'] مباشرةً كان سيرمي KeyError صامتاً
+        # (500 Internal Server Error) لو أُرسل الطلب بدون password.
+        # الآن نتحقق صراحةً ونُعيد رسالة خطأ واضحة للعميل.
+        password = validated_data.pop('password', None)
+        if not password:
+            raise serializers.ValidationError(
+                {'password': 'Password is required when creating a new trainer.'}
+            )
+
         user = User.objects.create_user(
             username=validated_data['username'],
             email=validated_data.get('email', ''),
-            password=validated_data['password'],
+            password=password,
             first_name=validated_data.get('first_name', ''),
         )
         user.is_staff = False
@@ -214,8 +226,15 @@ class ClientSubscriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ClientSubscription
         fields = '__all__'
-        # ADDED: Prevents direct manipulation of business-critical counters
-        read_only_fields = ['sessions_used', 'created_at']
+        # FIX: sessions_used must NOT be read-only.
+        # Automatic increments happen via TrainingSessionViewSet.perform_update and
+        # GroupSessionParticipant.save() using F() + select_for_update — race-safe.
+        # However, trainers/admins legitimately need to manually correct sessions_used
+        # via the InBody/Membership form (e.g. after a sync error).
+        # The previous read_only_fields = ['sessions_used', 'created_at'] was
+        # silently discarding those corrections and leaving the session counter wrong.
+        # All endpoints require IsAuthenticated so unauthenticated manipulation is blocked.
+        read_only_fields = ['created_at']
 
     def validate(self, data):
         if self.instance:
@@ -417,6 +436,17 @@ class FoodItemSerializer(serializers.ModelSerializer):
     # serializer can distinguish "update this existing item" from "create new".
     id = serializers.IntegerField(required=False)
 
+    # BUG #1 FIX: DRF's auto-generated field makes meal_plan required and
+    # writable because FoodItem has a FK to MealPlan.  When FoodItems arrive
+    # nested inside a NutritionPlan payload, the MealPlan row does not exist
+    # yet at serialization time, so the frontend has no ID to supply — causing
+    # a 400 Validation Error on every save that includes food items.
+    # Declaring it read_only here suppresses the validation requirement.
+    # The NutritionPlanCreateSerializer.create() / update() methods already
+    # set meal_plan programmatically (FoodItem(meal_plan=meal_obj, ...)) before
+    # calling bulk_create(), so no data is lost.
+    meal_plan = serializers.PrimaryKeyRelatedField(read_only=True)
+
     class Meta:
         model = FoodItem
         fields = '__all__'
@@ -455,6 +485,11 @@ class MealPlanCreateSerializer(serializers.ModelSerializer):
         foods_data = validated_data.pop('foods', [])
         meal_plan = MealPlan.objects.create(**validated_data)
         for food_data in foods_data:
+            # BUG #3 FIX: إزالة الـ id من food_data قبل الإنشاء.
+            # FoodItemSerializer يُعرّض id كـ IntegerField(required=False)،
+            # وإذا أرسل الـ frontend id قديم فإن create() ستحاول إنشاء FoodItem
+            # بـ primary key موجود → IntegrityError (duplicate PK).
+            food_data.pop('id', None)
             FoodItem.objects.create(meal_plan=meal_plan, **food_data)
         return meal_plan
 
@@ -515,6 +550,8 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
             foods_data = meal_data.pop('foods', [])
             meal_plan = MealPlan.objects.create(nutrition_plan=nutrition_plan, **meal_data)
             for food_data in foods_data:
+                # BUG #3 FIX: إزالة الـ id من food_data قبل bulk_create.
+                food_data.pop('id', None)
                 food_items_to_create.append(FoodItem(meal_plan=meal_plan, **food_data))
 
         if food_items_to_create:
@@ -526,12 +563,25 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
         meal_plans_data = validated_data.pop('meal_plans', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-        instance.save()
 
+        # BUG #2 FIX: instance.save() was previously called BEFORE the
+        # transaction.atomic() block.  If any subsequent meal-plan or
+        # food-item write raised an exception the header changes were already
+        # committed with no rollback possible, leaving the NutritionPlan in an
+        # inconsistent state.  Moving save() inside the atomic block (or
+        # saving early when there are no meal-plan changes) ensures the entire
+        # update either commits or rolls back as a single unit.
         if meal_plans_data is None:
+            # No meal-plan payload at all — just update the header fields.
+            # There is nothing else to be inconsistent with, so a standalone
+            # save() here is safe and avoids an unnecessary transaction.
+            instance.save()
             return instance
 
         with transaction.atomic():
+            # Header save is now inside the transaction so any failure in the
+            # meal-plan/food-item writes below rolls back this save too.
+            instance.save()
             # تحسين الأداء: استعلام واحد لجلب كل الوجبات الحالية وحفظها في قاموس (Dictionary)
             existing_meals = {m.id: m for m in instance.meal_plans.prefetch_related('foods').all()}
             existing_meal_ids = set(existing_meals.keys())
@@ -837,9 +887,24 @@ class TrainerScheduleSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         trainer = data.get('trainer') or getattr(self.instance, 'trainer', None)
 
-        # For non-admin trainers, resolve trainer from the authenticated request
-        # user when not explicitly provided in the payload.
-        if not trainer and request and hasattr(request, 'user') and not request.user.is_superuser:
+        # BUG #2 FIX (corrected): الـ `trainer` field عنده `default=CurrentUserDefault()`.
+        # هذا يعني إذا لم يُرسل الأدمن `trainer` في الـ payload، يحصل على
+        # قيمة افتراضية = request.user (أي الأدمن نفسه) من الـ DRF default
+        # قبل أن تصل قيمة data إلى validate() — مما يجعل `data.get('trainer')`
+        # دائمًا truthy (تُعيد User object الأدمن وليس None)، وبالتالي
+        # `if not explicit_trainer` لا تُفعَّل أبدًا وتتجاوز الـ validation.
+        #
+        # الإصلاح الصحيح: نستخدم `self.initial_data` التي تحتوي على الـ payload
+        # الخام قبل تطبيق أي defaults — وهي المصدر الوحيد الموثوق لمعرفة
+        # إذا كان الأدمن أرسل trainer بشكل صريح أم لا.
+        if request and hasattr(request, 'user') and request.user.is_superuser:
+            explicit_trainer = self.initial_data.get('trainer')
+            if not explicit_trainer:
+                raise serializers.ValidationError(
+                    {'trainer': 'Admin must explicitly specify the trainer field.'}
+                )
+        elif not trainer and request and hasattr(request, 'user'):
+            # المدرب العادي: يحصل على trainer من request.user تلقائيًا
             trainer = request.user
 
         client = data.get('client') or getattr(self.instance, 'client', None)

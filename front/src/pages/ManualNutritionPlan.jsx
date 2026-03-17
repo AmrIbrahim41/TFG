@@ -339,7 +339,9 @@ const ManualNutritionPlan = () => {
         }
         if (!cancelled) setFoodDatabase(all);
       } catch {
-        /* non-critical */
+        // BUG #8 FIX: الخطأ الصامت كان يترك المستخدم أمام "Loading food database…"
+        // للأبد بدون أي رسالة. الآن نُظهر قائمة فارغة ونُعيّن state مناسب.
+        if (!cancelled) setFoodDatabase([]);
       }
     })();
     return () => { cancelled = true; };

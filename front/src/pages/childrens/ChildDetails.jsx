@@ -222,7 +222,20 @@ const ChildDetails = () => {
             setNewSubData({ plan: '', trainer: '', start_date: new Date().toISOString().split('T')[0] });
             showToast('Subscription assigned!', 'success');
         } catch (err) {
-            showToast(err.response?.data?.detail || 'Error creating subscription.', 'error');
+            // BUG #3 FIX: الكود السابق كان يتحقق فقط من err.response?.data?.detail،
+            // لكن الـ backend بيرجع الخطأ في err.response?.data?.is_active?.[0]
+            // لما يكون في اشتراك نشط آخر للعميل.
+            // بدون هذا الـ fix، كانت رسالة "This client already has an active subscription."
+            // تختفي وتظهر بدلها "Error creating subscription." عامة بدون تفاصيل.
+            const errData = err.response?.data || {};
+            const msg =
+                errData?.is_active?.[0] ||
+                errData?.non_field_errors?.[0] ||
+                errData?.client?.[0] ||
+                errData?.plan?.[0] ||
+                errData?.detail ||
+                'Error creating subscription.';
+            showToast(msg, 'error');
         }
     };
 

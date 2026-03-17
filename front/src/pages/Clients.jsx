@@ -97,7 +97,9 @@ const Clients = () => {
         } catch (error) {
             // An AbortError / CanceledError means the component unmounted while
             // the request was in flight — this is expected and not an error.
-            if (error.name === 'CanceledError' || error.name === 'AbortError') return;
+            // error.name covers Axios < 1.x ('CanceledError') and native fetch ('AbortError').
+            // error.code covers Axios >= 1.x which sets code = 'ERR_CANCELED' on aborted requests.
+            if (error.name === 'CanceledError' || error.name === 'AbortError' || error.code === 'ERR_CANCELED') return;
             console.error('Failed to fetch clients:', error);
             setFetchError('Failed to load athletes. Please try again.');
         } finally {

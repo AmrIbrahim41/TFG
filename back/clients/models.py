@@ -119,6 +119,18 @@ class ClientSubscription(models.Model):
             # filter(trainer=X, is_active=True)
             models.Index(fields=['trainer', 'is_active'], name='idx_sub_trainer_active'),
         ]
+        constraints = [
+            # FIX #11: إضافة قيد على مستوى قاعدة البيانات يمنع وجود أكثر من
+            # اشتراك نشط واحد لنفس العميل في نفس الوقت.
+            # التحقق في الـ serializer وحده لا يكفي لأنه يمكن تجاوزه عبر
+            # Django shell أو admin أو أي API client مباشر.
+            # تذكر تشغيل: python manage.py makemigrations && python manage.py migrate
+            models.UniqueConstraint(
+                fields=['client'],
+                condition=models.Q(is_active=True),
+                name='unique_active_subscription_per_client',
+            )
+        ]
 
     def save(self, *args, **kwargs):
         # 1. تحويل start_date إلى تاريخ فقط إذا كان يحتوي على وقت
@@ -326,9 +338,32 @@ class MealPlan(models.Model):
         ('dinner', 'Dinner'),
         ('snack_3', 'Snack 3'),
     ]
+
+    # FIX #1: ترتيب زمني صريح لكل نوع وجبة.
+    # الترتيب الأبجدي السابق كان يُنتج: breakfast → dinner → lunch → snack_1 → ...
+    # وهو خاطئ لأن dinner تسبق lunch.  الآن نحفظ الترتيب الصحيح في حقل order
+    # ونُرتّب على أساسه بدلاً من ترتيب النص.
+    MEAL_TYPE_ORDER = {
+        'breakfast': 1,
+        'snack_1':   2,
+        'lunch':     3,
+        'snack_2':   4,
+        'dinner':    5,
+        'snack_3':   6,
+    }
+
     meal_type = models.CharField(max_length=20, choices=MEAL_CHOICES)
     meal_name = models.CharField(max_length=200, blank=True, null=True, help_text="Optional name")
     meal_time = models.TimeField(blank=True, null=True, help_text="Suggested time")
+
+    # حقل الترتيب الزمني — يُحدَّث تلقائياً في save() من MEAL_TYPE_ORDER.
+    # يتيح ORDER BY صحيح على مستوى قاعدة البيانات بدون حسابات إضافية.
+    # تذكر تشغيل: python manage.py makemigrations && python manage.py migrate
+    order = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Chronological order within a day (auto-set from meal_type).",
+        db_index=True,
+    )
 
     total_calories = models.IntegerField(default=0)
     total_protein = models.FloatField(default=0.0)
@@ -343,11 +378,18 @@ class MealPlan(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def save(self, *args, **kwargs):
+        # تحديث order تلقائياً من MEAL_TYPE_ORDER قبل الحفظ.
+        # القيمة 99 تضمن أن أي meal_type غير معروف يظهر في النهاية.
+        self.order = self.MEAL_TYPE_ORDER.get(self.meal_type, 99)
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"Day {self.day} - {self.get_meal_type_display()}"
 
     class Meta:
-        ordering = ['day', 'meal_type']
+        # FIX #1: ترتيب بـ order (زمني) بدلاً من meal_type (أبجدي خاطئ)
+        ordering = ['day', 'order']
 
 
 class NutritionPlan(models.Model):

@@ -314,14 +314,30 @@ class TrainerScheduleAdmin(ModelAdmin):
     )
 
     def get_queryset(self, request):
-        """Filter out slots for clients with expired subscriptions."""
-        from django.db.models import F as DjF
-        return super().get_queryset(request).select_related(
-            'trainer', 'client'
-        ).filter(
-            client__subscriptions__is_active=True,
-            client__subscriptions__trainer=DjF('trainer'),
-        ).distinct()
+        """
+        Filter out slots for clients with expired subscriptions.
+
+        FIX #20: الكود السابق كان يستخدم filter مزدوج على نفس الـ JOIN:
+            filter(
+                client__subscriptions__is_active=True,
+                client__subscriptions__trainer=DjF('trainer'),
+            )
+        هذا ينتج JOIN ضخم من TrainerSchedule → Client → ClientSubscription
+        مع شرطين على نفس الـ FK، وكان يتطلب .distinct() لإزالة التكرار.
+        الطريقة الأنظم هي استخدام Exists() subquery التي تُجري correlated
+        subquery بدلاً من JOIN، وتضمن دقة النتيجة بدون الحاجة لـ distinct().
+        """
+        from django.db.models import Exists, OuterRef
+        active_sub_exists = ClientSubscription.objects.filter(
+            client=OuterRef('client'),
+            trainer=OuterRef('trainer'),
+            is_active=True,
+        )
+        return (
+            super().get_queryset(request)
+            .select_related('trainer', 'client')
+            .filter(Exists(active_sub_exists))
+        )
 
     @display(description="Trainer")
     def trainer_display(self, obj):

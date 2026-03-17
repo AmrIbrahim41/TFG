@@ -53,7 +53,9 @@ const Subscriptions = () => {
   const fetchSubs = useCallback(async () => {
     try {
       const response = await api.get('/subscriptions/');
-      setSubs(response.data);
+      // Defensive: handle both flat array and paginated { count, results } object
+      const data = response.data;
+      setSubs(Array.isArray(data) ? data : (data?.results ?? []));
       setFetchError(null);
     } catch (error) {
       console.error(error);
@@ -165,21 +167,19 @@ const Subscriptions = () => {
       <div className="flex items-center gap-2 mb-8 bg-zinc-100 dark:bg-zinc-900/50 p-1.5 rounded-2xl w-fit border border-zinc-200 dark:border-zinc-800">
         <button
           onClick={() => setActiveTab('adult')}
-          className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${
-            activeTab === 'adult'
+          className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${activeTab === 'adult'
               ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm'
               : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
-          }`}
+            }`}
         >
           <Users size={18} /> Adult Plans
         </button>
         <button
           onClick={() => setActiveTab('child')}
-          className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${
-            activeTab === 'child'
+          className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${activeTab === 'child'
               ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20'
               : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
-          }`}
+            }`}
         >
           <Baby size={18} /> Children Plans
         </button>
@@ -217,19 +217,17 @@ const Subscriptions = () => {
             <div
               key={sub.id}
               className={`bg-white dark:bg-[#121214] border p-6 rounded-[2rem] relative group transition-all duration-300 hover:-translate-y-1 hover:shadow-xl dark:hover:shadow-2xl shadow-sm
-                ${
-                  sub.is_child_plan
-                    ? 'border-zinc-200 dark:border-zinc-800 hover:border-blue-500/50'
-                    : 'border-zinc-200 dark:border-zinc-800 hover:border-orange-500/50'
+                ${sub.is_child_plan
+                  ? 'border-zinc-200 dark:border-zinc-800 hover:border-blue-500/50'
+                  : 'border-zinc-200 dark:border-zinc-800 hover:border-orange-500/50'
                 }`}
             >
               <div className="flex justify-between items-start mb-6">
                 <div
                   className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors
-                    ${
-                      sub.is_child_plan
-                        ? 'bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-500'
-                        : 'bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-500'
+                    ${sub.is_child_plan
+                      ? 'bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-500'
+                      : 'bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-500'
                     }`}
                 >
                   {sub.is_child_plan ? <Baby size={28} /> : <Ticket size={28} />}
@@ -260,11 +258,10 @@ const Subscriptions = () => {
               <div className="space-y-3 pt-6 border-t border-zinc-100 dark:border-zinc-800/50">
                 <div className="flex items-center gap-3 text-sm font-medium text-zinc-500 dark:text-zinc-400">
                   <div
-                    className={`p-1.5 rounded-lg ${
-                      sub.is_child_plan
+                    className={`p-1.5 rounded-lg ${sub.is_child_plan
                         ? 'bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-500'
                         : 'bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-500'
-                    }`}
+                      }`}
                   >
                     <CheckCircle size={14} strokeWidth={3} />
                   </div>
@@ -273,11 +270,10 @@ const Subscriptions = () => {
                 </div>
                 <div className="flex items-center gap-3 text-sm font-medium text-zinc-500 dark:text-zinc-400">
                   <div
-                    className={`p-1.5 rounded-lg ${
-                      sub.is_child_plan
+                    className={`p-1.5 rounded-lg ${sub.is_child_plan
                         ? 'bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-500'
                         : 'bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-500'
-                    }`}
+                      }`}
                   >
                     <Calendar size={14} strokeWidth={3} />
                   </div>
@@ -318,11 +314,10 @@ const Subscriptions = () => {
                 </label>
                 <input
                   required
-                  className={`w-full bg-zinc-50 dark:bg-zinc-950 border rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white focus:border-orange-500 outline-none mt-1.5 transition-colors placeholder-zinc-400 ${
-                    formErrors.name
+                  className={`w-full bg-zinc-50 dark:bg-zinc-950 border rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white focus:border-orange-500 outline-none mt-1.5 transition-colors placeholder-zinc-400 ${formErrors.name
                       ? 'border-red-400 dark:border-red-500'
                       : 'border-zinc-200 dark:border-zinc-800'
-                  }`}
+                    }`}
                   placeholder="e.g. Gold Month"
                   value={formData.name}
                   onChange={(e) => updateForm('name', e.target.value)}
@@ -342,11 +337,10 @@ const Subscriptions = () => {
                     required
                     type="number"
                     min="1"
-                    className={`w-full bg-zinc-50 dark:bg-zinc-950 border rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white focus:border-orange-500 outline-none mt-1.5 ${
-                      formErrors.units
+                    className={`w-full bg-zinc-50 dark:bg-zinc-950 border rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white focus:border-orange-500 outline-none mt-1.5 ${formErrors.units
                         ? 'border-red-400 dark:border-red-500'
                         : 'border-zinc-200 dark:border-zinc-800'
-                    }`}
+                      }`}
                     placeholder="12"
                     value={formData.units}
                     onChange={(e) => updateForm('units', e.target.value)}
@@ -361,11 +355,10 @@ const Subscriptions = () => {
                     required
                     type="number"
                     min="1"
-                    className={`w-full bg-zinc-50 dark:bg-zinc-950 border rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white focus:border-orange-500 outline-none mt-1.5 ${
-                      formErrors.duration_days
+                    className={`w-full bg-zinc-50 dark:bg-zinc-950 border rounded-xl px-4 py-3.5 text-zinc-900 dark:text-white focus:border-orange-500 outline-none mt-1.5 ${formErrors.duration_days
                         ? 'border-red-400 dark:border-red-500'
                         : 'border-zinc-200 dark:border-zinc-800'
-                    }`}
+                      }`}
                     placeholder="30"
                     value={formData.duration_days}
                     onChange={(e) => updateForm('duration_days', e.target.value)}
@@ -389,11 +382,10 @@ const Subscriptions = () => {
                   <input
                     type="number"
                     min="0"
-                    className={`w-full bg-zinc-50 dark:bg-zinc-950 border rounded-xl pl-10 pr-4 py-3.5 text-zinc-900 dark:text-white focus:border-orange-500 outline-none mt-1.5 ${
-                      formErrors.price
+                    className={`w-full bg-zinc-50 dark:bg-zinc-950 border rounded-xl pl-10 pr-4 py-3.5 text-zinc-900 dark:text-white focus:border-orange-500 outline-none mt-1.5 ${formErrors.price
                         ? 'border-red-400 dark:border-red-500'
                         : 'border-zinc-200 dark:border-zinc-800'
-                    }`}
+                      }`}
                     placeholder="0.00"
                     value={formData.price}
                     onChange={(e) => updateForm('price', e.target.value)}
@@ -415,14 +407,12 @@ const Subscriptions = () => {
                 <button
                   type="button"
                   onClick={() => updateForm('is_child_plan', !formData.is_child_plan)}
-                  className={`w-12 h-7 rounded-full p-1 cursor-pointer transition-colors duration-300 ${
-                    formData.is_child_plan ? 'bg-blue-600' : 'bg-zinc-300 dark:bg-zinc-700'
-                  }`}
+                  className={`w-12 h-7 rounded-full p-1 cursor-pointer transition-colors duration-300 ${formData.is_child_plan ? 'bg-blue-600' : 'bg-zinc-300 dark:bg-zinc-700'
+                    }`}
                 >
                   <div
-                    className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-300 ${
-                      formData.is_child_plan ? 'translate-x-5' : 'translate-x-0'
-                    }`}
+                    className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-300 ${formData.is_child_plan ? 'translate-x-5' : 'translate-x-0'
+                      }`}
                   />
                 </button>
               </div>
@@ -430,11 +420,10 @@ const Subscriptions = () => {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className={`w-full font-bold py-4 rounded-xl mt-4 transition-all shadow-lg active:scale-[0.98] text-white flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed ${
-                  formData.is_child_plan
+                className={`w-full font-bold py-4 rounded-xl mt-4 transition-all shadow-lg active:scale-[0.98] text-white flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed ${formData.is_child_plan
                     ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/20'
                     : 'bg-orange-600 hover:bg-orange-500 shadow-orange-500/20'
-                }`}
+                  }`}
               >
                 {isSubmitting && <Loader2 size={18} className="animate-spin" />}
                 {isSubmitting ? 'Creating...' : 'Create Package'}
