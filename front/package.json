@@ -20,7 +20,8 @@
     "arabic-reshaper": "^1.1.0",
     "axios": "^1.13.3",
     "bidi-js": "^1.0.3",
-    "framer-motion": "^12.34.4",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.38.0",
     "html2pdf.js": "^0.14.0",
     "jspdf": "^4.0.0",
     "jspdf-autotable": "^5.0.7",
@@ -32,6 +33,7 @@
     "react-router-dom": "^7.13.0",
     "recharts": "^3.7.0",
     "rtl-detect": "^1.1.2",
+    "tailwind-merge": "^3.5.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
