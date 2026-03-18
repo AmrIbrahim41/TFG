@@ -35,26 +35,9 @@ import {
 import toast, { Toaster } from 'react-hot-toast';
 
 // -----------------------------------------------------------------------------
-// PREVIEW MOCKS: 
-// The following imports are commented out to allow the code to run in this preview environment.
-// Please UNCOMMENT these lines and REMOVE the mock definitions below in your local project.
-// -----------------------------------------------------------------------------
 import api from '../api';
 import WorkoutPDF_EN from '../utils/WorkoutPDF.jsx';
 import { PDFDownloadLink } from '@react-pdf/renderer';
-
-const api = {
-  get: async (url) => ({ data: url.includes('history') ? [] : { name: 'Sample Session', exercises: [], is_completed: false } }),
-  post: async () => ({ data: { success: true } })
-};
-
-const WorkoutPDF_EN = () => null;
-
-const PDFDownloadLink = ({ children, className }) => (
-  <button type="button" className={className} onClick={() => alert('PDF Download is simulated in this preview.')}>
-    {typeof children === 'function' ? children({ loading: false }) : children}
-  </button>
-);
 // -----------------------------------------------------------------------------
 
 // ─────────────────────────────────────────────────────────────────────────────
