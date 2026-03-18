@@ -451,7 +451,11 @@ const ClientInfoTab = ({ formData, handleChange, clientAge, user }) => {
               name="name"
               value={formData.name || ''}
               onChange={handleChange}
-              disabled={!user?.is_superuser}
+              // BUG-4 FIX: Backend allows both is_superuser AND is_receptionist to
+              // edit name/manual_id (see ClientSerializer.validate). The previous
+              // disabled={!user?.is_superuser} blocked reception staff from editing
+              // these fields entirely from the UI even though the API permits it.
+              disabled={!user?.is_superuser && !user?.is_receptionist}
               placeholder="Client full name"
             />
           </div>
@@ -467,7 +471,8 @@ const ClientInfoTab = ({ formData, handleChange, clientAge, user }) => {
             name="manual_id"
             value={formData.manual_id || ''}
             onChange={handleChange}
-            disabled={!user?.is_superuser}
+            // BUG-4 FIX: same as above — receptionist can also edit the ID
+            disabled={!user?.is_superuser && !user?.is_receptionist}
             cls="font-mono text-zinc-500 tracking-widest"
           />
           <div className="sm:col-span-2">

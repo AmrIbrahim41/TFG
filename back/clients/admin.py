@@ -34,13 +34,30 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
         ("Permissions", {"fields": ("is_staff", "is_superuser", "groups"), "classes": ("tab",)}),
     )
 
+    def get_queryset(self, request):
+        """
+        FIX BUG-4: النسخة السابقة كانت تُطلق COUNT query منفصل لكل مدرب
+        في القائمة (N+1 problem). الحل: استخدام annotate() لجلب العدد في
+        استعلام واحد مع بقية البيانات.
+        """
+        from django.db.models import Count, Q
+        qs = super().get_queryset(request)
+        qs = qs.annotate(
+            _active_clients=Count(
+                'clientsubscription',
+                filter=Q(clientsubscription__is_active=True),
+            )
+        )
+        return qs
+
     @display(description="Role", label={"Admin": "danger", "Trainer": "success"})
     def role_badge(self, obj):
         return "Admin" if obj.is_superuser else "Trainer"
 
     @display(description="Clients")
     def active_clients_count(self, obj):
-        return obj.clientsubscription_set.filter(is_active=True).count()
+        # FIX BUG-4: يستخدم القيمة المُحسوبة من annotate بدلاً من query منفصل.
+        return getattr(obj, '_active_clients', 0)
 
 
 # --- 2. INLINES (Nested Data) ---
@@ -158,7 +175,11 @@ class ClientSubscriptionAdmin(ModelAdmin):
         }),
         ('Body Composition (InBody)', {
             'classes': ('tab',),
-            'fields': ('inbody_weight', 'inbody_fat', 'inbody_muscle', 'inbody_goal', 'inbody_notes')
+            # BUG #5 FIX: كانت 3 حقول ناقصة من الـ fieldset:
+            # inbody_height, inbody_tbw, inbody_activity
+            # موجودة في الموديل لكن مش قابلة للتعديل من الأدمن بانيل.
+            'fields': ('inbody_weight', 'inbody_height', 'inbody_fat', 'inbody_muscle',
+                       'inbody_tbw', 'inbody_goal', 'inbody_activity', 'inbody_notes')
         }),
     )
 
@@ -315,22 +336,16 @@ class TrainerScheduleAdmin(ModelAdmin):
 
     def get_queryset(self, request):
         """
-        Filter out slots for clients with expired subscriptions.
+        Filter out slots for clients with no active subscription.
 
-        FIX #20: الكود السابق كان يستخدم filter مزدوج على نفس الـ JOIN:
-            filter(
-                client__subscriptions__is_active=True,
-                client__subscriptions__trainer=DjF('trainer'),
-            )
-        هذا ينتج JOIN ضخم من TrainerSchedule → Client → ClientSubscription
-        مع شرطين على نفس الـ FK، وكان يتطلب .distinct() لإزالة التكرار.
-        الطريقة الأنظم هي استخدام Exists() subquery التي تُجري correlated
-        subquery بدلاً من JOIN، وتضمن دقة النتيجة بدون الحاجة لـ distinct().
+        BUG-A1 FIX: الكود السابق كان يستخدم trainer=OuterRef('trainer') في الـ Exists
+        subquery — مما يخفي slots العملاء اللي اشتراكهم مع مدرب مختلف عن صاحب الـ slot.
+        هذا يخالف قاعدة العمل: أي مدرب يقدر يمرن عملاء المدربين الآخرين.
+        الإصلاح: نتحقق فقط من client=OuterRef('client') + is_active=True.
         """
         from django.db.models import Exists, OuterRef
         active_sub_exists = ClientSubscription.objects.filter(
             client=OuterRef('client'),
-            trainer=OuterRef('trainer'),
             is_active=True,
         )
         return (
@@ -353,9 +368,10 @@ class TrainerScheduleAdmin(ModelAdmin):
 
     @display(description="Sub Status", label={"Active": "success", "Expired": "danger"})
     def subscription_status(self, obj):
-        has_active = obj.client.subscriptions.filter(
-            trainer=obj.trainer, is_active=True
-        ).exists()
+        # BUG-A1 FIX: الكود السابق كان يفلتر على trainer=obj.trainer،
+        # مما يعني لو الاشتراك النشط مع مدرب مختلف، يُعرض "Expired" بالغلط.
+        # الإصلاح: نتحقق من وجود أي اشتراك نشط للعميل بغض النظر عن المدرب.
+        has_active = obj.client.subscriptions.filter(is_active=True).exists()
         return "Active" if has_active else "Expired"
 
 

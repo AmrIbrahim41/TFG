@@ -114,7 +114,14 @@ const SessionPlanner = ({ day, childrenCount, initialExercises = [], onClose, on
     const updateExercise = useCallback((idx, field, value) => {
         setExercises(prev => {
             const next = [...prev];
-            next[idx] = { ...next[idx], [field]: value };
+            // FIX BUG-8: e.target.value من الـ input دايماً string.
+            // sets_count لازم يكون number لتجنب inconsistency عند حفظ Template
+            // (يتحفظ كـ "5" بدل 5) وعند قراءته لاحقاً.
+            // نُحوّل sets_count لـ integer فور التعديل، وbaقي الحقول تبقى كما هي.
+            const parsedValue = field === 'sets_count'
+                ? (parseInt(value, 10) || 1)
+                : value;
+            next[idx] = { ...next[idx], [field]: parsedValue };
             return next;
         });
     }, []);

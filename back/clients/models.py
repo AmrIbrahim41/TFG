@@ -718,7 +718,9 @@ class TrainerSchedule(models.Model):
     A single booked time slot in a trainer's weekly schedule.
 
     Business rules enforced at the serializer layer:
-      • The linked client must have an is_active=True subscription with this trainer.
+      • The linked client must have an is_active=True subscription with ANY trainer
+        (not necessarily the trainer who owns this slot — any trainer can train
+        any client per gym business rules).
       • If the subscription expires/is deactivated the slot is excluded at the
         queryset level in the ViewSet (no stale entries returned to the UI).
 
@@ -759,6 +761,22 @@ class TrainerSchedule(models.Model):
         # A trainer cannot have two clients in the exact same slot.
         unique_together = ('trainer', 'day_of_week', 'time_slot')
         ordering = ['day_of_week', 'time_slot']
+        constraints = [
+            # BUG-3 FIX: الـ unique_together السابق كان يمنع فقط حجز مدرب واحد
+            # لعميلين مختلفين في نفس الـ slot، لكن لم يكن يمنع حجز نفس العميل
+            # عند مدربَين مختلفَين في نفس اليوم والوقت.
+            # مثال: مدرب A يحجز "علي - الاثنين 10:00" ومدرب B يحجز "علي - الاثنين 10:00"
+            # كان مسموحاً به قبل هذا الإصلاح.
+            # الحل: قيد إضافي يمنع نفس العميل من الظهور مرتين في نفس الـ slot
+            # بغض النظر عن المدرب.
+            # ملاحظة: هذا القيد منطقي لأن العميل جسدياً لا يمكنه أن يكون في
+            # مكانين في نفس الوقت.
+            # تذكر تشغيل: python manage.py makemigrations && python manage.py migrate
+            models.UniqueConstraint(
+                fields=['client', 'day_of_week', 'time_slot'],
+                name='unique_client_slot_per_week',
+            )
+        ]
 
     def __str__(self):
         day_name = dict(self.DAY_CHOICES).get(self.day_of_week, str(self.day_of_week))

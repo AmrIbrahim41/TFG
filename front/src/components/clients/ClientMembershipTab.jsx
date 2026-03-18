@@ -10,10 +10,11 @@ const GOAL_CONFIG = {
     'Weight Loss': { color: 'bg-emerald-600', border: 'border-emerald-500', shadow: 'shadow-emerald-900/30', icon: Scale },
     'Bulking':     { color: 'bg-violet-600',  border: 'border-violet-500',  shadow: 'shadow-violet-900/30',  icon: Dumbbell },
     'Cutting':     { color: 'bg-red-600',     border: 'border-red-500',     shadow: 'shadow-red-900/30',     icon: Ruler },
-    // FIX #8: Key was 'Maintain' but the backend GOAL_CHOICES stores 'Maintenance'.
-    // The mismatch meant selectedSub.inbody_goal === goal was always false for
-    // clients whose goal was saved via the backend, so the correct button never
-    // appeared highlighted. Renamed to 'Maintenance' to match the DB value exactly.
+    // BUG-1 FIX: Key was 'MAINTAIN' (all-caps) but the backend GOAL_CHOICES stores
+    // 'Maintenance' (title-case). The mismatch caused selectedSub.inbody_goal === goal
+    // to always evaluate false for Maintenance clients — so the button never highlighted
+    // after saving, and every subsequent save overwrote the DB value with 'MAINTAIN'
+    // (an invalid choice). Fixed to 'Maintenance' to match backend GOAL_CHOICES exactly.
     'Maintenance': { color: 'bg-blue-600',    border: 'border-blue-500',    shadow: 'shadow-blue-900/30',    icon: Activity },
 };
 

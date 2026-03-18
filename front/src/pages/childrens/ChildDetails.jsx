@@ -188,12 +188,18 @@ const ChildDetails = () => {
         setIsDeleting(true);
         try {
             await api.delete(`/clients/${id}/`);
+            // BUG-F2 FIX: الكود السابق كان يعمل navigate() ثم setShowDeleteConfirm(false)
+            // بعدها، مما يُنتج React warning: "Can't perform a React state update on an
+            // unmounted component" لأن navigate() بيعمل unmount للـ component قبل ما
+            // setShowDeleteConfirm يُنفَّذ.
+            // الإصلاح: نغلق الـ modal أولاً ثم ننتقل.
+            setShowDeleteConfirm(false);
             navigate('/children');
         } catch {
             showToast('Error deleting account.', 'error');
             setIsDeleting(false);
+            setShowDeleteConfirm(false);
         }
-        setShowDeleteConfirm(false);
     };
 
     // ── Subscription Logic ────────────────────────────────────────────────
@@ -264,7 +270,12 @@ const ChildDetails = () => {
                 inbody_notes: data.inbody_notes,
             });
             showToast('Child stats saved!', 'success');
-            setSelectedSub(data);
+            // BUG-F1 FIX: الكود السابق كان يعمل setSelectedSub(data) حيث data
+            // هو InBody form data فقط (مش الـ subscription object الكامل).
+            // ده بيستبدل selectedSub بـ object ناقص بدون id وبدون plan وبدون
+            // is_active — مما يُعطّل أي كود بعده بيقرا selectedSub.id.
+            // الإصلاح: نعمل merge للـ InBody data على الـ selectedSub الموجود.
+            setSelectedSub(prev => prev ? { ...prev, ...data } : prev);
         } catch {
             showToast('Error saving stats.', 'error');
         }

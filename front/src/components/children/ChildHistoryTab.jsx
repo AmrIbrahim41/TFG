@@ -28,7 +28,7 @@ const getMeta = (type) => TYPE_META[(type || 'weight').toLowerCase()] || TYPE_ME
 
 const formatDateFull = (ds) => new Date(ds).toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 const formatDateShort = (ds) => new Date(ds).toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' });
-const formatTime = (ds) => new Date(ds).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+// BUG #7 FIX: حُذفت formatTime — كانت معرّفة لكن لا يستخدمها أي مكان في الملف (dead code).
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 const SkeletonCard = () => (

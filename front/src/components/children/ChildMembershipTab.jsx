@@ -6,11 +6,15 @@ import {
 } from 'lucide-react';
 
 // --- CONSTANTS ---
+// BUG #1 FIX: كان المفتاح 'Maintain' لكن الباك إند يتوقع 'Maintenance' بالضبط
+// (models.py GOAL_CHOICES = [('Maintenance', 'Maintenance'), ...]).
+// النتيجة: DRF كان يرفض القيمة بـ 400 invalid choice عند الحفظ، والزرار
+// ما كانش يتلوّن عند العرض لأن selectedSub.inbody_goal === 'Maintenance' !== 'Maintain'.
 const GOAL_CONFIG = {
     'Weight Loss': { color: 'bg-emerald-600', border: 'border-emerald-500', shadow: 'shadow-emerald-900/30', icon: Scale },
     'Bulking':     { color: 'bg-violet-600',  border: 'border-violet-500',  shadow: 'shadow-violet-900/30',  icon: Dumbbell },
     'Cutting':     { color: 'bg-red-600',     border: 'border-red-500',     shadow: 'shadow-red-900/30',     icon: Ruler },
-    'Maintain':    { color: 'bg-blue-600',    border: 'border-blue-500',    shadow: 'shadow-blue-900/30',    icon: Activity },
+    'Maintenance': { color: 'bg-blue-600',    border: 'border-blue-500',    shadow: 'shadow-blue-900/30',    icon: Activity },
 };
 
 const ACTIVITY_CONFIG = {

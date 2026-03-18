@@ -214,6 +214,10 @@ const LiveSession = ({ day, children, exercises, onClose, onEditPlan }) => {
             } catch {
                 if (isMounted) setPrevHistory({});
             } finally {
+                // FIX BUG-5: يجب التحقق من isMounted هنا أيضاً لتجنب
+                // React warning "Can't perform state update on unmounted component".
+                // الكود السابق كان يُشغّل setHistoryLoading(false) دائماً
+                // حتى لو الـ component اتفصل أثناء الانتظار.
                 if (isMounted) setHistoryLoading(false);
             }
         };
@@ -267,6 +271,11 @@ const LiveSession = ({ day, children, exercises, onClose, onEditPlan }) => {
 
     // ── Final Submission ─────────────────────────────────────────────────
     const handleComplete = useCallback(async () => {
+        // ملاحظة: الفحص على presentChildren.length تم نقله لزر "Finish Session"
+        // في الـ header حتى لا يفتح الـ modal أصلاً لو ما فيش حاضر.
+        // هنا نبقى متأكدين إن في حاضرين لأن الزرار مش هيفتح الـ modal إلا كده.
+        const presentChildren = children.filter(c => attendance[c.client_id]);
+
         setIsSubmitting(true);
         setShowFinishConfirm(false);
 
@@ -274,21 +283,17 @@ const LiveSession = ({ day, children, exercises, onClose, onEditPlan }) => {
             name: ex.name,
             category: ex.category,
             sets_count: Number(ex.sets_count) || 0,
-            results: children
-                .filter(c => attendance[c.client_id])
-                .map(c => ({
-                    client: c.client_name,
-                    client_id: c.client_id,
-                    ...performance[c.client_id]?.[ex.id],
-                })),
+            results: presentChildren.map(c => ({
+                client: c.client_name,
+                client_id: c.client_id,
+                ...performance[c.client_id]?.[ex.id],
+            })),
         }));
 
-        const participants = children
-            .filter(c => attendance[c.client_id])
-            .map(c => ({
-                client_id: c.client_id,
-                note: sessionNotes[c.client_id] || 'Completed',
-            }));
+        const participants = presentChildren.map(c => ({
+            client_id: c.client_id,
+            note: sessionNotes[c.client_id] || 'Completed',
+        }));
 
         try {
             await api.post('/group-training/complete_session/', {
@@ -326,7 +331,21 @@ const LiveSession = ({ day, children, exercises, onClose, onEditPlan }) => {
                         <CheckCircle2 size={12} className="text-green-500" />
                         {presentCount} / {children.length}
                     </span>
-                    <button onClick={() => setShowFinishConfirm(true)} disabled={isSubmitting} className="bg-green-600 hover:bg-green-500 text-white px-4 py-2.5 md:px-5 md:py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-green-500/20 dark:shadow-green-900/30 flex items-center gap-2 transition-all duration-200 active:scale-95 disabled:opacity-60">
+                    {/* FIX BUG-6: زرار "Finish Session" بيتحقق من وجود حاضر واحد
+                        على الأقل قبل ما يفتح الـ confirmation modal.
+                        لو ما فيش حاضرين، يعرض toast مباشرة ومش يفتح الـ modal
+                        عشان ما تتنشأش GroupSessionLog فارغة في قاعدة البيانات. */}
+                    <button
+                        onClick={() => {
+                            if (presentCount === 0) {
+                                showToast('Mark at least one athlete as present before finishing.');
+                                return;
+                            }
+                            setShowFinishConfirm(true);
+                        }}
+                        disabled={isSubmitting}
+                        className="bg-green-600 hover:bg-green-500 text-white px-4 py-2.5 md:px-5 md:py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-green-500/20 dark:shadow-green-900/30 flex items-center gap-2 transition-all duration-200 active:scale-95 disabled:opacity-60"
+                    >
                         {isSubmitting ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />}
                         <span className="hidden md:inline">Finish Session</span>
                         <span className="md:hidden">Finish</span>

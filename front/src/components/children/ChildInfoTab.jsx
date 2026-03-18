@@ -445,7 +445,10 @@ const ChildInfoTab = ({ formData, handleChange, clientAge, user }) => {
                 name="manual_id"
                 value={formData.manual_id || ''}
                 onChange={handleChange}
-                disabled={!user?.is_superuser}
+                // BUG #6 FIX: كان disabled={!user?.is_superuser} لكن الباك إند
+                // (ClientSerializer.validate) يسمح للـ REC users بتعديل manual_id أيضاً.
+                // الشرط الصح: disabled لو مش admin ومش receptionist.
+                disabled={!user?.is_superuser && !user?.is_receptionist}
                 className="font-mono text-center tracking-widest text-zinc-500 text-xs"
               />
             </div>

@@ -246,17 +246,31 @@ const ChildrenSchedule = () => {
         setActionLoading(true);
         const kidsInDay = getChildrenForDay(selectedDay);
         try {
-            await Promise.all(kidsInDay.map(kid =>
-                api.patch(`/coach-schedules/${kid.id}/`, {
-                    session_time: sessionTime
-                })
-            ));
+            // FIX BUG-7: استخدام Promise.allSettled بدلاً من Promise.all.
+            // Promise.all كانت ترمي error فور أول PATCH يفشل وتتجاهل النتائج الباقية،
+            // حتى لو 8 من 9 requests نجحوا — المستخدم يشوف error وهو مش عارف
+            // إن 8 records اتحدثوا فعلاً.
+            // Promise.allSettled بتُكمل كل الـ requests وترجع نتيجة كل واحد،
+            // فنقدر نُظهر partial failure message دقيقة للمستخدم.
+            const results = await Promise.allSettled(
+                kidsInDay.map(kid =>
+                    api.patch(`/coach-schedules/${kid.id}/`, { session_time: sessionTime })
+                )
+            );
+            const failed = results.filter(r => r.status === 'rejected').length;
+            const succeeded = results.length - failed;
             setIsTimeModalOpen(false);
             setSessionTime('');
-            showToast('Group time updated!', 'success');
+            if (failed === 0) {
+                showToast(`Time updated for all ${succeeded} athletes!`, 'success');
+            } else if (succeeded > 0) {
+                showToast(`Updated ${succeeded} athletes. ${failed} failed — please retry.`, 'error');
+            } else {
+                showToast('Could not update time. Please try again.');
+            }
             fetchSchedule();
-        } catch {
-            showToast('Error setting group time.');
+        } catch (err) {
+            showToast('Unexpected error updating times.');
         } finally {
             setActionLoading(false);
         }

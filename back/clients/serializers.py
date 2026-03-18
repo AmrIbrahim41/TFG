@@ -220,21 +220,22 @@ class CountrySerializer(serializers.ModelSerializer):
 class ClientSubscriptionSerializer(serializers.ModelSerializer):
     plan_name = serializers.ReadOnlyField(source='plan.name')
     plan_total_sessions = serializers.ReadOnlyField(source='plan.units')
-    trainer_name = serializers.ReadOnlyField(source='trainer.first_name')
+    # BUG #4 FIX: كان trainer_name = ReadOnlyField(source='trainer.first_name')
+    # مما يُرجع None أو string فارغ لو first_name مش موجود.
+    # الفرونت (ChildMembershipTab.jsx) يخفي قسم المدرب كلياً لو trainer_name falsy
+    # (if sub.trainer_name && ...). SerializerMethodField يضمن fallback لـ username.
+    trainer_name = serializers.SerializerMethodField()
     client_name = serializers.ReadOnlyField(source='client.name')
 
     class Meta:
         model = ClientSubscription
         fields = '__all__'
-        # FIX: sessions_used must NOT be read-only.
-        # Automatic increments happen via TrainingSessionViewSet.perform_update and
-        # GroupSessionParticipant.save() using F() + select_for_update — race-safe.
-        # However, trainers/admins legitimately need to manually correct sessions_used
-        # via the InBody/Membership form (e.g. after a sync error).
-        # The previous read_only_fields = ['sessions_used', 'created_at'] was
-        # silently discarding those corrections and leaving the session counter wrong.
-        # All endpoints require IsAuthenticated so unauthenticated manipulation is blocked.
         read_only_fields = ['created_at']
+
+    def get_trainer_name(self, obj):
+        if not obj.trainer:
+            return None
+        return obj.trainer.first_name or obj.trainer.username
 
     def validate(self, data):
         if self.instance:
@@ -667,6 +668,43 @@ class CoachScheduleSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         return _build_photo_url(request, obj.client.photo if obj.client else None)
 
+    def validate(self, data):
+        """
+        FIX BUG-2 (Coach Schedule): التحقق من وجود اشتراك نشط للطفل مع المدرب
+        قبل إضافته للجدول عند الإنشاء (POST) فقط.
+
+        TrainerScheduleSerializer كان يتحقق من ذلك، لكن CoachScheduleSerializer
+        لم يكن يتحقق — مما يسمح لأي طلب API مباشر بإضافة طفل منتهي اشتراكه.
+        الفرونت إند يُصفّي activeChildren.filter(c => c.is_subscribed) لكن
+        هذا الفلتر على مستوى الـ UI فقط، وليس حماية كافية على مستوى الـ API.
+
+        التحقق مطلوب عند الإنشاء فقط — PATCH لتعديل session_time لا يحتاجه.
+        """
+        if self.instance:
+            # تعديل على slot موجود (مثل تغيير session_time) — لا نعيد التحقق
+            return data
+
+        coach = data.get('coach')
+        client = data.get('client')
+
+        # BUG-S2 FIX: الكود السابق كان يتحقق من trainer=coach (اشتراك مع المدرب ده
+        # تحديداً). هذا يخالف قاعدة العمل: أي مدرب يقدر يمرن عملاء المدربين الآخرين.
+        # الإصلاح: نتحقق فقط من أن الطفل عنده اشتراك نشط (مع أي مدرب).
+        if client:
+            has_active = ClientSubscription.objects.filter(
+                client=client,
+                is_active=True,
+            ).exists()
+            if not has_active:
+                raise serializers.ValidationError({
+                    'client': (
+                        'This child does not have an active subscription. '
+                        'Only children with active subscriptions can be added to the schedule.'
+                    )
+                })
+
+        return data
+
 
 class GroupSessionParticipantSerializer(serializers.ModelSerializer):
     client_name = serializers.ReadOnlyField(source='client.name')
@@ -753,6 +791,16 @@ class SessionTransferRequestSerializer(serializers.ModelSerializer):
                 {'subscription': 'Cannot transfer sessions from an inactive or expired subscription.'}
             )
 
+        # FIX: التحقق من count <= 0 يجب أن يأتي أولاً قبل فحص remaining_sessions.
+        # الترتيب السابق كان يفحص remaining أولاً — لو count = 0 يمر الفحص الأول
+        # (0 > remaining = False) ثم يقع في count <= 0، لكن رسالة الخطأ في بعض
+        # الحالات الحافّة (remaining=0, count=0) كانت مُضللة.
+        # الترتيب الصحيح: اتحقق من القيمة أولاً ثم من التوافر.
+        if count <= 0:
+            raise serializers.ValidationError(
+                {'sessions_count': 'You must transfer at least 1 session.'}
+            )
+
         if subscription.plan and subscription.plan.units and subscription.plan.units > 0:
             remaining_sessions = subscription.plan.units - subscription.sessions_used
             if count > remaining_sessions:
@@ -762,11 +810,6 @@ class SessionTransferRequestSerializer(serializers.ModelSerializer):
                         f'You cannot transfer {count}.'
                     )
                 })
-
-        if count <= 0:
-            raise serializers.ValidationError(
-                {'sessions_count': 'You must transfer at least 1 session.'}
-            )
 
         return data
 
@@ -909,16 +952,20 @@ class TrainerScheduleSerializer(serializers.ModelSerializer):
 
         client = data.get('client') or getattr(self.instance, 'client', None)
 
-        if trainer and client:
+        # BUG-S1 FIX: الكود السابق كان يتحقق من وجود اشتراك نشط بين العميل
+        # والمدرب المحدد (trainer=trainer). هذا يخالف قاعدة العمل الأساسية:
+        # "أي مدرب يقدر يمرن عملاء المدربين الآخرين عادي."
+        # الإصلاح: نتحقق فقط من أن العميل عنده اشتراك نشط (مع أي مدرب)،
+        # بدلاً من اشتراط أن يكون الاشتراك مع المدرب الحالي تحديداً.
+        if client:
             has_active = ClientSubscription.objects.filter(
                 client=client,
-                trainer=trainer,
                 is_active=True,
             ).exists()
             if not has_active:
                 raise serializers.ValidationError({
                     'client': (
-                        'This client does not have an active subscription with this trainer. '
+                        'This client does not have an active subscription. '
                         'Only clients with active subscriptions can be added to the schedule.'
                     )
                 })

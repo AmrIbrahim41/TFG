@@ -800,6 +800,15 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
                     qs = qs.filter(subscription_id=has_sub_id)
                 else:
                     raise ValidationError({"subscription_id": "رقم الاشتراك مطلوب لعرض الجلسات."})
+        else:
+            # FIX BUG-3: الـ admin مع pagination_class = None ممكن يرجع آلاف
+            # الـ sessions دفعة واحدة بدون subscription_id. نفرض الفلتر عليه
+            # في الـ list action أيضاً لتجنب queries ضخمة غير مقصودة.
+            if is_list_action:
+                if has_sub_id:
+                    qs = qs.filter(subscription_id=has_sub_id)
+                else:
+                    raise ValidationError({"subscription_id": "subscription_id مطلوب لعرض الجلسات."})
 
         return qs
 
@@ -1670,7 +1679,10 @@ class TrainerShiftViewSet(viewsets.ModelViewSet):
         partial = request.method == "PATCH"
         serializer = self.get_serializer(shift, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        # BUG #3 FIX: يجب تمرير trainer=request.user دايماً عند الحفظ
+        # لمنع مدرب من إرسال {"trainer": 99, ...} وتغيير FK الاشتراك
+        # من حسابه لحساب مدرب آخر.
+        serializer.save(trainer=request.user)
         return Response(serializer.data)
 
 
@@ -1697,13 +1709,14 @@ class TrainerScheduleViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
 
-        # BUG #4 FIX: الكود السابق كان يستخدم JOIN مزدوج على نفس الـ FK مع F()
-        # مما ينتج تكرارًا يتطلب .distinct() وقد يُفوّت حالات حافّة.
-        # الحل: استخدام Exists() subquery تمامًا كما هو مُصلَح في admin.py (FIX #20).
+        # BUG-V1 FIX: الكود السابق كان يضم trainer=OuterRef('trainer') في الـ Exists
+        # subquery، مما يعني إن الـ slot بيظهر بس لو الاشتراك النشط بين العميل
+        # والمدرب صاحب الـ slot ده. هذا يخالف قاعدة العمل: أي مدرب يقدر يجدول
+        # أي عميل عنده اشتراك نشط مع أي مدرب.
+        # الإصلاح: نتحقق فقط من client=OuterRef('client') + is_active=True.
         from django.db.models import Exists, OuterRef
         active_sub_exists = ClientSubscription.objects.filter(
             client=OuterRef('client'),
-            trainer=OuterRef('trainer'),
             is_active=True,
         )
         base_qs = (
@@ -1717,6 +1730,19 @@ class TrainerScheduleViewSet(viewsets.ModelViewSet):
             if trainer_id:
                 return base_qs.filter(trainer_id=trainer_id)
             return base_qs
+
+        # BUG-2 FIX: الكود السابق كان يُرجع دائماً base_qs.filter(trainer=user)
+        # لأي مدرب غير admin، متجاهلاً trainer_id query param تماماً.
+        # هذا يخالف قاعدة العمل الأساسية:
+        #   "أي مدرب يقدر يشوف بيانات وجداول المدربين الآخرين — ده أساسي في الشغل."
+        # نفس المبدأ مُطبَّق في CoachScheduleViewSet.get_queryset() بالكود:
+        #   trainer_id = self.request.query_params.get("trainer_id")
+        #   if trainer_id: return ...filter(coach_id=trainer_id)
+        # الإصلاح: نتحقق من trainer_id أولاً لأي مستخدم مصادَق عليه.
+        # لو مفيش trainer_id محدد، نرجع جدول المستخدم الحالي (السلوك الافتراضي).
+        trainer_id = self.request.query_params.get("trainer_id")
+        if trainer_id:
+            return base_qs.filter(trainer_id=trainer_id)
 
         return base_qs.filter(trainer=user)
 
@@ -1733,7 +1759,10 @@ class TrainerScheduleViewSet(viewsets.ModelViewSet):
         url_name="active-clients",
     )
     def active_clients(self, request):
-        """Clients eligible to be scheduled (active subscription with this trainer)."""
+        """
+        Clients eligible to be scheduled (have an active subscription with ANY trainer).
+        Per business rules: any trainer can train any client — we show all active clients.
+        """
         user = request.user
 
         if user.is_superuser:
@@ -1743,15 +1772,30 @@ class TrainerScheduleViewSet(viewsets.ModelViewSet):
                     {"error": "trainer_id query param is required for admin access."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            # BUG-V2 FIX (الإصلاح الفعلي): Admin يشوف كل العملاء اللي عندهم
+            # اشتراك نشط مع أي مدرب — قاعدة العمل الأساسية.
+            # الكود السابق كان لا يزال يفلتر بـ trainer_id=trainer_id رغم التعليق
+            # الذي يقول إنه تصحّح. هذا هو التصحيح الفعلي:
+            # نُزيل filter(trainer_id=trainer_id) ونُبقي is_active=True فقط.
             qs = ClientSubscription.objects.filter(
-                trainer_id=trainer_id, is_active=True
+                is_active=True
             ).select_related("client", "plan")
         else:
+            # BUG-V2 FIX: الكود السابق كان يجيب عملاء المدرب الحالي بس (trainer=user).
+            # الإصلاح: نجيب كل العملاء اللي عندهم اشتراك نشط مع أي مدرب،
+            # لأن المدرب يقدر يمرن أي عميل من عملاء الجيم.
             qs = ClientSubscription.objects.filter(
-                trainer=user, is_active=True
+                is_active=True
             ).select_related("client", "plan")
 
-        clients = [_build_client_dict(sub, request) for sub in qs]
+        # De-duplicate: لو عميل عنده أكثر من اشتراك نشط (حالة نادرة بسبب الـ constraint)،
+        # نجيب الاشتراك الأحدث بس.
+        seen_client_ids = set()
+        clients = []
+        for sub in qs.order_by("-start_date"):
+            if sub.client_id not in seen_client_ids:
+                seen_client_ids.add(sub.client_id)
+                clients.append(_build_client_dict(sub, request))
 
         return Response(clients)
 
