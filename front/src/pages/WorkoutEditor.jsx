@@ -6,6 +6,7 @@
  * - Dropdown menus instead of pill groups for better space management
  * - Deep Dark Mode and Crisp Light Mode support
  * - Touch-friendly enhancements for mobile users
+ * - AI Integration powered by Gemini API ✨
  */
 
 import React, {
@@ -28,7 +29,7 @@ import {
   Zap, Layers, TrendingUp, ArrowDown, Grip, History, X, Minus, FileText,
   MoreVertical, ChevronRight, Calendar, User, Download, Type, MessageSquare,
   Lock, Copy, RotateCcw, AlertTriangle, CheckCircle2, GripVertical,
-  ChevronUp, ChevronDown,
+  ChevronUp, ChevronDown, Sparkles,
 } from 'lucide-react';
 
 import toast, { Toaster } from 'react-hot-toast';
@@ -38,9 +39,9 @@ import toast, { Toaster } from 'react-hot-toast';
 // The following imports are commented out to allow the code to run in this preview environment.
 // Please UNCOMMENT these lines and REMOVE the mock definitions below in your local project.
 // -----------------------------------------------------------------------------
-// import api from '../api';
-// import WorkoutPDF_EN from '../utils/WorkoutPDF.jsx';
-// import { PDFDownloadLink } from '@react-pdf/renderer';
+import api from '../api';
+import WorkoutPDF_EN from '../utils/WorkoutPDF.jsx';
+import { PDFDownloadLink } from '@react-pdf/renderer';
 
 const api = {
   get: async (url) => ({ data: url.includes('history') ? [] : { name: 'Sample Session', exercises: [], is_completed: false } }),
@@ -55,6 +56,38 @@ const PDFDownloadLink = ({ children, className }) => (
   </button>
 );
 // -----------------------------------------------------------------------------
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GEMINI API HELPER (WITH EXPONENTIAL BACKOFF)
+// ─────────────────────────────────────────────────────────────────────────────
+const callGemini = async (prompt) => {
+  const apiKey = ""; // API Key provided by execution environment
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+  const payload = {
+    contents: [{ parts: [{ text: prompt }] }],
+  };
+
+  let retries = 5;
+  let delay = 1000;
+
+  while (retries > 0) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+      const data = await res.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } catch (err) {
+      retries--;
+      if (retries === 0) throw err;
+      await new Promise(r => setTimeout(r, delay));
+      delay *= 2; // Exponential backoff
+    }
+  }
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DEBOUNCE HOOK
@@ -264,7 +297,7 @@ const ExerciseCardContent = memo(({
   dragHandleProps,
   onUpdate, onUpdateSet, onSetCount, onDuplicateLastSet, onClearWeights,
   onRemoveSet, onDelete, onMoveUp, onMoveDown,
-  activeNoteIndex, onToggleNote,
+  activeNoteIndex, onToggleNote, onGenerateAITips, isGeneratingTip
 }) => {
   const tabIdx = (setIdx, field) => 100 + exIndex * 100 + setIdx * 2 + (field === 'weight' ? 1 : 0);
   const isFirst = exIndex === 0;
@@ -488,17 +521,29 @@ const ExerciseCardContent = memo(({
 
       {/* ── NOTE ─────────────────────────────────────────────────────────── */}
       <div className="px-4 md:px-6 pb-5">
-        <button onClick={() => onToggleNote(exIndex)} disabled={isReadOnly}
-          className="flex items-center gap-2 text-[13px] md:text-sm font-bold text-zinc-500 dark:text-zinc-400 hover:text-orange-500 dark:hover:text-orange-400 transition-colors py-1 disabled:cursor-default bg-zinc-100 dark:bg-zinc-800/50 px-3 rounded-lg w-fit">
-          <MessageSquare size={14} />
-          {ex.note ? <span className="text-orange-500 dark:text-orange-400">Edit Note</span> : 'Add Note'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => onToggleNote(exIndex)} disabled={isReadOnly}
+            className="flex items-center gap-2 text-[13px] md:text-sm font-bold text-zinc-500 dark:text-zinc-400 hover:text-orange-500 dark:hover:text-orange-400 transition-colors py-1 disabled:cursor-default bg-zinc-100 dark:bg-zinc-800/50 px-3 rounded-lg w-fit">
+            <MessageSquare size={14} />
+            {ex.note ? <span className="text-orange-500 dark:text-orange-400">Edit Note</span> : 'Add Note'}
+          </button>
+          
+          {/* AI Form Tips Button ✨ */}
+          {!isReadOnly && ex.name.trim() && (
+            <button onClick={() => onGenerateAITips(exIndex)} disabled={isGeneratingTip}
+              className="flex items-center gap-1.5 text-[13px] md:text-sm font-bold text-purple-600 dark:text-purple-400 hover:text-purple-500 transition-colors py-1 disabled:opacity-50 disabled:cursor-wait bg-purple-50 dark:bg-purple-500/10 px-3 rounded-lg w-fit border border-purple-100 dark:border-purple-500/20 shadow-sm hover:shadow-purple-500/10">
+              {isGeneratingTip ? <Activity size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              ✨ AI Form Tips
+            </button>
+          )}
+        </div>
+
         {(activeNoteIndex === exIndex || ex.note) && (
           <div className={`mt-3 transition-all duration-300 ${activeNoteIndex === exIndex ? 'opacity-100 scale-100' : 'opacity-80 scale-[0.99]'}`}>
             <textarea
               value={ex.note || ''} rows={2}
               onChange={(e) => onUpdate(exIndex, 'note', e.target.value)}
-              disabled={isReadOnly}
+              disabled={isReadOnly || isGeneratingTip}
               readOnly={isReadOnly || activeNoteIndex !== exIndex}
               placeholder="E.g., Seat height 4, slow eccentric phase..."
               className="w-full bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-700/50 rounded-2xl p-3 md:p-4 text-sm font-medium text-zinc-800 dark:text-zinc-200 placeholder-amber-400/70 dark:placeholder-amber-700/70 focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-500/10 resize-none transition-all disabled:opacity-70 shadow-inner"
@@ -545,6 +590,10 @@ const WorkoutEditor = () => {
   const [confirmModal, setConfirmModal]         = useState({ open: false });
 
   const [activeDndId, setActiveDndId]           = useState(null);
+
+  // AI States
+  const [isSuggestingExercise, setIsSuggestingExercise] = useState(false);
+  const [generatingTipIndex, setGeneratingTipIndex]     = useState(null);
 
   const menuRef = useRef(null);
   
@@ -708,6 +757,67 @@ const WorkoutEditor = () => {
       return arrayMove(prev, idx, next);
     });
   }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // GEMINI AI HANDLERS ✨
+  // ─────────────────────────────────────────────────────────────────────────────
+  const handleSuggestNextExercise = async () => {
+    const validNames = exercises.map(ex => ex.name.trim()).filter(Boolean);
+    if (validNames.length === 0) {
+      toast.error('Add at least one exercise first to get an AI suggestion.');
+      return;
+    }
+
+    setIsSuggestingExercise(true);
+    try {
+      const prompt = `I am building a workout. My current exercises are: ${validNames.join(', ')}. Suggest exactly ONE complementary exercise to add next that fits this routine. Respond ONLY with the exercise name, nothing else.`;
+      const suggestion = await callGemini(prompt);
+      
+      if (suggestion) {
+        const cleanedName = suggestion.replace(/["'*]/g, '').trim();
+        const newExercise = {
+          ...EMPTY_EXERCISE(),
+          name: cleanedName,
+          note: '✨ AI Suggested this exercise'
+        };
+        setExercises(prev => [...prev, newExercise]);
+        toast.success(`AI Suggested: ${cleanedName}`, { icon: '✨' });
+        
+        // Auto scroll to the new exercise slightly
+        setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 200);
+      } else {
+        toast.error('Could not generate a suggestion at this time.');
+      }
+    } catch (err) {
+      toast.error('Failed to get AI suggestion. Try again later.');
+    } finally {
+      setIsSuggestingExercise(false);
+    }
+  };
+
+  const handleGenerateAITips = async (exIndex) => {
+    const exerciseName = exercises[exIndex]?.name?.trim();
+    if (!exerciseName) return;
+
+    setGeneratingTipIndex(exIndex);
+    setActiveNoteIndex(exIndex); // Ensure note panel opens
+
+    try {
+      const prompt = `Provide 2 extremely concise, expert form and technique tips for the exercise "${exerciseName}". Keep the entire response under 30 words. Output in plain text, without bullet points or markdown formatting.`;
+      const tips = await callGemini(prompt);
+
+      if (tips) {
+        updateExercise(exIndex, 'note', `✨ AI Form Tips:\n${tips.trim()}`);
+        toast.success('Form tips generated!', { icon: '✨' });
+      } else {
+        toast.error('Could not generate tips at this time.');
+      }
+    } catch (err) {
+      toast.error('Failed to connect to AI. Try again later.');
+    } finally {
+      setGeneratingTipIndex(null);
+    }
+  };
 
   const handleBack = useCallback(() => {
     if (clientId) navigate(`/clients/${clientId}`, { state: { defaultTab: 'training', activeTab: 'training' } });
@@ -904,6 +1014,8 @@ const WorkoutEditor = () => {
                       isReadOnly={isReadOnly}
                       activeNoteIndex={activeNoteIndex}
                       onToggleNote={(idx) => setActiveNoteIndex((n) => (n === idx ? null : idx))}
+                      onGenerateAITips={handleGenerateAITips}
+                      isGeneratingTip={generatingTipIndex === exIndex}
                       onUpdate={updateExercise}
                       onUpdateSet={updateSet}
                       onSetCount={handleSetCount}
@@ -934,16 +1046,27 @@ const WorkoutEditor = () => {
             </DragOverlay>
           </DndContext>
 
-          {/* Add Exercise CTA */}
+          {/* Add Exercise & AI Actions CTA */}
           {!isReadOnly && (
             <AnimatedCard delay={exercises.length * 50}>
-              <button onClick={addExercise}
-                className="w-full py-5 md:py-6 rounded-[2rem] border-2 border-dashed border-zinc-300 dark:border-zinc-700/60 text-zinc-500 dark:text-zinc-500 hover:border-orange-500 hover:bg-orange-50/50 dark:hover:bg-orange-500/5 dark:hover:border-orange-500/50 hover:text-orange-600 dark:hover:text-orange-400 flex items-center justify-center gap-3 font-black text-base md:text-lg transition-all group shadow-sm active:scale-[0.98]">
-                <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 group-hover:bg-orange-100 dark:group-hover:bg-orange-500/20 flex items-center justify-center transition-colors">
-                  <Plus size={20} className="group-hover:rotate-90 transition-transform duration-300" />
-                </div>
-                Add Exercise
-              </button>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button onClick={addExercise}
+                  className="flex-1 py-5 md:py-6 rounded-[2rem] border-2 border-dashed border-zinc-300 dark:border-zinc-700/60 text-zinc-500 dark:text-zinc-500 hover:border-orange-500 hover:bg-orange-50/50 dark:hover:bg-orange-500/5 dark:hover:border-orange-500/50 hover:text-orange-600 dark:hover:text-orange-400 flex items-center justify-center gap-3 font-black text-base md:text-lg transition-all group shadow-sm active:scale-[0.98]">
+                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 group-hover:bg-orange-100 dark:group-hover:bg-orange-500/20 flex items-center justify-center transition-colors">
+                    <Plus size={20} className="group-hover:rotate-90 transition-transform duration-300" />
+                  </div>
+                  Add Exercise
+                </button>
+
+                {/* AI Suggest Exercise Button ✨ */}
+                <button onClick={handleSuggestNextExercise} disabled={isSuggestingExercise}
+                  className="flex-1 py-5 md:py-6 rounded-[2rem] border-2 border-purple-200 dark:border-purple-800/40 bg-purple-50/50 dark:bg-purple-900/10 text-purple-600 dark:text-purple-400 hover:border-purple-500 dark:hover:border-purple-500/60 hover:bg-purple-100 dark:hover:bg-purple-500/20 flex items-center justify-center gap-3 font-black text-base md:text-lg transition-all group shadow-sm active:scale-[0.98] disabled:opacity-60 disabled:cursor-wait">
+                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-white dark:bg-purple-900/40 group-hover:bg-purple-200 dark:group-hover:bg-purple-500/30 flex items-center justify-center transition-colors shadow-inner">
+                    {isSuggestingExercise ? <Activity size={20} className="animate-spin text-purple-500" /> : <Sparkles size={20} className="group-hover:rotate-12 transition-transform duration-300 text-purple-500" />}
+                  </div>
+                  ✨ Suggest Next
+                </button>
+              </div>
             </AnimatedCard>
           )}
         </div>
