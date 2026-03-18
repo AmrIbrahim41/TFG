@@ -38,9 +38,9 @@ import toast, { Toaster } from 'react-hot-toast';
 // The following imports are commented out to allow the code to run in this preview environment.
 // Please UNCOMMENT these lines and REMOVE the mock definitions below in your local project.
 // -----------------------------------------------------------------------------
-// import api from '../api';
-// import WorkoutPDF_EN from '../utils/WorkoutPDF.jsx';
-// import { PDFDownloadLink } from '@react-pdf/renderer';
+import api from '../api';
+import WorkoutPDF_EN from '../utils/WorkoutPDF.jsx';
+import { PDFDownloadLink } from '@react-pdf/renderer';
 
 const api = {
   get: async (url) => ({ data: url.includes('history') ? [] : { name: 'Sample Session', exercises: [], is_completed: false } }),
