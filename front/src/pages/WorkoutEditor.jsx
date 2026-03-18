@@ -6,7 +6,6 @@
  * - Dropdown menus instead of pill groups for better space management
  * - Deep Dark Mode and Crisp Light Mode support
  * - Touch-friendly enhancements for mobile users
- * - Auto-save functionality & Strict Input Validation
  */
 
 import React, {
@@ -27,9 +26,9 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   ArrowLeft, Save, Plus, Trash2, CheckCircle, Dumbbell, Activity, Settings,
   Zap, Layers, TrendingUp, ArrowDown, Grip, History, X, Minus, FileText,
-  ChevronRight, Calendar, User, Download, Type, MessageSquare,
+  MoreVertical, ChevronRight, Calendar, User, Download, Type, MessageSquare,
   Lock, Copy, RotateCcw, AlertTriangle, CheckCircle2, GripVertical,
-  ChevronUp, ChevronDown, RefreshCw
+  ChevronUp, ChevronDown,
 } from 'lucide-react';
 
 import api from '../api';
@@ -38,7 +37,7 @@ import WorkoutPDF_EN from '../utils/WorkoutPDF.jsx';
 import { PDFDownloadLink } from '@react-pdf/renderer';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DEBOUNCE HOOK (Now actively used for Auto-save)
+// DEBOUNCE HOOK
 // ─────────────────────────────────────────────────────────────────────────────
 function useDebounce(value, delay) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -90,16 +89,8 @@ const EMPTY_EXERCISE = () => ({
   dndId: nextDndId(),
   name: '',
   note: '',
-  // Added uiId to securely map components without conflicting with DB ids
-  sets: [{ uiId: nextDndId(), reps: '', weight: '', technique: 'Regular', equipment: '' }],
+  sets: [{ reps: '', weight: '', technique: 'Regular', equipment: '' }],
 });
-
-// Helper to prevent negative inputs
-const handleNumberKeyDown = (e) => {
-  if (e.key === '-' || e.key === 'e' || e.key === 'E') {
-    e.preventDefault();
-  }
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFIRM MODAL
@@ -369,7 +360,7 @@ const ExerciseCardContent = memo(({
             const equip = EQUIP_CONFIG[set.equipment]     || { icon: Dumbbell, color: 'text-zinc-500' };
 
             return (
-              <div key={set.uiId || `ns-${setIndex}`}
+              <div key={set.id ?? `ns-${setIndex}`}
                 className="group/row border-b border-zinc-200/50 dark:border-zinc-800/50 last:border-0 hover:bg-white dark:hover:bg-zinc-800/40 transition-colors p-3 md:p-0"
                 style={{ animation: 'slideInRow 0.25s ease-out both', animationDelay: `${setIndex * 30}ms` }}>
                 
@@ -382,20 +373,18 @@ const ExerciseCardContent = memo(({
                     <div className="flex-1 flex gap-2">
                       <div className="flex-1 relative">
                         <label className="absolute -top-2 left-2 bg-white dark:bg-zinc-900 px-1 text-[9px] font-bold uppercase tracking-wider text-zinc-400 z-10 rounded">Reps</label>
-                        <input type="number" inputMode="numeric" placeholder="0" min="0"
+                        <input type="number" inputMode="numeric" placeholder="0"
                           value={set.reps || ''} disabled={isReadOnly}
                           tabIndex={tabIdx(setIndex, 'reps')}
                           onChange={(e) => onUpdateSet(exIndex, setIndex, 'reps', e.target.value)}
-                          onKeyDown={handleNumberKeyDown}
                           className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 rounded-xl py-3 text-center text-base font-bold text-zinc-900 dark:text-white outline-none transition-all disabled:opacity-60 relative z-0" />
                       </div>
                       <div className="flex-1 relative">
                         <label className="absolute -top-2 left-2 bg-white dark:bg-zinc-900 px-1 text-[9px] font-bold uppercase tracking-wider text-zinc-400 z-10 rounded">Weight</label>
-                        <input type="number" inputMode="decimal" placeholder="0" min="0"
+                        <input type="number" inputMode="decimal" placeholder="0"
                           value={set.weight || ''} disabled={isReadOnly}
                           tabIndex={tabIdx(setIndex, 'weight')}
                           onChange={(e) => onUpdateSet(exIndex, setIndex, 'weight', e.target.value)}
-                          onKeyDown={handleNumberKeyDown}
                           className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 rounded-xl py-3 text-center text-base font-bold text-zinc-900 dark:text-white outline-none transition-all disabled:opacity-60 relative z-0" />
                       </div>
                     </div>
@@ -432,19 +421,18 @@ const ExerciseCardContent = memo(({
                 {/* ── Desktop Layout ── */}
                 <div className="hidden md:grid grid-cols-[40px_1fr_1fr_1.5fr_1.5fr_40px] gap-4 px-4 py-3 items-center">
                   <span className="text-center text-sm font-black text-zinc-400 dark:text-zinc-500">{setIndex + 1}</span>
-                  <input type="number" inputMode="numeric" placeholder="0" min="0"
+                  <input type="number" inputMode="numeric" placeholder="0"
                     value={set.reps || ''} disabled={isReadOnly}
                     tabIndex={tabIdx(setIndex, 'reps')}
                     onChange={(e) => onUpdateSet(exIndex, setIndex, 'reps', e.target.value)}
-                    onKeyDown={handleNumberKeyDown}
                     className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 rounded-xl py-2.5 text-center text-sm font-bold text-zinc-900 dark:text-white outline-none transition-all disabled:opacity-60 shadow-sm" />
-                  <input type="number" inputMode="decimal" placeholder="0.0" min="0"
+                  <input type="number" inputMode="decimal" placeholder="0.0"
                     value={set.weight || ''} disabled={isReadOnly}
                     tabIndex={tabIdx(setIndex, 'weight')}
                     onChange={(e) => onUpdateSet(exIndex, setIndex, 'weight', e.target.value)}
-                    onKeyDown={handleNumberKeyDown}
                     className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 rounded-xl py-2.5 text-center text-sm font-bold text-zinc-900 dark:text-white outline-none transition-all disabled:opacity-60 shadow-sm" />
                   
+                  {/* Desktop Dropdowns instead of Pills */}
                   <div className="relative w-full shadow-sm rounded-xl">
                     <select value={set.technique || 'Regular'} disabled={isReadOnly}
                       onChange={(e) => onUpdateSet(exIndex, setIndex, 'technique', e.target.value)}
@@ -529,18 +517,23 @@ const WorkoutEditor = () => {
 
   const [recentSplits, setRecentSplits]         = useState([]);
   const [showHistory, setShowHistory]           = useState(false);
+  const [isMenuOpen, setIsMenuOpen]             = useState(false);
   const [showPdfModal, setShowPdfModal]         = useState(false);
   const [pdfManualClientName, setPdfManualClientName] = useState('');
   const [activeNoteIndex, setActiveNoteIndex]   = useState(null);
   const [confirmModal, setConfirmModal]         = useState({ open: false });
 
   const [activeDndId, setActiveDndId]           = useState(null);
-  const [isAutoSaving, setIsAutoSaving]         = useState(false);
 
-  // Debounce actively used for auto-save logic
-  const debouncedExercises   = useDebounce(exercises, 1500);
-  const debouncedSessionName = useDebounce(sessionName, 1500);
-  const isInitialMount = useRef(true);
+  const menuRef = useRef(null);
+  const debouncedExercises   = useDebounce(exercises, 800);
+  const debouncedSessionName = useDebounce(sessionName, 800);
+  // ملاحظة: debouncedExercises و debouncedSessionName مستخدمان حصرياً لـ PDFDownloadLink
+  // (انظر الـ PDF modal أسفل الملف). لا تحذفهما — يمنعان إعادة توليد الـ PDF
+  // مع كل ضغطة مفتاح أثناء التعديل.
+  // FIX #8: الـ PDF كان يستخدم debouncedExercises مما يعني أن البيانات كانت
+  // تصل للـ PDF متأخرة 800ms. الآن نستخدم القيم الحية مباشرةً لضمان أن
+  // الـ PDF يعكس آخر حالة للجلسة بدون أي تأخير.
 
   const sensors = useSensors(
     useSensor(PointerSensor,  { activationConstraint: { distance: 8 } }),
@@ -549,6 +542,13 @@ const WorkoutEditor = () => {
   );
 
   useEffect(() => { setIsClient(true); }, []);
+
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const h = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setIsMenuOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [isMenuOpen]);
 
   useEffect(() => {
     if (!subId || !sessionNum) { setLoading(false); return; }
@@ -584,13 +584,7 @@ const WorkoutEditor = () => {
         }
 
         const loadedExercises = data.exercises?.length
-          ? data.exercises.map((ex) => ({ 
-              ...ex, 
-              note: ex.note || '', 
-              dndId: nextDndId(),
-              // Ensure backend sets have a local UI id for stable rendering
-              sets: ex.sets.map(s => ({ ...s, uiId: s.id ? String(s.id) : nextDndId() }))
-            }))
+          ? data.exercises.map((ex) => ({ ...ex, note: ex.note || '', dndId: nextDndId() }))
           : [EMPTY_EXERCISE()];
         setExercises(loadedExercises);
 
@@ -606,7 +600,7 @@ const WorkoutEditor = () => {
 
     fetchData();
     return () => { cancelled = true; };
-  }, [subId, sessionNum, defaultSessionName]);
+  }, [subId, sessionNum, defaultSessionName]); // FIX #14: إضافة defaultSessionName للـ deps — يُستخدم داخل الـ effect
 
   const isReadOnly =
     isSessionCompleted &&
@@ -647,9 +641,8 @@ const WorkoutEditor = () => {
       if (i !== exIdx) return ex;
       const newSets = [...ex.sets];
       if (delta > 0) {
-        // Strip any local UI id or backend ID so duplicate gets a fresh one
-        const { id: _id, uiId: _ui, ...rest } = newSets[newSets.length - 1];
-        newSets.push({ ...rest, uiId: nextDndId() });
+        const { id: _id, ...rest } = newSets[newSets.length - 1];
+        newSets.push({ ...rest });
       } else {
         if (newSets.length <= 1) { toast.error('Minimum 1 set required'); return ex; }
         newSets.pop();
@@ -661,8 +654,8 @@ const WorkoutEditor = () => {
   const duplicateLastSet = useCallback((exIdx) => {
     setExercises((prev) => prev.map((ex, i) => {
       if (i !== exIdx) return ex;
-      const { id: _id, uiId: _ui, ...rest } = ex.sets[ex.sets.length - 1];
-      return { ...ex, sets: [...ex.sets, { ...rest, uiId: nextDndId() }] };
+      const { id: _id, ...rest } = ex.sets[ex.sets.length - 1];
+      return { ...ex, sets: [...ex.sets, { ...rest }] };
     }));
   }, []);
 
@@ -703,31 +696,14 @@ const WorkoutEditor = () => {
     else navigate(-1);
   }, [clientId, navigate]);
 
-  const handleSave = useCallback(async (complete = false, isAuto = false) => {
+  const handleSave = useCallback(async (complete = false) => {
     const validExercises = exercises.filter((ex) => ex.name.trim());
-    if (!validExercises.length) { 
-      if (!isAuto) toast.error('Add at least one named exercise before saving.'); 
-      return; 
-    }
-    if (!isAuto && validExercises.length < exercises.length) {
-      toast('Blank-name exercises were skipped.', { icon: '⚠️' });
-    }
+    if (!validExercises.length) { toast.error('Add at least one named exercise before saving.'); return; }
+    if (validExercises.length < exercises.length) toast('Blank-name exercises were skipped.', { icon: '⚠️' });
 
-    const payload = validExercises.map(({ dndId: _d, ...ex }) => {
-      return {
-        ...ex,
-        sets: ex.sets.map(s => {
-          // Strip local UI IDs before sending to backend to avoid PK integer conflicts
-          const { id, uiId, ...rest } = s;
-          if (typeof id === 'number') return { id, ...rest }; // Keep actual DB IDs for updates
-          return rest; // Brand new sets get no ID
-        })
-      }
-    });
+    const payload = validExercises.map(({ dndId: _d, ...ex }) => ex);
 
-    if (isAuto) setIsAutoSaving(true);
-    else setIsSaving(true);
-    
+    setIsSaving(true);
     try {
       await api.post('/training-sessions/save-data/', {
         subscription: subId, session_number: sessionNum,
@@ -739,41 +715,15 @@ const WorkoutEditor = () => {
         if (currentUserId) setCompletedByTrainerId(Number(currentUserId));
         setTimeout(handleBack, 1000);
       } else {
-        if (!isAuto) toast.success('Draft saved ✓');
+        toast.success('Draft saved ✓');
       }
     } catch (e) {
-      if (!isAuto) {
-        if (e.response?.status === 403) toast.error(e.response.data?.error || 'Permission Denied');
-        else toast.error('Save failed. Please try again.');
-      }
+      if (e.response?.status === 403) toast.error(e.response.data?.error || 'Permission Denied');
+      else toast.error('Save failed. Please try again.');
     } finally {
-      if (isAuto) setTimeout(() => setIsAutoSaving(false), 800); // Keep visual indicator briefly
-      else setIsSaving(false);
+      setIsSaving(false);
     }
   }, [exercises, sessionName, subId, sessionNum, currentUserId, handleBack]);
-
-  // Use a ref to access the latest handleSave inside the auto-save effect
-  // without constantly re-triggering the effect on reference change.
-  const handleSaveRef = useRef(handleSave);
-  useEffect(() => { handleSaveRef.current = handleSave; }, [handleSave]);
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // AUTO-SAVE EFFECT
-  // ─────────────────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
-    }
-    if (isReadOnly || isSessionCompleted || loading) return;
-
-    // Trigger silent auto-save only if there are valid exercises
-    const valid = debouncedExercises.filter(ex => ex.name.trim());
-    if (valid.length > 0) {
-      handleSaveRef.current(false, true);
-    }
-  }, [debouncedExercises, debouncedSessionName, isReadOnly, isSessionCompleted, loading]);
-
 
   const handleCompleteIntent = useCallback(() => {
     setConfirmModal({
@@ -815,7 +765,6 @@ const WorkoutEditor = () => {
           dndId: nextDndId(),
           name: ex.name, note: ex.note || '',
           sets: ex.sets.map((s) => ({
-            uiId: nextDndId(),
             reps: s.reps, weight: s.weight,
             technique: s.technique || 'Regular',
             equipment: s.equipment || '',
@@ -829,6 +778,7 @@ const WorkoutEditor = () => {
   }, []);
 
   const handleOpenPdfModal = useCallback(() => {
+    setIsMenuOpen(false);
     setPdfManualClientName(clientName !== 'Client' ? clientName : '');
     setShowPdfModal(true);
   }, [clientName]);
@@ -863,10 +813,7 @@ const WorkoutEditor = () => {
                 <span className="text-zinc-800 dark:text-zinc-200">{clientName}</span>
               </span>
               <span className="text-zinc-300 dark:text-zinc-700">•</span>
-              <span className="uppercase tracking-widest text-[10px] opacity-80 flex items-center gap-1">
-                Session {sessionNum}
-                {isAutoSaving && <RefreshCw size={10} className="animate-spin text-orange-500 ml-1" />}
-              </span>
+              <span className="uppercase tracking-widest text-[10px] opacity-80">Session {sessionNum}</span>
               {isSessionCompleted && (
                 <><span className="text-zinc-300 dark:text-zinc-700">•</span>
                   <span className="flex items-center gap-1 text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full"><CheckCircle size={10} /> Done</span></>
@@ -874,18 +821,30 @@ const WorkoutEditor = () => {
             </div>
           </div>
 
-          <div className="relative flex items-center gap-2">
+          <div className="relative flex items-center gap-3" ref={menuRef}>
             <button onClick={() => setShowHistory(true)} disabled={isReadOnly}
-              title="Workout History"
               className="w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:text-orange-600 dark:hover:text-orange-500 hover:border-orange-500/50 flex items-center justify-center transition-all active:scale-90 disabled:opacity-40 shadow-sm">
               <History size={20} />
             </button>
-            {isClient && (
-              <button onClick={handleOpenPdfModal}
-                title="Export PDF"
-                className="w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:text-orange-600 dark:hover:text-orange-500 hover:border-orange-500/50 flex items-center justify-center transition-all active:scale-90 shadow-sm">
-                <FileText size={20} />
-              </button>
+            <button onClick={() => setIsMenuOpen((o) => !o)}
+              className={`w-12 h-12 rounded-full border flex items-center justify-center transition-all active:scale-90 shadow-sm ${isMenuOpen ? 'bg-orange-500 text-white border-orange-400 shadow-orange-500/30' : 'bg-zinc-100 dark:bg-zinc-800/80 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'}`}>
+              <MoreVertical size={20} />
+            </button>
+            {isMenuOpen && (
+              <div className="absolute top-14 right-0 w-64 bg-white/90 dark:bg-[#18181b]/90 backdrop-blur-xl border border-zinc-200 dark:border-zinc-700/50 rounded-3xl shadow-2xl p-2 animate-in fade-in zoom-in-95 duration-200 z-50 origin-top-right">
+                {isClient && (
+                  <button onClick={handleOpenPdfModal}
+                    className="w-full px-4 py-3 rounded-2xl hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-900 dark:text-white font-bold text-sm flex items-center justify-between gap-3 transition-all">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-orange-50 dark:bg-orange-500/10 flex items-center justify-center border border-orange-100 dark:border-orange-500/20">
+                        <FileText size={16} className="text-orange-500" />
+                      </div>
+                      <span>Export to PDF</span>
+                    </div>
+                    <ChevronRight size={16} className="text-zinc-400" />
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -976,13 +935,13 @@ const WorkoutEditor = () => {
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-50 pointer-events-none animate-in slide-in-from-bottom-6 duration-500">
         {!isReadOnly ? (
           <div className="pointer-events-auto flex gap-3 bg-white/80 dark:bg-[#18181b]/80 backdrop-blur-xl p-3 rounded-[2rem] border border-zinc-200/50 dark:border-white/[0.05] shadow-2xl shadow-black/10 dark:shadow-black/60">
-            <button onClick={() => handleSave(false)} disabled={isSaving || isAutoSaving}
+            <button onClick={() => handleSave(false)} disabled={isSaving}
               className="flex-1 py-4 rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-100 font-bold text-base flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-60 shadow-sm border border-zinc-200/50 dark:border-zinc-700">
               {isSaving ? <Activity size={18} className="animate-spin text-orange-500" /> : <Save size={18} />}
               {isSaving ? 'Saving…' : 'Save Draft'}
             </button>
             {!isSessionCompleted && (
-              <button onClick={handleCompleteIntent} disabled={isSaving || isAutoSaving}
+              <button onClick={handleCompleteIntent} disabled={isSaving}
                 className="flex-[1.5] py-4 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white font-black text-base flex items-center justify-center gap-2 shadow-xl shadow-orange-500/25 transition-all active:scale-95 disabled:opacity-60 relative overflow-hidden group">
                 <span className="absolute inset-0 rounded-2xl ring-2 ring-white/20 scale-[0.98] group-hover:scale-100 transition-transform" />
                 <CheckCircle size={18} /> Complete Workout
@@ -1025,6 +984,10 @@ const WorkoutEditor = () => {
                 <PDFDownloadLink
                   document={
                     <WorkoutPDF_EN
+                      // FIX #8: استخدام القيم الحية (sessionName, exercises) بدلاً من
+                      // debouncedSessionName / debouncedExercises. الـ debounce مفيد لتقليل
+                      // API calls في الـ auto-save، لكن الـ PDF يتولد عند الطلب فقط
+                      // (عند فتح modal)، لذا لا توجد مشكلة أداء ونضمن عرض آخر البيانات.
                       sessionName={sessionName || defaultSessionName || `Session ${sessionNum}`}
                       sessionNumber={parseInt(sessionNum) || 1}
                       clientName={pdfManualClientName || 'Client'}
