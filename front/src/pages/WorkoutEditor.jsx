@@ -3,7 +3,7 @@
  * Features:
  * - Fully responsive with an upgraded desktop and mobile UI (Mobile Fixes Applied)
  * - Beautiful Animations & Glassmorphism effects
- * - Dropdown menus instead of pill groups for better space management
+ * - Dropdown menus with vibrant colors, emojis, and dynamic backgrounds
  * - Deep Dark Mode and Crisp Light Mode support
  * - Touch-friendly enhancements for mobile users
  * - AI Integration powered by Gemini API ✨
@@ -70,23 +70,27 @@ const UserIcon = (props) => (
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CONFIG MAPS
+// CONFIG MAPS (Updated with Emojis & Dynamic Backgrounds)
 // ─────────────────────────────────────────────────────────────────────────────
 const TECHNIQUE_CONFIG = {
-  Regular:     { color: 'text-zinc-500 dark:text-zinc-400',    icon: Activity   },
-  'Drop Set':  { color: 'text-red-500 dark:text-red-400',      icon: ArrowDown  },
-  'Super Set': { color: 'text-purple-500 dark:text-purple-400',icon: Layers     },
-  Pyramid:     { color: 'text-amber-500 dark:text-amber-400',  icon: TrendingUp },
-  Negative:    { color: 'text-blue-500 dark:text-blue-400',    icon: Zap        },
+  Regular:     { color: 'text-zinc-700 dark:text-zinc-300',     bg: 'bg-zinc-100 dark:bg-zinc-800',       icon: Activity,   emoji: '🟢' },
+  'Drop Set':  { color: 'text-red-600 dark:text-red-400',       bg: 'bg-red-50 dark:bg-red-500/10',       icon: ArrowDown,  emoji: '📉' },
+  'Super Set': { color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-500/10', icon: Layers,     emoji: '⚡' },
+  Pyramid:     { color: 'text-amber-600 dark:text-amber-400',   bg: 'bg-amber-50 dark:bg-amber-500/10',   icon: TrendingUp, emoji: '🔺' },
+  Negative:    { color: 'text-blue-600 dark:text-blue-400',     bg: 'bg-blue-50 dark:bg-blue-500/10',     icon: Zap,        emoji: '🐢' },
 };
 
 const EQUIP_CONFIG = {
-  Bodyweight: { color: 'text-emerald-500 dark:text-emerald-400', icon: UserIcon },
-  Dumbbell:   { color: 'text-blue-500 dark:text-blue-400',       icon: Dumbbell },
-  Barbell:    { color: 'text-zinc-600 dark:text-zinc-300',       icon: Grip     },
-  Cable:      { color: 'text-cyan-500 dark:text-cyan-400',       icon: Zap      },
-  Machine:    { color: 'text-indigo-500 dark:text-indigo-400',   icon: Settings },
+  Bodyweight: { color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/10', icon: UserIcon, emoji: '🤸‍♂️' },
+  Dumbbell:   { color: 'text-blue-600 dark:text-blue-400',       bg: 'bg-blue-50 dark:bg-blue-500/10',       icon: Dumbbell, emoji: '🏋️‍♂️' },
+  Barbell:    { color: 'text-indigo-600 dark:text-indigo-400',   bg: 'bg-indigo-50 dark:bg-indigo-500/10',   icon: Grip,     emoji: '🏗️' },
+  Cable:      { color: 'text-cyan-600 dark:text-cyan-400',       bg: 'bg-cyan-50 dark:bg-cyan-500/10',       icon: Zap,      emoji: '⛓️' },
+  Machine:    { color: 'text-orange-600 dark:text-orange-400',   bg: 'bg-orange-50 dark:bg-orange-500/10',   icon: Settings, emoji: '⚙️' },
 };
+
+// Helper functions for dynamic UI styling
+const getTechConf = (tech) => TECHNIQUE_CONFIG[tech || 'Regular'];
+const getEquipConf = (equip) => EQUIP_CONFIG[equip] || { color: 'text-zinc-500 dark:text-zinc-400', bg: 'bg-white dark:bg-zinc-900', emoji: '🚫' };
 
 const EMPTY_EXERCISE = () => ({
   dndId: nextDndId(),
@@ -359,6 +363,9 @@ const ExerciseCardContent = memo(({
 
         <div className="flex flex-col">
           {ex.sets.map((set, setIndex) => {
+            const currentTechConf = getTechConf(set.technique);
+            const currentEquipConf = getEquipConf(set.equipment);
+
             return (
               <div key={set.id ?? `ns-${setIndex}`}
                 className="group/row border-b border-zinc-200/50 dark:border-zinc-800/50 last:border-0 hover:bg-white dark:hover:bg-zinc-800/40 transition-colors p-3 md:p-0"
@@ -373,8 +380,8 @@ const ExerciseCardContent = memo(({
                     
                     <div className="flex-1 flex gap-2">
                       {/* Reps Input (Improved Layout) */}
-                      <div className="flex-1 flex flex-col bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 rounded-xl overflow-hidden transition-all">
-                        <label className="text-[9px] font-black uppercase tracking-widest text-zinc-400 text-center pt-1.5 pb-0.5 bg-zinc-50 dark:bg-zinc-800/50">Reps</label>
+                      <div className="flex-1 flex flex-col bg-zinc-50/50 dark:bg-zinc-800/30 border border-zinc-200 dark:border-zinc-700 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 rounded-xl overflow-hidden transition-all">
+                        <label className="text-[9px] font-black uppercase tracking-widest text-zinc-400 text-center pt-1.5 pb-0.5 bg-zinc-100/50 dark:bg-zinc-800/50">Reps</label>
                         <input type="number" inputMode="numeric" placeholder="0"
                           value={set.reps || ''} disabled={isReadOnly}
                           tabIndex={tabIdx(setIndex, 'reps')}
@@ -383,8 +390,8 @@ const ExerciseCardContent = memo(({
                       </div>
                       
                       {/* Weight Input (Improved Layout) */}
-                      <div className="flex-1 flex flex-col bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 rounded-xl overflow-hidden transition-all">
-                        <label className="text-[9px] font-black uppercase tracking-widest text-zinc-400 text-center pt-1.5 pb-0.5 bg-zinc-50 dark:bg-zinc-800/50">Weight</label>
+                      <div className="flex-1 flex flex-col bg-zinc-50/50 dark:bg-zinc-800/30 border border-zinc-200 dark:border-zinc-700 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 rounded-xl overflow-hidden transition-all">
+                        <label className="text-[9px] font-black uppercase tracking-widest text-zinc-400 text-center pt-1.5 pb-0.5 bg-zinc-100/50 dark:bg-zinc-800/50">Weight</label>
                         <input type="number" inputMode="decimal" placeholder="0"
                           value={set.weight || ''} disabled={isReadOnly}
                           tabIndex={tabIdx(setIndex, 'weight')}
@@ -401,24 +408,32 @@ const ExerciseCardContent = memo(({
                     )}
                   </div>
                   
-                  {/* Mobile Dropdowns (Added Truncate to prevent overflowing) */}
+                  {/* Mobile Dropdowns with Colors & Emojis */}
                   <div className="grid grid-cols-2 gap-2 pl-9 pr-1">
                     <div className="relative">
                       <select value={set.technique || 'Regular'} disabled={isReadOnly}
                         onChange={(e) => onUpdateSet(exIndex, setIndex, 'technique', e.target.value)}
-                        className="w-full appearance-none bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 text-[11px] font-bold rounded-lg py-2 pl-2 pr-6 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-all disabled:opacity-60 truncate">
-                        {Object.keys(TECHNIQUE_CONFIG).map((k) => <option key={k} value={k}>{k}</option>)}
+                        className={`w-full appearance-none ${currentTechConf.bg} border border-zinc-200 dark:border-zinc-700/50 ${currentTechConf.color} text-[11px] font-bold rounded-lg py-2 pl-2.5 pr-6 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 outline-none transition-all disabled:opacity-60 truncate shadow-sm`}>
+                        {Object.keys(TECHNIQUE_CONFIG).map((k) => (
+                          <option key={k} value={k} className="text-zinc-900 dark:text-white bg-white dark:bg-zinc-900">
+                            {TECHNIQUE_CONFIG[k].emoji} {k}
+                          </option>
+                        ))}
                       </select>
-                      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={12} />
+                      <ChevronDown className={`absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none ${currentTechConf.color}`} size={12} />
                     </div>
                     <div className="relative">
                       <select value={set.equipment || ''} disabled={isReadOnly}
                         onChange={(e) => onUpdateSet(exIndex, setIndex, 'equipment', e.target.value)}
-                        className="w-full appearance-none bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 text-[11px] font-bold rounded-lg py-2 pl-2 pr-6 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-all disabled:opacity-60 truncate">
-                        <option value="">No Equip</option>
-                        {Object.keys(EQUIP_CONFIG).map((k) => <option key={k} value={k}>{k}</option>)}
+                        className={`w-full appearance-none ${currentEquipConf.bg} border border-zinc-200 dark:border-zinc-700/50 ${currentEquipConf.color} text-[11px] font-bold rounded-lg py-2 pl-2.5 pr-6 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 outline-none transition-all disabled:opacity-60 truncate shadow-sm`}>
+                        <option value="" className="text-zinc-500 bg-white dark:bg-zinc-900">🚫 No Equip</option>
+                        {Object.keys(EQUIP_CONFIG).map((k) => (
+                          <option key={k} value={k} className="text-zinc-900 dark:text-white bg-white dark:bg-zinc-900">
+                            {EQUIP_CONFIG[k].emoji} {k}
+                          </option>
+                        ))}
                       </select>
-                      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={12} />
+                      <ChevronDown className={`absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none ${currentEquipConf.color}`} size={12} />
                     </div>
                   </div>
                 </div>
@@ -430,30 +445,38 @@ const ExerciseCardContent = memo(({
                     value={set.reps || ''} disabled={isReadOnly}
                     tabIndex={tabIdx(setIndex, 'reps')}
                     onChange={(e) => onUpdateSet(exIndex, setIndex, 'reps', e.target.value)}
-                    className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 rounded-xl py-2.5 text-center text-sm font-bold text-zinc-900 dark:text-white outline-none transition-all disabled:opacity-60 shadow-sm" />
+                    className="w-full bg-zinc-50/50 dark:bg-zinc-800/30 border border-zinc-200 dark:border-zinc-700 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 rounded-xl py-2.5 text-center text-sm font-bold text-zinc-900 dark:text-white outline-none transition-all disabled:opacity-60 shadow-sm" />
                   <input type="number" inputMode="decimal" placeholder="0.0"
                     value={set.weight || ''} disabled={isReadOnly}
                     tabIndex={tabIdx(setIndex, 'weight')}
                     onChange={(e) => onUpdateSet(exIndex, setIndex, 'weight', e.target.value)}
-                    className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 rounded-xl py-2.5 text-center text-sm font-bold text-zinc-900 dark:text-white outline-none transition-all disabled:opacity-60 shadow-sm" />
+                    className="w-full bg-zinc-50/50 dark:bg-zinc-800/30 border border-zinc-200 dark:border-zinc-700 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 rounded-xl py-2.5 text-center text-sm font-bold text-zinc-900 dark:text-white outline-none transition-all disabled:opacity-60 shadow-sm" />
                   
                   <div className="relative w-full shadow-sm rounded-xl">
                     <select value={set.technique || 'Regular'} disabled={isReadOnly}
                       onChange={(e) => onUpdateSet(exIndex, setIndex, 'technique', e.target.value)}
-                      className="w-full appearance-none bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 text-sm font-bold rounded-xl py-2.5 pl-4 pr-10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-all disabled:opacity-60 cursor-pointer truncate">
-                      {Object.keys(TECHNIQUE_CONFIG).map((k) => <option key={k} value={k}>{k}</option>)}
+                      className={`w-full appearance-none ${currentTechConf.bg} border border-zinc-200 dark:border-zinc-700/50 ${currentTechConf.color} text-sm font-bold rounded-xl py-2.5 pl-4 pr-10 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 outline-none transition-all disabled:opacity-60 cursor-pointer truncate hover:-translate-y-[1px]`}>
+                      {Object.keys(TECHNIQUE_CONFIG).map((k) => (
+                        <option key={k} value={k} className="text-zinc-900 dark:text-white bg-white dark:bg-zinc-900">
+                          {TECHNIQUE_CONFIG[k].emoji} {k}
+                        </option>
+                      ))}
                     </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
+                    <ChevronDown className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${currentTechConf.color}`} size={16} />
                   </div>
                   
                   <div className="relative w-full shadow-sm rounded-xl">
                     <select value={set.equipment || ''} disabled={isReadOnly}
                       onChange={(e) => onUpdateSet(exIndex, setIndex, 'equipment', e.target.value)}
-                      className="w-full appearance-none bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 text-sm font-bold rounded-xl py-2.5 pl-4 pr-10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-all disabled:opacity-60 cursor-pointer truncate">
-                      <option value="">None</option>
-                      {Object.keys(EQUIP_CONFIG).map((k) => <option key={k} value={k}>{k}</option>)}
+                      className={`w-full appearance-none ${currentEquipConf.bg} border border-zinc-200 dark:border-zinc-700/50 ${currentEquipConf.color} text-sm font-bold rounded-xl py-2.5 pl-4 pr-10 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 outline-none transition-all disabled:opacity-60 cursor-pointer truncate hover:-translate-y-[1px]`}>
+                      <option value="" className="text-zinc-500 bg-white dark:bg-zinc-900">🚫 None</option>
+                      {Object.keys(EQUIP_CONFIG).map((k) => (
+                        <option key={k} value={k} className="text-zinc-900 dark:text-white bg-white dark:bg-zinc-900">
+                          {EQUIP_CONFIG[k].emoji} {k}
+                        </option>
+                      ))}
                     </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
+                    <ChevronDown className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${currentEquipConf.color}`} size={16} />
                   </div>
 
                   {ex.sets.length > 1 && !isReadOnly ? (
@@ -721,7 +744,7 @@ const WorkoutEditor = () => {
     setIsSuggestingExercise(true);
     try {
       const prompt = `I am building a workout. My current exercises are: ${validNames.join(', ')}. Suggest exactly ONE complementary exercise to add next that fits this routine. Respond ONLY with the exercise name, nothing else.`;
-      const suggestion = await callGemini(prompt);
+      const suggestion = await callGemini(prompt); // Assuming callGemini is globally available or imported
       
       if (suggestion) {
         const cleanedName = suggestion.replace(/["'*]/g, '').trim();
@@ -754,7 +777,7 @@ const WorkoutEditor = () => {
 
     try {
       const prompt = `Provide 2 extremely concise, expert form and technique tips for the exercise "${exerciseName}". Keep the entire response under 30 words. Output in plain text, without bullet points or markdown formatting.`;
-      const tips = await callGemini(prompt);
+      const tips = await callGemini(prompt); // Assuming callGemini is globally available or imported
 
       if (tips) {
         updateExercise(exIndex, 'note', `✨ AI Form Tips:\n${tips.trim()}`);
@@ -1071,7 +1094,7 @@ const WorkoutEditor = () => {
                   <Type className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
                   <input autoFocus value={pdfManualClientName} onChange={(e) => setPdfManualClientName(e.target.value)}
                     placeholder="e.g. John Doe"
-                    className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-2xl py-3 pl-11 pr-4 text-zinc-900 dark:text-white text-sm md:text-base font-bold placeholder:font-medium focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-all shadow-sm" />
+                    className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-2xl py-3 pl-11 pr-4 text-zinc-900 dark:text-white text-sm md:text-base font-bold placeholder:font-medium focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 outline-none transition-all shadow-sm" />
                 </div>
               </div>
               {isClient && (
