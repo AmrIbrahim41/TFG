@@ -39,9 +39,9 @@ import api from '../api';
 import WorkoutPDF_EN from '../utils/WorkoutPDF.jsx';
 import { PDFDownloadLink } from '@react-pdf/renderer';
 // -----------------------------------------------------------------------------
-// import api from '../api';
-// import WorkoutPDF_EN from '../utils/WorkoutPDF.jsx';
-// import { PDFDownloadLink } from '@react-pdf/renderer';
+import api from '../api';
+import WorkoutPDF_EN from '../utils/WorkoutPDF.jsx';
+import { PDFDownloadLink } from '@react-pdf/renderer';
 
 const api = {
   get: async (url) => ({ data: url.includes('history') ? [] : { name: 'Sample Session', exercises: [], is_completed: false } }),
