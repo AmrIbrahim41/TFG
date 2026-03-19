@@ -38,24 +38,6 @@ import toast, { Toaster } from 'react-hot-toast';
 import api from '../api';
 import WorkoutPDF_EN from '../utils/WorkoutPDF.jsx';
 import { PDFDownloadLink } from '@react-pdf/renderer';
-// -----------------------------------------------------------------------------
-import api from '../api';
-import WorkoutPDF_EN from '../utils/WorkoutPDF.jsx';
-import { PDFDownloadLink } from '@react-pdf/renderer';
-
-const api = {
-  get: async (url) => ({ data: url.includes('history') ? [] : { name: 'Sample Session', exercises: [], is_completed: false } }),
-  post: async () => ({ data: { success: true } })
-};
-
-const WorkoutPDF_EN = () => null;
-
-const PDFDownloadLink = ({ children, className }) => (
-  <button type="button" className={className} onClick={() => alert('PDF Download is simulated in this preview.')}>
-    {typeof children === 'function' ? children({ loading: false }) : children}
-  </button>
-);
-// -----------------------------------------------------------------------------
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DEBOUNCE HOOK
