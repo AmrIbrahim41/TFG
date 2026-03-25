@@ -502,6 +502,7 @@ class MealPlanCreateSerializer(serializers.ModelSerializer):
 class NutritionPlanSerializer(serializers.ModelSerializer):
     meal_plans = MealPlanSerializer(many=True, read_only=True)
     client_name = serializers.ReadOnlyField(source='subscription.client.name')
+    created_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = NutritionPlan
@@ -513,8 +514,18 @@ class NutritionPlanSerializer(serializers.ModelSerializer):
             'calc_carb_adjustment', 'pdf_brand_text',
             'target_calories', 'target_protein', 'target_carbs', 'target_fats',
             'notes',          # ← FIX: exposed to frontend
-            'meal_plans', 'client_name', 'created_at', 'updated_at',
+            'meal_plans', 'client_name', 'created_by_name', 'created_at', 'updated_at',
         ]
+
+    def get_created_by_name(self, obj):
+        """
+        Returns the trainer display name to render inside PDFs.
+        Prefer `first_name`, then fall back to `username`.
+        """
+        user = getattr(obj, 'created_by', None)
+        if not user:
+            return None
+        return user.first_name or user.username
 
 
 # ---------------------------------------------------------------------------
@@ -523,6 +534,7 @@ class NutritionPlanSerializer(serializers.ModelSerializer):
 
 class NutritionPlanCreateSerializer(serializers.ModelSerializer):
     meal_plans = MealPlanCreateSerializer(many=True, required=False)
+    created_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = NutritionPlan
@@ -535,6 +547,7 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
             'target_calories', 'target_protein', 'target_carbs', 'target_fats',
             'notes',          # ← FIX: saveable from frontend
             'meal_plans',
+            'created_by_name',
         ]
 
     def create(self, validated_data):
@@ -559,6 +572,12 @@ class NutritionPlanCreateSerializer(serializers.ModelSerializer):
             FoodItem.objects.bulk_create(food_items_to_create)
 
         return nutrition_plan
+
+    def get_created_by_name(self, obj):
+        user = getattr(obj, 'created_by', None)
+        if not user:
+            return None
+        return user.first_name or user.username
 
     def update(self, instance, validated_data):
         meal_plans_data = validated_data.pop('meal_plans', None)

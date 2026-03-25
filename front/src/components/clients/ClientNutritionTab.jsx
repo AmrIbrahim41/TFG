@@ -1017,7 +1017,9 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
   }, [activePlan, calcState]);
 
   const pdfClientName = activePlan?.client_name || clientData?.name || 'Athlete';
-  const trainerName   = activePlan?.created_by_name || 'Coach';
+  // If backend returns the trainer display name, we use it.
+  // Otherwise, the PDF components will fall back to their language-specific defaults.
+  const trainerName   = activePlan?.created_by_name;
 
   const openPdfNameModal = useCallback((lang) => {
     setPdfNameModalLang(lang);
@@ -1347,7 +1349,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
 
   if (view === 'detail' && activePlan) {
     return (
-      <div className="space-y-5 animate-fade-in p-1 md:p-2">
+      <div className="space-y-5 animate-fade-in p-1 md:p-2 pb-28 md:pb-0">
         {toast && <Toast message={toast.message} type={toast.type} onDismiss={dismissToast} />}
         <ConfirmModal
           isOpen={deleteModal.isOpen}
@@ -1443,13 +1445,48 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
           )}
         </PdfNameConfirmModal>
 
-        {/* ── Top Action Bar ── */}
-        <div className="
-          flex items-center gap-2.5 flex-wrap
-          bg-white/90 dark:bg-zinc-950/80
-          border border-zinc-200 dark:border-zinc-800/70
-          rounded-2xl p-3 shadow-sm backdrop-blur-sm
-        ">
+        {/* ── Mobile Header ── */}
+        <div
+          className="
+            md:hidden animate-in fade-in slide-in-from-bottom-4 duration-500
+            bg-white/90 dark:bg-zinc-950/80
+            border border-zinc-200 dark:border-zinc-800/70
+            rounded-2xl p-3 shadow-sm backdrop-blur-sm
+          "
+        >
+          <div className="flex items-start gap-3">
+            <button
+              onClick={() => { setView('list'); setActivePlan(null); }}
+              className="
+                flex items-center gap-1.5 px-2.5 py-2
+                text-zinc-600 dark:text-zinc-400
+                hover:text-zinc-900 dark:hover:text-zinc-100
+                hover:bg-zinc-100 dark:hover:bg-zinc-800
+                rounded-xl text-xs font-bold transition-all active:scale-95
+              "
+              type="button"
+            >
+              <ChevronLeft size={14} /> Plans
+            </button>
+
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-black text-zinc-900 dark:text-zinc-100 truncate">{activePlan.name}</h3>
+              <p className="text-[10px] text-zinc-400 mt-0.5">
+                {pdfClientName} · {activePlan.duration_weeks}W plan
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Desktop Action Bar ── */}
+        <div
+          className="
+            hidden md:flex items-center gap-2.5 flex-nowrap
+            bg-white/90 dark:bg-zinc-950/80
+            border border-zinc-200 dark:border-zinc-800/70
+            rounded-2xl p-3 shadow-sm backdrop-blur-sm
+          "
+        >
           <button
             onClick={() => { setView('list'); setActivePlan(null); }}
             className="
@@ -1459,6 +1496,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
               hover:bg-zinc-100 dark:hover:bg-zinc-800
               rounded-xl text-xs font-bold transition-all active:scale-95
             "
+            type="button"
           >
             <ChevronLeft size={14} /> Plans
           </button>
@@ -1508,7 +1546,8 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
           )}
 
           <button
-            onClick={handleSavePlan} disabled={isSaving}
+            onClick={handleSavePlan}
+            disabled={isSaving}
             className="
               ml-auto shrink-0 whitespace-nowrap px-5 py-2
               bg-orange-600 hover:bg-orange-500
@@ -1516,58 +1555,200 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
               shadow-md shadow-orange-500/20
               text-xs flex items-center gap-1.5 transition-all active:scale-95
             "
+            type="button"
           >
             {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save
           </button>
         </div>
 
-        {/* ── Body Metrics ── */}
-        <BentoCard>
-          <CardHeader icon={User} label="Body Metrics" color="text-blue-500 dark:text-blue-400" bg="bg-blue-100 dark:bg-blue-500/10" />
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <NutriInput label="Gender" value={calcState.gender} onChange={v => setCalc('gender', v)}
-              options={[{ val: 'male', lbl: 'Male' }, { val: 'female', lbl: 'Female' }]} />
-            <NutriInput label="Age"    value={calcState.age}      onChange={v => setCalc('age', v)}      type="number" min="0" />
-            <NutriInput label="Height" value={calcState.heightCm} onChange={v => setCalc('heightCm', v)} type="number" suffix="cm" min="0" />
-            <NutriInput label="Weight" value={calcState.weightKg} onChange={v => setCalc('weightKg', v)} type="number" suffix="kg" min="0" />
-            <div className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-3.5 rounded-xl flex flex-col justify-center">
-              <label className="text-[10px] uppercase font-bold text-zinc-500 flex items-center gap-1 mb-1">
-                <Scale size={9} /> LBS
-              </label>
-              <span className="text-zinc-900 dark:text-zinc-100 font-black text-sm tabular-nums">{weightLbs}</span>
+        {/* ── Mobile Bottom Actions ── */}
+        <div
+          className="
+            fixed bottom-3 left-3 right-3 z-[120] md:hidden
+            animate-in fade-in slide-in-from-bottom-4 duration-300
+            pointer-events-none
+          "
+        >
+          <div
+            className="
+              pointer-events-auto
+              bg-white/90 dark:bg-zinc-950/85 backdrop-blur-md
+              border border-zinc-200 dark:border-zinc-800/70
+              rounded-3xl p-2.5
+              shadow-2xl shadow-zinc-900/10 dark:shadow-black/40
+            "
+          >
+            <div className="grid grid-cols-2 gap-2 items-center">
+              <button
+                onClick={handleSavePlan}
+                disabled={isSaving}
+                className="
+                  col-span-2 w-full
+                  bg-orange-600 hover:bg-orange-500
+                  disabled:opacity-40 text-white font-black rounded-2xl
+                  shadow-md shadow-orange-500/20
+                  text-xs flex items-center justify-center gap-2 transition-all active:scale-95
+                  py-3
+                "
+                type="button"
+              >
+                {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save
+              </button>
+
+              {currentPdfPlan && (
+                <>
+                  <button
+                    onClick={() => openPdfNameModal('EN')}
+                    className="
+                      w-full
+                      bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700
+                      text-zinc-700 dark:text-zinc-300 font-bold rounded-2xl
+                      border border-zinc-200 dark:border-zinc-700
+                      text-[11px] flex items-center justify-center gap-2 transition-all active:scale-95
+                      py-3
+                    "
+                    type="button"
+                    title="Generate EN PDF"
+                  >
+                    <Download size={12} /> EN PDF
+                  </button>
+                  <button
+                    onClick={() => openPdfNameModal('AR')}
+                    className="
+                      w-full
+                      bg-emerald-50 dark:bg-emerald-500/10
+                      hover:bg-emerald-100 dark:hover:bg-emerald-500/20
+                      text-emerald-700 dark:text-emerald-400 font-bold rounded-2xl
+                      border border-emerald-200 dark:border-emerald-500/20
+                      text-[11px] flex items-center justify-center gap-2 transition-all active:scale-95
+                      py-3
+                    "
+                    type="button"
+                    title="Generate AR PDF"
+                  >
+                    <Download size={12} /> AR PDF
+                  </button>
+                </>
+              )}
             </div>
-            <NutriInput label="Activity" value={calcState.activityLevel} onChange={v => setCalc('activityLevel', v)}
-              options={[
-                { val: 'sedentary',   lbl: 'Sedentary'  },
-                { val: 'light',       lbl: 'Light'       },
-                { val: 'moderate',    lbl: 'Moderate'    },
-                { val: 'active',      lbl: 'Active'      },
-                { val: 'very_active', lbl: 'Very Active' },
-              ]}
-            />
           </div>
-        </BentoCard>
+        </div>
+
+        {/* ── Body Metrics ── */}
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: '0ms' }}>
+          <BentoCard>
+            <CardHeader icon={User} label="Body Metrics" color="text-blue-500 dark:text-blue-400" bg="bg-blue-100 dark:bg-blue-500/10" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-x-3 gap-y-4">
+              <div className="animate-in fade-in duration-300" style={{ animationDelay: '0ms' }}>
+                <NutriInput label="Gender" value={calcState.gender} onChange={v => setCalc('gender', v)}
+                  options={[{ val: 'male', lbl: 'Male' }, { val: 'female', lbl: 'Female' }]} />
+              </div>
+              <div className="animate-in fade-in duration-300" style={{ animationDelay: '60ms' }}>
+                <NutriInput label="Age" value={calcState.age} onChange={v => setCalc('age', v)} type="number" min="0" />
+              </div>
+              <div className="animate-in fade-in duration-300" style={{ animationDelay: '120ms' }}>
+                <NutriInput label="Height" value={calcState.heightCm} onChange={v => setCalc('heightCm', v)} type="number" suffix="cm" min="0" />
+              </div>
+              <div className="animate-in fade-in duration-300" style={{ animationDelay: '180ms' }}>
+                <NutriInput label="Weight" value={calcState.weightKg} onChange={v => setCalc('weightKg', v)} type="number" suffix="kg" min="0" />
+              </div>
+              <div className="animate-in fade-in duration-300" style={{ animationDelay: '240ms' }}>
+                <div className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-3.5 rounded-xl flex flex-col justify-center">
+                  <label className="text-[10px] uppercase font-bold text-zinc-500 flex items-center gap-1 mb-1">
+                    <Scale size={9} /> LBS
+                  </label>
+                  <span className="text-zinc-900 dark:text-zinc-100 font-black text-sm tabular-nums">{weightLbs}</span>
+                </div>
+              </div>
+              <div className="animate-in fade-in duration-300" style={{ animationDelay: '300ms' }}>
+                <NutriInput label="Activity" value={calcState.activityLevel} onChange={v => setCalc('activityLevel', v)}
+                  options={[
+                    { val: 'sedentary',   lbl: 'Sedentary' },
+                    { val: 'light',       lbl: 'Light' },
+                    { val: 'moderate',    lbl: 'Moderate' },
+                    { val: 'active',      lbl: 'Active' },
+                    { val: 'very_active', lbl: 'Very Active' },
+                  ]}
+                />
+              </div>
+            </div>
+          </BentoCard>
+        </div>
 
         {/* ── Strategy ── */}
-        <BentoCard>
-          <CardHeader icon={Activity} label="Strategy" color="text-emerald-500 dark:text-emerald-400" bg="bg-emerald-100 dark:bg-emerald-500/10" />
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <NutriInput label="Calorie Goal (+/-)" value={calcState.deficitSurplus}  onChange={v => setCalc('deficitSurplus', v)}  type="number" suffix="kcal" />
-            <NutriInput label="Protein Ratio"      value={calcState.proteinPerLb}    onChange={v => setCalc('proteinPerLb', v)}    type="number" suffix="g/lb" min="0" />
-            <NutriInput label="Fat %"              value={calcState.fatPercentage}   onChange={v => setCalc('fatPercentage', v)}   type="number" suffix="%" min="0" />
-            <NutriInput label="Carb Mod"           value={calcState.carbAdjustment}  onChange={v => setCalc('carbAdjustment', v)} type="number" suffix="%" />
-            <NutriInput label="Main Meals"         value={calcState.mealsCount}      onChange={v => setCalc('mealsCount', v)}      type="number" min="1" />
-            <NutriInput label="Snacks"             value={calcState.snacksCount}     onChange={v => setCalc('snacksCount', v)}     type="number" min="0" />
-          </div>
-        </BentoCard>
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: '120ms' }}>
+          <BentoCard>
+            <CardHeader icon={Activity} label="Strategy" color="text-emerald-500 dark:text-emerald-400" bg="bg-emerald-100 dark:bg-emerald-500/10" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-x-3 gap-y-4">
+              <div className="animate-in fade-in duration-300" style={{ animationDelay: '0ms' }}>
+                <NutriInput
+                  label="Calorie Goal (+/-)"
+                  value={calcState.deficitSurplus}
+                  onChange={v => setCalc('deficitSurplus', v)}
+                  type="number"
+                  suffix="kcal"
+                />
+              </div>
+              <div className="animate-in fade-in duration-300" style={{ animationDelay: '60ms' }}>
+                <NutriInput
+                  label="Protein Ratio"
+                  value={calcState.proteinPerLb}
+                  onChange={v => setCalc('proteinPerLb', v)}
+                  type="number"
+                  suffix="g/lb"
+                  min="0"
+                />
+              </div>
+              <div className="animate-in fade-in duration-300" style={{ animationDelay: '120ms' }}>
+                <NutriInput
+                  label="Fat %"
+                  value={calcState.fatPercentage}
+                  onChange={v => setCalc('fatPercentage', v)}
+                  type="number"
+                  suffix="%"
+                  min="0"
+                />
+              </div>
+              <div className="animate-in fade-in duration-300" style={{ animationDelay: '180ms' }}>
+                <NutriInput
+                  label="Carb Mod"
+                  value={calcState.carbAdjustment}
+                  onChange={v => setCalc('carbAdjustment', v)}
+                  type="number"
+                  suffix="%"
+                />
+              </div>
+              <div className="animate-in fade-in duration-300" style={{ animationDelay: '240ms' }}>
+                <NutriInput
+                  label="Main Meals"
+                  value={calcState.mealsCount}
+                  onChange={v => setCalc('mealsCount', v)}
+                  type="number"
+                  min="1"
+                />
+              </div>
+              <div className="animate-in fade-in duration-300" style={{ animationDelay: '300ms' }}>
+                <NutriInput
+                  label="Snacks"
+                  value={calcState.snacksCount}
+                  onChange={v => setCalc('snacksCount', v)}
+                  type="number"
+                  min="0"
+                />
+              </div>
+            </div>
+          </BentoCard>
+        </div>
 
         {/* ── PDF Branding ── */}
-        <BentoCard>
-          <CardHeader icon={FileText} label="PDF Branding" color="text-purple-500 dark:text-purple-400" bg="bg-purple-100 dark:bg-purple-500/10" />
-          <div className="max-w-xs">
-            <NutriInput label="Logo Text" value={calcState.brandText} onChange={v => setCalc('brandText', v)} placeholder="e.g. IRON GYM" />
-          </div>
-        </BentoCard>
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: '240ms' }}>
+          <BentoCard>
+            <CardHeader icon={FileText} label="PDF Branding" color="text-purple-500 dark:text-purple-400" bg="bg-purple-100 dark:bg-purple-500/10" />
+            <div className="max-w-full sm:max-w-xs">
+              <NutriInput label="Logo Text" value={calcState.brandText} onChange={v => setCalc('brandText', v)} placeholder="e.g. IRON GYM" />
+            </div>
+          </BentoCard>
+        </div>
 
         {/* ── Warning ── */}
         {results?.warning && (
@@ -1603,24 +1784,47 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         )}
 
         {/* ── Notes ── */}
-        <BentoCard>
-          <CardHeader icon={FileText} label="Notes & Instructions" color="text-emerald-500 dark:text-emerald-400" bg="bg-emerald-100 dark:bg-emerald-500/10" />
-          <textarea
-            value={planNotes}
-            onChange={e => setPlanNotes(e.target.value)}
-            placeholder="Supplements, grocery list, meal timing, hydration targets…"
-            className="
-              w-full bg-zinc-100 dark:bg-zinc-900
-              border border-zinc-200 dark:border-zinc-800
-              rounded-xl px-4 py-4 text-sm
-              text-zinc-900 dark:text-zinc-200
-              placeholder:text-zinc-400 dark:placeholder:text-zinc-700
-              resize-none outline-none min-h-[120px] leading-relaxed
-              focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/10
-              transition-all
-            "
-          />
-        </BentoCard>
+        <div
+          className="animate-in fade-in slide-in-from-bottom-4 duration-500"
+          style={{ animationDelay: '360ms' }}
+        >
+          <BentoCard>
+            <CardHeader
+              icon={FileText}
+              label="Notes & Instructions"
+              color="text-emerald-500 dark:text-emerald-400"
+              bg="bg-emerald-100 dark:bg-emerald-500/10"
+            />
+
+            <div className="space-y-3">
+              <textarea
+                value={planNotes}
+                onChange={e => setPlanNotes(e.target.value)}
+                placeholder="Supplements, grocery list, meal timing, hydration targets…"
+                className="
+                  w-full bg-zinc-100 dark:bg-zinc-900
+                  border border-zinc-200 dark:border-zinc-800
+                  rounded-xl px-4 py-4 text-sm
+                  text-zinc-900 dark:text-zinc-200
+                  placeholder:text-zinc-400 dark:placeholder:text-zinc-700
+                  resize-none outline-none min-h-[140px] leading-relaxed
+                  focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/10
+                  transition-all duration-200
+                  hover:border-zinc-300 dark:hover:border-zinc-700
+                "
+              />
+
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-bold text-emerald-600/90 dark:text-emerald-400/90">
+                  Tip: Press `Save` to store these notes
+                </span>
+                <span className="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 tabular-nums transition-colors">
+                  {planNotes.length} chars
+                </span>
+              </div>
+            </div>
+          </BentoCard>
+        </div>
       </div>
     );
   }
