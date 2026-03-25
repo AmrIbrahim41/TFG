@@ -6,6 +6,7 @@
 //   BUG-4  ExchangeGroup: ported ManualNutritionPlan's colored-header 3-col grid style
 //   BUG-5  Notes field: map planNotes to/from NutritionPlan.notes properly
 //   BUG-6  Staggered list entry animations via CSS animationDelay
+//   BUG-7  Fixed z-index stacking context issue for CustomSelect dropdowns hiding behind grid items/cards.
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
@@ -596,7 +597,8 @@ const CustomSelect = ({ label, value, options, onChange, disabled }) => {
   const selectedLabel = options.find(o => o.val === value)?.lbl || value;
 
   return (
-    <div ref={ref} className={`relative ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
+    // FIX: Added dynamic z-index to elevate the select wrapper when opened
+    <div ref={ref} className={`relative ${disabled ? 'opacity-40 pointer-events-none' : ''} ${isOpen ? 'z-[100]' : ''}`}>
       <div
         onClick={() => !disabled && setIsOpen(!isOpen)}
         className={`
@@ -1635,25 +1637,26 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
           </div>
         </div>
 
+        {/* FIX: Set descending z-indexes for main wrappers and their items to avoid stacking overlap bugs */}
         {/* ── Body Metrics ── */}
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: '0ms' }}>
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 relative z-[40]" style={{ animationDelay: '0ms' }}>
           <BentoCard>
             <CardHeader icon={User} label="Body Metrics" color="text-blue-500 dark:text-blue-400" bg="bg-blue-100 dark:bg-blue-500/10" />
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-x-3 gap-y-4">
-              <div className="animate-in fade-in duration-300" style={{ animationDelay: '0ms' }}>
+              <div className="animate-in fade-in duration-300 relative z-[60]" style={{ animationDelay: '0ms' }}>
                 <NutriInput label="Gender" value={calcState.gender} onChange={v => setCalc('gender', v)}
                   options={[{ val: 'male', lbl: 'Male' }, { val: 'female', lbl: 'Female' }]} />
               </div>
-              <div className="animate-in fade-in duration-300" style={{ animationDelay: '60ms' }}>
+              <div className="animate-in fade-in duration-300 relative z-[50]" style={{ animationDelay: '60ms' }}>
                 <NutriInput label="Age" value={calcState.age} onChange={v => setCalc('age', v)} type="number" min="0" />
               </div>
-              <div className="animate-in fade-in duration-300" style={{ animationDelay: '120ms' }}>
+              <div className="animate-in fade-in duration-300 relative z-[40]" style={{ animationDelay: '120ms' }}>
                 <NutriInput label="Height" value={calcState.heightCm} onChange={v => setCalc('heightCm', v)} type="number" suffix="cm" min="0" />
               </div>
-              <div className="animate-in fade-in duration-300" style={{ animationDelay: '180ms' }}>
+              <div className="animate-in fade-in duration-300 relative z-[30]" style={{ animationDelay: '180ms' }}>
                 <NutriInput label="Weight" value={calcState.weightKg} onChange={v => setCalc('weightKg', v)} type="number" suffix="kg" min="0" />
               </div>
-              <div className="animate-in fade-in duration-300" style={{ animationDelay: '240ms' }}>
+              <div className="animate-in fade-in duration-300 relative z-[20]" style={{ animationDelay: '240ms' }}>
                 <div className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-3.5 rounded-xl flex flex-col justify-center">
                   <label className="text-[10px] uppercase font-bold text-zinc-500 flex items-center gap-1 mb-1">
                     <Scale size={9} /> LBS
@@ -1661,7 +1664,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                   <span className="text-zinc-900 dark:text-zinc-100 font-black text-sm tabular-nums">{weightLbs}</span>
                 </div>
               </div>
-              <div className="animate-in fade-in duration-300" style={{ animationDelay: '300ms' }}>
+              <div className="animate-in fade-in duration-300 relative z-[10]" style={{ animationDelay: '300ms' }}>
                 <NutriInput label="Activity" value={calcState.activityLevel} onChange={v => setCalc('activityLevel', v)}
                   options={[
                     { val: 'sedentary',   lbl: 'Sedentary' },
@@ -1677,11 +1680,11 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         </div>
 
         {/* ── Strategy ── */}
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: '120ms' }}>
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 relative z-[30]" style={{ animationDelay: '120ms' }}>
           <BentoCard>
             <CardHeader icon={Activity} label="Strategy" color="text-emerald-500 dark:text-emerald-400" bg="bg-emerald-100 dark:bg-emerald-500/10" />
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-x-3 gap-y-4">
-              <div className="animate-in fade-in duration-300" style={{ animationDelay: '0ms' }}>
+              <div className="animate-in fade-in duration-300 relative z-[60]" style={{ animationDelay: '0ms' }}>
                 <NutriInput
                   label="Calorie Goal (+/-)"
                   value={calcState.deficitSurplus}
@@ -1690,7 +1693,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                   suffix="kcal"
                 />
               </div>
-              <div className="animate-in fade-in duration-300" style={{ animationDelay: '60ms' }}>
+              <div className="animate-in fade-in duration-300 relative z-[50]" style={{ animationDelay: '60ms' }}>
                 <NutriInput
                   label="Protein Ratio"
                   value={calcState.proteinPerLb}
@@ -1700,7 +1703,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                   min="0"
                 />
               </div>
-              <div className="animate-in fade-in duration-300" style={{ animationDelay: '120ms' }}>
+              <div className="animate-in fade-in duration-300 relative z-[40]" style={{ animationDelay: '120ms' }}>
                 <NutriInput
                   label="Fat %"
                   value={calcState.fatPercentage}
@@ -1710,7 +1713,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                   min="0"
                 />
               </div>
-              <div className="animate-in fade-in duration-300" style={{ animationDelay: '180ms' }}>
+              <div className="animate-in fade-in duration-300 relative z-[30]" style={{ animationDelay: '180ms' }}>
                 <NutriInput
                   label="Carb Mod"
                   value={calcState.carbAdjustment}
@@ -1719,7 +1722,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                   suffix="%"
                 />
               </div>
-              <div className="animate-in fade-in duration-300" style={{ animationDelay: '240ms' }}>
+              <div className="animate-in fade-in duration-300 relative z-[20]" style={{ animationDelay: '240ms' }}>
                 <NutriInput
                   label="Main Meals"
                   value={calcState.mealsCount}
@@ -1728,7 +1731,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                   min="1"
                 />
               </div>
-              <div className="animate-in fade-in duration-300" style={{ animationDelay: '300ms' }}>
+              <div className="animate-in fade-in duration-300 relative z-[10]" style={{ animationDelay: '300ms' }}>
                 <NutriInput
                   label="Snacks"
                   value={calcState.snacksCount}
@@ -1742,10 +1745,10 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         </div>
 
         {/* ── PDF Branding ── */}
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: '240ms' }}>
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 relative z-[20]" style={{ animationDelay: '240ms' }}>
           <BentoCard>
             <CardHeader icon={FileText} label="PDF Branding" color="text-purple-500 dark:text-purple-400" bg="bg-purple-100 dark:bg-purple-500/10" />
-            <div className="w-full sm:max-w-xs">
+            <div className="w-full sm:max-w-xs relative z-10">
               <NutriInput label="Logo Text" value={calcState.brandText} onChange={v => setCalc('brandText', v)} placeholder="e.g. IRON GYM" />
             </div>
           </BentoCard>
@@ -1753,7 +1756,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
 
         {/* ── Warning ── */}
         {results?.warning && (
-          <div className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-500/8 border border-red-200 dark:border-red-500/25 rounded-2xl animate-slide-up">
+          <div className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-500/8 border border-red-200 dark:border-red-500/25 rounded-2xl animate-slide-up relative z-[15]">
             <AlertTriangle size={17} className="text-red-500 dark:text-red-400 shrink-0 mt-0.5" />
             <p className="text-sm font-semibold text-red-700 dark:text-red-300">{results.warning}</p>
           </div>
@@ -1764,7 +1767,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
 
         {/* ── Exchange Lists ── */}
         {exchangeList && (
-          <div className="space-y-4">
+          <div className="space-y-4 relative z-[10]">
             <div className="flex items-center gap-2">
               <Sparkles size={13} className="text-orange-400 shrink-0" />
               <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">Exchange Lists</h3>
@@ -1786,7 +1789,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
 
         {/* ── Notes ── */}
         <div
-          className="animate-in fade-in slide-in-from-bottom-4 duration-500"
+          className="animate-in fade-in slide-in-from-bottom-4 duration-500 relative z-[5]"
           style={{ animationDelay: '360ms' }}
         >
           <BentoCard>
