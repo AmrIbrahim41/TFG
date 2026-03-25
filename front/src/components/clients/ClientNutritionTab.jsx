@@ -6,7 +6,6 @@
 //   BUG-4  ExchangeGroup: ported ManualNutritionPlan's colored-header 3-col grid style
 //   BUG-5  Notes field: map planNotes to/from NutritionPlan.notes properly
 //   BUG-6  Staggered list entry animations via CSS animationDelay
-//   UI-FIX Improved mobile responsiveness, fixed RTL/Arabic text truncation & overlaps.
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
@@ -150,6 +149,9 @@ function useNutrition(calcState) {
 
 // ═══════════════════════════════════════════════════════
 // HOOK — useNutritionPlans
+// FIX: Extracted fetch logic so useEffect dep is stable;
+//      avoids the double-fetch where `fetch` recreated on page change
+//      fires the effect again simultaneously.
 // ═══════════════════════════════════════════════════════
 
 function useNutritionPlans(clientId, showToast) {
@@ -158,6 +160,7 @@ function useNutritionPlans(clientId, showToast) {
   const [loading, setLoading]  = useState(false);
   const [page, setPage]        = useState(1);
 
+  // Stable ref so fetchPage never goes stale inside useEffect
   const clientIdRef  = useRef(clientId);
   const showToastRef = useRef(showToast);
   useEffect(() => { clientIdRef.current  = clientId;  }, [clientId]);
@@ -168,6 +171,7 @@ function useNutritionPlans(clientId, showToast) {
     if (!cid) return;
     setLoading(true);
     try {
+      // FIX: Backend now accepts client_id (see views.py fix BUG-BE-1)
       const res  = await api.get(`/nutrition-plans/?client_id=${cid}&page=${pageNum}`);
       const data = res.data.results ?? res.data;
       setPlans(Array.isArray(data) ? data : []);
@@ -177,8 +181,9 @@ function useNutritionPlans(clientId, showToast) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []); // empty deps — fully stable via refs
 
+  // Only re-run when clientId or page changes (no double-fetch risk)
   useEffect(() => {
     if (clientId) fetchPage(page);
   }, [clientId, page, fetchPage]);
@@ -190,6 +195,9 @@ function useNutritionPlans(clientId, showToast) {
 
 // ═══════════════════════════════════════════════════════
 // HOOK — useFoodDatabase
+// FIX-BUG-2+3: Handle paginated response {count, results:[]}
+//   and walk all pages so the full food DB is loaded, not just
+//   the first 12 items the backend sends by default.
 // ═══════════════════════════════════════════════════════
 
 function useFoodDatabase() {
@@ -199,19 +207,23 @@ function useFoodDatabase() {
     (async () => {
       try {
         let all = [];
+        // Request maximum page size to minimise round-trips
         let url = '/food-database/?page_size=100&page=1';
         while (url && !cancelled) {
           const res  = await api.get(url);
           const data = res.data;
           if (data && Array.isArray(data.results)) {
+            // Paginated response
             all = [...all, ...data.results];
             if (data.next) {
+              // Use relative path so the api instance handles base-URL
               const nextUrl = new URL(data.next);
               url = nextUrl.pathname + nextUrl.search;
             } else {
               url = null;
             }
           } else if (Array.isArray(data)) {
+            // Un-paginated response
             all = data;
             url = null;
           } else {
@@ -251,7 +263,7 @@ const Toast = ({ message, type = 'success', onDismiss }) => {
       }
     `}>
       <AlertCircle size={15} className="shrink-0" />
-      <span className="break-words line-clamp-2 flex-1">{message}</span>
+      <span className="truncate">{message}</span>
       <button onClick={onDismiss} className="ml-auto opacity-60 hover:opacity-100 shrink-0 transition-opacity">
         <X size={13} />
       </button>
@@ -274,7 +286,7 @@ const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, isLoading }
       <div className="
         bg-white dark:bg-zinc-950
         border border-zinc-200 dark:border-zinc-800
-        rounded-2xl p-6 max-w-sm w-full max-h-[90vh] overflow-y-auto
+        rounded-2xl p-6 max-w-sm w-full
         shadow-2xl shadow-zinc-900/30 dark:shadow-black/60
         ring-1 ring-red-500/10
         animate-slide-up
@@ -331,15 +343,15 @@ const PdfNameConfirmModal = ({
         className="
           bg-white dark:bg-zinc-950
           border border-zinc-200 dark:border-zinc-800
-          rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto
+          rounded-2xl p-6 max-w-lg w-full
           shadow-2xl shadow-zinc-900/30 dark:shadow-black/60
           animate-slide-up
         "
       >
-        <div className="flex items-start justify-between gap-4 mb-4">
-          <div className="flex items-center gap-3">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className={`
-              w-12 h-12 rounded-2xl flex items-center justify-center shrink-0
+              w-12 h-12 rounded-2xl flex items-center justify-center
               ${isAR ? 'bg-emerald-100 dark:bg-emerald-500/10' : 'bg-zinc-100 dark:bg-zinc-800'}
               border border-zinc-200 dark:border-zinc-700
             `}>
@@ -348,11 +360,11 @@ const PdfNameConfirmModal = ({
                 className={isAR ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-700 dark:text-zinc-200'}
               />
             </div>
-            <div>
-              <h3 className="text-base font-black text-zinc-900 dark:text-zinc-100">
+            <div className="min-w-0">
+              <h3 className="text-base font-black text-zinc-900 dark:text-zinc-100 truncate">
                 Confirm {isAR ? 'AR' : 'EN'} PDF Name
               </h3>
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 font-semibold">
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 font-semibold leading-relaxed break-words">
                 Please ensure the client name matches the PDF language to avoid encoding issues.
               </p>
             </div>
@@ -361,7 +373,7 @@ const PdfNameConfirmModal = ({
           <button
             onClick={onCancel}
             className="
-              w-9 h-9 flex items-center justify-center rounded-xl shrink-0
+              w-9 h-9 flex items-center justify-center rounded-xl
               text-zinc-500 dark:text-zinc-400
               hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100
               transition-all active:scale-95
@@ -389,7 +401,7 @@ const PdfNameConfirmModal = ({
               transition-colors
               ${isAR ? 'text-right' : 'text-left'}
             `}
-            dir={isAR ? 'rtl' : 'ltr'}
+            dir="auto"
             placeholder={isAR ? 'اكتب الاسم بالعربية' : 'Type the English name'}
           />
         </div>
@@ -472,11 +484,25 @@ const PlanCardSkeleton = () => (
   </div>
 );
 
+const DetailSkeleton = () => (
+  <div className="space-y-5 animate-pulse">
+    <Pulse className="h-10 w-48" />
+    {[1, 2, 3].map(n => (
+      <div key={n} className="bg-zinc-50 dark:bg-zinc-950/80 border border-zinc-200 dark:border-zinc-800/70 rounded-2xl p-5">
+        <Pulse className="h-4 w-32 mb-4" />
+        <div className="grid grid-cols-3 gap-3">
+          {[1, 2, 3].map(k => <Pulse key={k} className="h-14" />)}
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
 // ═══════════════════════════════════════════════════════
 // MACRO RING — Apple Health style SVG
 // ═══════════════════════════════════════════════════════
 
-const MacroRing = ({ pct = 0, color = '#f97316', gradientEnd, size = 76, strokeWidth = 8, children, id }) => {
+const MacroRing = ({ pct = 0, color = '#f97316', gradientEnd, size = 88, strokeWidth = 8, children, id }) => {
   const r          = (size - strokeWidth) / 2;
   const circ       = 2 * Math.PI * r;
   const clampedPct = Math.min(Math.max(pct, 0), 100);
@@ -526,7 +552,7 @@ const MacroRing = ({ pct = 0, color = '#f97316', gradientEnd, size = 76, strokeW
 
 const MacroCard = React.memo(({ label, grams, perMealGrams, pct, color, ringColor, gradientEnd, icon: Icon, suffix = 'g', id }) => (
   <div className="
-    flex flex-col items-center gap-3 p-3 sm:p-4
+    flex flex-col items-center gap-3 p-4
     bg-white dark:bg-zinc-900/60
     border border-zinc-200 dark:border-zinc-800/60
     rounded-2xl
@@ -534,18 +560,18 @@ const MacroCard = React.memo(({ label, grams, perMealGrams, pct, color, ringColo
     hover:shadow-md dark:hover:shadow-none
     transition-all duration-300 group cursor-default
   ">
-    <MacroRing pct={pct} color={ringColor} gradientEnd={gradientEnd} size={76} strokeWidth={7} id={id}>
+    <MacroRing pct={pct} color={ringColor} gradientEnd={gradientEnd} size={80} strokeWidth={7} id={id}>
       <Icon size={14} className={color} />
       <span className={`text-[10px] font-black tabular-nums mt-0.5 ${color}`}>{pct}%</span>
     </MacroRing>
     <div className="text-center">
       <div className="flex items-baseline gap-1 justify-center">
-        <span className={`text-xl sm:text-2xl font-black tabular-nums ${color}`}>{grams}</span>
-        <span className="text-[10px] sm:text-xs text-zinc-400 dark:text-zinc-600 font-bold">{suffix}</span>
+        <span className={`text-2xl font-black tabular-nums ${color}`}>{grams}</span>
+        <span className="text-xs text-zinc-400 dark:text-zinc-600 font-bold">{suffix}</span>
       </div>
-      <p className="text-[9px] sm:text-[10px] font-black text-zinc-500 uppercase tracking-widest mt-0.5">{label}</p>
+      <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mt-0.5">{label}</p>
       {perMealGrams !== undefined && (
-        <p className="text-[9px] sm:text-[10px] text-zinc-400 dark:text-zinc-600 mt-0.5 tabular-nums break-words">
+        <p className="text-[10px] text-zinc-400 dark:text-zinc-600 mt-0.5 tabular-nums">
           {perMealGrams}{suffix} / meal
         </p>
       )}
@@ -594,7 +620,7 @@ const CustomSelect = ({ label, value, options, onChange, disabled }) => {
           bg-white dark:bg-zinc-950
           border border-zinc-200 dark:border-zinc-800
           rounded-xl shadow-2xl shadow-zinc-200/50 dark:shadow-black/60
-          z-50 animate-slide-up origin-top overflow-hidden max-h-60 overflow-y-auto
+          z-50 animate-slide-up origin-top overflow-hidden
         ">
           {options.map(opt => (
             <button key={opt.val} type="button"
@@ -634,7 +660,7 @@ const NutriInput = ({
     );
   }
   return (
-    <div className={`
+      <div className={`
       relative bg-zinc-100 dark:bg-zinc-900
       border border-zinc-200 dark:border-zinc-800
       p-3.5 rounded-xl
@@ -655,10 +681,10 @@ const NutriInput = ({
           onChange(e.target.value);
         }}
         className="w-full bg-transparent text-zinc-900 dark:text-zinc-100 font-bold text-sm outline-none
-          placeholder:text-zinc-400 dark:placeholder:text-zinc-700 pr-8"
+          placeholder:text-zinc-400 dark:placeholder:text-zinc-700 pr-8 min-w-0"
       />
       {suffix && (
-        <span className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-[10px] sm:text-xs font-bold text-zinc-400 dark:text-zinc-600 pointer-events-none select-none">
+        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 dark:text-zinc-600 pointer-events-none select-none">
           {suffix}
         </span>
       )}
@@ -674,7 +700,7 @@ const BentoCard = ({ children, className = '' }) => (
   <div className={`
     bg-white/90 dark:bg-zinc-950/80
     border border-zinc-200 dark:border-zinc-800/70
-    rounded-2xl p-4 sm:p-5
+    rounded-2xl p-5
     shadow-sm shadow-zinc-200/60 dark:shadow-none
     backdrop-blur-sm transition-colors duration-300
     ${className}
@@ -684,12 +710,12 @@ const BentoCard = ({ children, className = '' }) => (
 );
 
 const CardHeader = ({ icon: Icon, label, color = 'text-orange-500 dark:text-orange-400', bg = 'bg-orange-100 dark:bg-orange-500/10', extra }) => (
-  <div className="flex items-center justify-between mb-4">
-    <div className="flex items-center gap-2.5">
+      <div className="flex items-center justify-between mb-4 gap-2">
+    <div className="flex items-center gap-2.5 min-w-0">
       <span className={`p-2 rounded-xl ${bg}`}>
         <Icon size={15} className={color} />
       </span>
-      <h3 className="text-xs font-black uppercase tracking-widest text-zinc-600 dark:text-zinc-300">{label}</h3>
+      <h3 className="text-xs font-black uppercase tracking-widest text-zinc-600 dark:text-zinc-300 truncate">{label}</h3>
     </div>
     {extra}
   </div>
@@ -697,8 +723,12 @@ const CardHeader = ({ icon: Icon, label, color = 'text-orange-500 dark:text-oran
 
 // ═══════════════════════════════════════════════════════
 // EXCHANGE GROUP
+// FIX-BUG-4: Ported ManualNutritionPlan's colored-header 3-column grid style.
+// Kept ClientNutritionTab's per-group search filter.
+// Added staggered entry animation via CSS animationDelay.
 // ═══════════════════════════════════════════════════════
 
+// Category → icon mapping for richer headers
 const CATEGORY_ICONS = {
   'Protein Sources': Beef,
   'Carbohydrates':   Wheat,
@@ -731,17 +761,18 @@ const ExchangeGroup = React.memo(({ groupName, data, carbAdjustment }) => {
       transition-all duration-300
       hover:shadow-md hover:shadow-zinc-200/60 dark:hover:border-zinc-700/60
     ">
+      {/* ── Colored Category Header (ported from ManualNutritionPlan) ── */}
       <div className={`
         px-4 sm:px-5 py-4
         border-b border-zinc-200/80 dark:border-zinc-800/60
         flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3
         ${data.bg}
       `}>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2.5 flex-wrap min-w-0">
           <span className={`p-1.5 rounded-lg bg-white/60 dark:bg-black/20 border border-white/30 dark:border-zinc-700/30`}>
             <CatIcon size={13} className={data.color} />
           </span>
-          <h3 className={`font-black uppercase tracking-wider text-sm ${data.color}`}>{groupName}</h3>
+          <h3 className={`font-black uppercase tracking-wider text-sm ${data.color} break-words`}>{groupName}</h3>
           {showAdjBadge && (
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
               safeCarbAdj > 0
@@ -757,14 +788,15 @@ const ExchangeGroup = React.memo(({ groupName, data, carbAdjustment }) => {
           </span>
         </div>
 
-        <div className="relative w-full sm:w-auto">
+        {/* Search */}
+        <div className="relative w-full sm:w-auto sm:min-w-[10rem]">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-600 pointer-events-none" />
           <input
             placeholder="Filter items…"
             value={query}
             onChange={e => setQuery(e.target.value)}
             className="
-              w-full sm:w-40
+              w-full sm:w-44
               bg-white/70 dark:bg-zinc-900/80
               border border-white/60 dark:border-zinc-700/60
               rounded-lg pl-7 pr-8 py-1.5 text-[11px] font-medium
@@ -785,6 +817,7 @@ const ExchangeGroup = React.memo(({ groupName, data, carbAdjustment }) => {
         </div>
       </div>
 
+      {/* ── 3-Column Grid (matching ManualNutritionPlan layout) ── */}
       {filtered.length === 0 ? (
         <div className="
           bg-white dark:bg-zinc-950
@@ -794,9 +827,9 @@ const ExchangeGroup = React.memo(({ groupName, data, carbAdjustment }) => {
         </div>
       ) : (
         <div className="
-          grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3
+          grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3
           divide-y divide-zinc-100 dark:divide-zinc-800/50
-          md:divide-y-0 md:gap-px
+          sm:divide-y-0 sm:gap-px
           bg-zinc-100/60 dark:bg-zinc-800/20
         ">
           {filtered.map((item, idx) => (
@@ -807,28 +840,29 @@ const ExchangeGroup = React.memo(({ groupName, data, carbAdjustment }) => {
                 p-4
                 hover:bg-zinc-50 dark:hover:bg-zinc-900/80
                 transition-colors duration-150
-                flex justify-between items-center gap-3
+                flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5
                 group
               "
               style={{ animationDelay: `${Math.min(idx * 25, 400)}ms` }}
             >
+              {/* Left: Name + Arabic + Macros */}
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 break-words
+                <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate
                   group-hover:text-zinc-900 dark:group-hover:text-white transition-colors">
                   {item.name}
                 </p>
-                {/* FIX: Removed truncate, added break-words and explicit RTL for Arabic text visibility */}
                 {item.arabic_name && (
-                  <p className="text-[11px] sm:text-xs text-zinc-500 dark:text-zinc-400 mt-1 break-words whitespace-normal leading-relaxed" dir="rtl">
+                  <p className="text-[10px] text-zinc-400 dark:text-zinc-600 mt-0.5 truncate" dir="auto">
                     {item.arabic_name}
                   </p>
                 )}
-                <p className="text-[10px] text-zinc-400 dark:text-zinc-600 mt-1.5 tabular-nums font-medium">
+                <p className="text-[10px] text-zinc-400 dark:text-zinc-600 mt-1 tabular-nums font-medium break-words">
                   {item.meta.cals} kcal · P{item.meta.pro}g · C{item.meta.carbs}g · F{item.meta.fats}g
                 </p>
               </div>
 
-              <div className="text-right shrink-0">
+              {/* Right: Weight badge */}
+              <div className="text-right shrink-0 self-end sm:self-auto">
                 <span className={`font-black text-xl tabular-nums leading-none ${
                   isCarbs && safeCarbAdj !== 0
                     ? 'text-blue-500 dark:text-blue-400'
@@ -859,7 +893,7 @@ const MacroSummary = React.memo(({ results }) => {
           <div className="flex flex-row lg:flex-col items-center lg:items-start justify-center gap-6 lg:gap-3">
             <div>
               <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">TDEE</p>
-              <p className="text-xl sm:text-2xl font-black text-zinc-400 dark:text-zinc-500 leading-none tabular-nums">
+              <p className="text-xl font-black text-zinc-400 dark:text-zinc-500 leading-none tabular-nums">
                 {results.tdee.toLocaleString()}
               </p>
               <p className="text-[10px] text-zinc-400 dark:text-zinc-600 font-medium mt-0.5">kcal</p>
@@ -877,7 +911,7 @@ const MacroSummary = React.memo(({ results }) => {
           </div>
         </div>
         <div className="hidden lg:block w-px self-stretch bg-zinc-200 dark:bg-zinc-800 shrink-0" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 w-full">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
           <MacroCard id="protein" label="Protein" grams={results.macros.protein.grams}
             perMealGrams={results.perMeal.proteinGrams} pct={results.macros.protein.pct}
             color="text-red-500 dark:text-red-400" ringColor="#f87171" gradientEnd="#fb923c" icon={Beef} />
@@ -920,6 +954,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
 
   const clientId = clientData?.id || subscriptions?.[0]?.client || null;
 
+  // FIX-BUG-3: Use the active subscription, not blindly index[0]
   const defaultSubId = useMemo(() => {
     if (!subscriptions?.length) return null;
     const active = subscriptions.find(s => s.is_active);
@@ -939,6 +974,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
 
   const results = useNutrition(calcState);
 
+  // FIX-BUG-5: Map notes field from/to backend (requires NutritionPlan.notes field)
   useEffect(() => {
     if (!activePlan) return;
     setCalcState({
@@ -955,6 +991,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
       carbAdjustment: Number(activePlan.calc_carb_adjustment) || 0,
       brandText:      activePlan.pdf_brand_text           || 'TFG',
     });
+    // Support both `notes` (new field) and legacy placement
     setPlanNotes(activePlan.notes || '');
   }, [activePlan]);
 
@@ -980,6 +1017,8 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
   }, [activePlan, calcState]);
 
   const pdfClientName = activePlan?.client_name || clientData?.name || 'Athlete';
+  // If backend returns the trainer display name, we use it.
+  // Otherwise, the PDF components will fall back to their language-specific defaults.
   const trainerName   = activePlan?.created_by_name;
 
   const openPdfNameModal = useCallback((lang) => {
@@ -1042,7 +1081,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         target_protein:          parseInt(results.macros.protein.grams) || 0,
         target_carbs:            parseInt(results.macros.carbs.grams)   || 0,
         target_fats:             parseInt(results.macros.fats.grams)    || 0,
-        notes: planNotes,
+        notes: planNotes, // FIX-BUG-5: saves to NutritionPlan.notes field
       };
       const res = await api.patch(`/nutrition-plans/${activePlan.id}/`, payload);
       setActivePlan(res.data);
@@ -1084,7 +1123,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
 
   if (view === 'list') {
     return (
-      <div className="space-y-5 animate-fade-in p-2 sm:p-4">
+      <div className="space-y-5 animate-fade-in p-1 md:p-2">
         {toast && <Toast message={toast.message} type={toast.type} onDismiss={dismissToast} />}
         <ConfirmModal
           isOpen={deleteModal.isOpen}
@@ -1188,6 +1227,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                     "
                     style={{ animationDelay: `${idx * 50}ms` }}
                   >
+                    {/* BG Icon */}
                     <div className="
                       absolute -right-4 -bottom-4
                       text-zinc-200 dark:text-zinc-800/30
@@ -1199,6 +1239,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                     </div>
 
                     <div className="relative z-10 flex flex-col h-full gap-3">
+                      {/* Tags */}
                       <div className="flex justify-between items-center">
                         <div className="flex gap-2">
                           <span className="
@@ -1236,6 +1277,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         </button>
                       </div>
 
+                      {/* Plan name */}
                       <div>
                         <h3 className="
                           text-base font-black
@@ -1250,6 +1292,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                         </p>
                       </div>
 
+                      {/* Stats */}
                       <div className="mt-auto flex items-center gap-2">
                         <span className="
                           flex items-center gap-1.5 px-2.5 py-1.5
@@ -1306,7 +1349,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
 
   if (view === 'detail' && activePlan) {
     return (
-      <div className="space-y-5 animate-fade-in p-2 sm:p-4 pb-32 md:pb-4">
+      <div className="space-y-5 animate-fade-in p-1 sm:p-2 pb-40 md:pb-0">
         {toast && <Toast message={toast.message} type={toast.type} onDismiss={dismissToast} />}
         <ConfirmModal
           isOpen={deleteModal.isOpen}
@@ -1411,11 +1454,11 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
             rounded-2xl p-3 shadow-sm backdrop-blur-sm
           "
         >
-          <div className="flex items-start gap-3">
+            <div className="flex items-start gap-2.5">
             <button
               onClick={() => { setView('list'); setActivePlan(null); }}
               className="
-                flex items-center gap-1.5 px-2.5 py-2 shrink-0
+                flex items-center gap-1.5 px-2.5 py-2
                 text-zinc-600 dark:text-zinc-400
                 hover:text-zinc-900 dark:hover:text-zinc-100
                 hover:bg-zinc-100 dark:hover:bg-zinc-800
@@ -1428,7 +1471,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
 
             <div className="flex-1 min-w-0">
               <h3 className="text-sm font-black text-zinc-900 dark:text-zinc-100 truncate">{activePlan.name}</h3>
-              <p className="text-[10px] text-zinc-400 mt-0.5">
+              <p className="text-[10px] text-zinc-400 mt-0.5 truncate" dir="auto">
                 {pdfClientName} · {activePlan.duration_weeks}W plan
               </p>
             </div>
@@ -1438,7 +1481,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         {/* ── Desktop Action Bar ── */}
         <div
           className="
-            hidden md:flex items-center gap-2.5 flex-nowrap
+            hidden md:flex items-center gap-2.5 flex-wrap
             bg-white/90 dark:bg-zinc-950/80
             border border-zinc-200 dark:border-zinc-800/70
             rounded-2xl p-3 shadow-sm backdrop-blur-sm
@@ -1460,11 +1503,12 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
 
           <div className="flex-1 min-w-0">
             <h3 className="text-sm font-black text-zinc-900 dark:text-zinc-100 truncate">{activePlan.name}</h3>
-            <p className="text-[10px] text-zinc-400">
+            <p className="text-[10px] text-zinc-400 truncate" dir="auto">
               {pdfClientName} · {activePlan.duration_weeks}W plan
             </p>
           </div>
 
+          {/* PDF buttons */}
           {currentPdfPlan && (
             <>
               <button
@@ -1520,21 +1564,22 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         {/* ── Mobile Bottom Actions ── */}
         <div
           className="
-            fixed bottom-4 left-4 right-4 z-[120] md:hidden pb-safe
+            fixed bottom-3 left-3 right-3 z-[120] md:hidden
             animate-in fade-in slide-in-from-bottom-4 duration-300
             pointer-events-none
           "
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         >
           <div
             className="
               pointer-events-auto
               bg-white/90 dark:bg-zinc-950/85 backdrop-blur-md
               border border-zinc-200 dark:border-zinc-800/70
-              rounded-3xl p-2.5
+              rounded-3xl p-2
               shadow-2xl shadow-zinc-900/10 dark:shadow-black/40
             "
           >
-            <div className="grid grid-cols-2 gap-2 items-center">
+            <div className="grid grid-cols-2 gap-1.5 items-center">
               <button
                 onClick={handleSavePlan}
                 disabled={isSaving}
@@ -1560,8 +1605,8 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                       bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700
                       text-zinc-700 dark:text-zinc-300 font-bold rounded-2xl
                       border border-zinc-200 dark:border-zinc-700
-                      text-[11px] flex items-center justify-center gap-2 transition-all active:scale-95
-                      py-3
+                      text-[11px] flex items-center justify-center gap-1.5 transition-all active:scale-95
+                      py-2.5
                     "
                     type="button"
                     title="Generate EN PDF"
@@ -1576,8 +1621,8 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                       hover:bg-emerald-100 dark:hover:bg-emerald-500/20
                       text-emerald-700 dark:text-emerald-400 font-bold rounded-2xl
                       border border-emerald-200 dark:border-emerald-500/20
-                      text-[11px] flex items-center justify-center gap-2 transition-all active:scale-95
-                      py-3
+                      text-[11px] flex items-center justify-center gap-1.5 transition-all active:scale-95
+                      py-2.5
                     "
                     type="button"
                     title="Generate AR PDF"
@@ -1594,7 +1639,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: '0ms' }}>
           <BentoCard>
             <CardHeader icon={User} label="Body Metrics" color="text-blue-500 dark:text-blue-400" bg="bg-blue-100 dark:bg-blue-500/10" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-x-2 gap-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-x-3 gap-y-4">
               <div className="animate-in fade-in duration-300" style={{ animationDelay: '0ms' }}>
                 <NutriInput label="Gender" value={calcState.gender} onChange={v => setCalc('gender', v)}
                   options={[{ val: 'male', lbl: 'Male' }, { val: 'female', lbl: 'Female' }]} />
@@ -1635,7 +1680,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: '120ms' }}>
           <BentoCard>
             <CardHeader icon={Activity} label="Strategy" color="text-emerald-500 dark:text-emerald-400" bg="bg-emerald-100 dark:bg-emerald-500/10" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-x-2 gap-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-x-3 gap-y-4">
               <div className="animate-in fade-in duration-300" style={{ animationDelay: '0ms' }}>
                 <NutriInput
                   label="Calorie Goal (+/-)"
@@ -1700,7 +1745,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: '240ms' }}>
           <BentoCard>
             <CardHeader icon={FileText} label="PDF Branding" color="text-purple-500 dark:text-purple-400" bg="bg-purple-100 dark:bg-purple-500/10" />
-            <div className="max-w-full sm:max-w-xs">
+            <div className="w-full sm:max-w-xs">
               <NutriInput label="Logo Text" value={calcState.brandText} onChange={v => setCalc('brandText', v)} placeholder="e.g. IRON GYM" />
             </div>
           </BentoCard>
@@ -1770,7 +1815,7 @@ const ClientNutritionTab = ({ subscriptions, clientData }) => {
                 "
               />
 
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2.5">
                 <span className="text-[11px] font-bold text-emerald-600/90 dark:text-emerald-400/90">
                   Tip: Press `Save` to store these notes
                 </span>
