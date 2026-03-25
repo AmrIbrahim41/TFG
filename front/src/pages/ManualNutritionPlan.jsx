@@ -142,6 +142,115 @@ const ModernInput = ({
   </div>
 );
 
+// ── PDF NAME CONFIRM MODAL ────────────────────────────────────────────
+const PdfNameConfirmModal = ({
+  isOpen,
+  lang,
+  nameValue,
+  onNameChange,
+  onCancel,
+  children,
+}) => {
+  if (!isOpen) return null;
+  const isAR = lang === 'AR';
+
+  return (
+    <div
+      className="fixed inset-0 z-[160] flex items-center justify-center p-4
+        bg-black/70 backdrop-blur-sm animate-fade-in"
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div
+        className="
+          bg-white dark:bg-zinc-950
+          border border-zinc-200 dark:border-zinc-800
+          rounded-2xl p-6 max-w-lg w-full
+          shadow-2xl shadow-zinc-900/30 dark:shadow-black/60
+          animate-slide-up
+        "
+      >
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div className="flex items-center gap-3">
+            <div className={`
+              w-12 h-12 rounded-2xl flex items-center justify-center
+              ${isAR ? 'bg-emerald-100 dark:bg-emerald-500/10' : 'bg-zinc-100 dark:bg-zinc-800'}
+              border border-zinc-200 dark:border-zinc-700
+            `}>
+              <Download
+                size={20}
+                className={isAR ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-700 dark:text-zinc-200'}
+              />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-zinc-900 dark:text-zinc-100">
+                Confirm {isAR ? 'AR' : 'EN'} PDF Name
+              </h3>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 font-semibold">
+                Please ensure the client name matches the PDF language to avoid encoding issues.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={onCancel}
+            className="
+              w-9 h-9 flex items-center justify-center rounded-xl
+              text-zinc-500 dark:text-zinc-400
+              hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100
+              transition-all active:scale-95
+            "
+            aria-label="Close"
+            type="button"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-[10px] uppercase font-bold text-zinc-600 dark:text-zinc-400 block">
+            Client Name for PDF
+          </label>
+          <input
+            value={nameValue}
+            onChange={(e) => onNameChange(e.target.value)}
+            className={`
+              w-full bg-zinc-100 dark:bg-zinc-900
+              border border-zinc-200 dark:border-zinc-800
+              rounded-xl px-4 py-3 text-sm font-bold
+              text-zinc-900 dark:text-zinc-100 outline-none
+              focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/20
+              transition-colors
+              ${isAR ? 'text-right' : 'text-left'}
+            `}
+            dir={isAR ? 'rtl' : 'ltr'}
+            placeholder={isAR ? 'اكتب الاسم بالعربية' : 'Type the English name'}
+          />
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={onCancel}
+            className="
+              flex-1 py-3 rounded-xl
+              bg-zinc-100 dark:bg-zinc-900
+              border border-zinc-200 dark:border-zinc-800
+              text-zinc-600 dark:text-zinc-300
+              hover:bg-zinc-200 dark:hover:bg-zinc-800
+              font-bold text-sm transition-colors
+            "
+            type="button"
+          >
+            Cancel
+          </button>
+          <div className="flex-1">
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── EXCHANGE GROUP with search (ported from ClientNutritionTab) ───────────
 const CATEGORY_CONFIG = {
   'Protein Sources': { color: 'text-red-500 dark:text-red-400',   bg: 'bg-red-500/10 dark:bg-red-500/8',     icon: Beef     },
@@ -311,6 +420,9 @@ const ManualNutritionPlan = () => {
   const [results, setResults]     = useState(() => calculateNutrition(INITIAL_CALC_STATE));
   const [planNotes, setPlanNotes] = useState('');
   const [currentId, setCurrentId] = useState(null);
+  const [isPdfNameModalOpen, setIsPdfNameModalOpen] = useState(false);
+  const [pdfNameModalLang, setPdfNameModalLang] = useState('EN');
+  const [pdfNameInput, setPdfNameInput] = useState('');
 
   // ── FOOD DATABASE — handle pagination, all pages ───────────────────────
   useEffect(() => {
@@ -492,6 +604,16 @@ const ManualNutritionPlan = () => {
     toast.success('New Plan Started');
   }, []);
 
+  const openPdfNameModal = useCallback((lang) => {
+    setPdfNameModalLang(lang);
+    setPdfNameInput(calcState.manualClientName || '');
+    setIsPdfNameModalOpen(true);
+  }, [calcState.manualClientName]);
+
+  const closePdfNameModal = useCallback(() => {
+    setIsPdfNameModalOpen(false);
+  }, []);
+
   const updateCalc = useCallback((key, value) => {
     setCalcState((prev) => ({ ...prev, [key]: value }));
   }, []);
@@ -644,6 +766,88 @@ const ManualNutritionPlan = () => {
         </div>
       )}
 
+      <PdfNameConfirmModal
+        isOpen={isPdfNameModalOpen}
+        lang={pdfNameModalLang}
+        nameValue={pdfNameInput}
+        onNameChange={setPdfNameInput}
+        onCancel={closePdfNameModal}
+      >
+        {pdfNameModalLang === 'EN' ? (
+          <PDFDownloadLink
+            document={
+              <NutritionPDF_EN
+                plan={dummyPlanObject}
+                clientName={pdfNameInput.trim() || calcState.manualClientName}
+                trainerName={calcState.manualTrainerName}
+                brandText={calcState.brandText}
+                carbAdjustment={calcState.carbAdjustment}
+                results={results}
+                exchangeList={exchangeList}
+                notes={planNotes}
+              />
+            }
+            fileName={`${(pdfNameInput.trim() || calcState.manualClientName || 'Plan')}_EN.pdf`}
+          >
+            {({ loading: pdfLoading }) => (
+              <button
+                disabled={pdfLoading}
+                onClick={() => {
+                  if (!pdfLoading) setTimeout(() => closePdfNameModal(), 0);
+                }}
+                className="
+                  w-full py-3 rounded-xl
+                  bg-zinc-200 dark:bg-white text-black font-bold text-sm
+                  flex items-center justify-center gap-2 shadow-sm
+                  disabled:opacity-70 transition-all active:scale-95
+                "
+                type="button"
+              >
+                {pdfLoading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                Download EN PDF
+              </button>
+            )}
+          </PDFDownloadLink>
+        ) : (
+          <PDFDownloadLink
+            document={
+              <NutritionPDF_AR
+                plan={dummyPlanObject}
+                clientName={pdfNameInput.trim() || calcState.manualClientName}
+                trainerName={calcState.manualTrainerName}
+                brandText={calcState.brandText}
+                carbAdjustment={calcState.carbAdjustment}
+                results={results}
+                exchangeList={exchangeList}
+                notes={planNotes}
+              />
+            }
+            fileName={`${(pdfNameInput.trim() || calcState.manualClientName || 'Plan')}_AR.pdf`}
+          >
+            {({ loading: pdfLoading }) => (
+              <button
+                disabled={pdfLoading}
+                onClick={() => {
+                  if (!pdfLoading) setTimeout(() => closePdfNameModal(), 0);
+                }}
+                className="
+                  w-full py-3 rounded-xl
+                  bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400
+                  font-bold text-sm
+                  flex items-center justify-center gap-2 shadow-sm
+                  border border-emerald-200 dark:border-emerald-800
+                  disabled:opacity-70 transition-all active:scale-95
+                "
+                type="button"
+              >
+                {pdfLoading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                Download AR PDF
+              </button>
+            )}
+          </PDFDownloadLink>
+        )}
+      </PdfNameConfirmModal>
+
       {/* ── HEADER ────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
         <div className="flex items-center gap-4">
@@ -687,57 +891,29 @@ const ManualNutritionPlan = () => {
           </button>
 
           {/* PDF — EN */}
-          <PDFDownloadLink
-            document={
-              <NutritionPDF_EN
-                plan={dummyPlanObject}
-                clientName={calcState.manualClientName}
-                trainerName={calcState.manualTrainerName}
-                brandText={calcState.brandText}
-                carbAdjustment={calcState.carbAdjustment}
-                results={results}
-                exchangeList={exchangeList}
-                notes={planNotes}
-              />
-            }
-            fileName={`${calcState.manualClientName || 'Plan'}_EN.pdf`}
+          <button
+            onClick={() => openPdfNameModal('EN')}
+            className="px-4 py-3 bg-zinc-200 dark:bg-white text-black font-bold rounded-xl
+              flex items-center gap-2 shadow-sm transition-all active:scale-95"
+            type="button"
+            title="Generate EN PDF"
           >
-            {({ loading: pdfLoading }) => (
-              <button disabled={pdfLoading}
-                className="px-4 py-3 bg-zinc-200 dark:bg-white text-black font-bold rounded-xl
-                  flex items-center gap-2 shadow-sm disabled:opacity-70 transition-all active:scale-95">
-                {pdfLoading ? <Loader2 size={18} className="animate-spin" /> : <Download size={16} />}
-                EN
-              </button>
-            )}
-          </PDFDownloadLink>
+            <Download size={16} />
+            EN
+          </button>
 
           {/* PDF — AR */}
-          <PDFDownloadLink
-            document={
-              <NutritionPDF_AR
-                plan={dummyPlanObject}
-                clientName={calcState.manualClientName}
-                trainerName={calcState.manualTrainerName}
-                brandText={calcState.brandText}
-                carbAdjustment={calcState.carbAdjustment}
-                results={results}
-                exchangeList={exchangeList}
-                notes={planNotes}
-              />
-            }
-            fileName={`${calcState.manualClientName || 'Plan'}_AR.pdf`}
+          <button
+            onClick={() => openPdfNameModal('AR')}
+            className="px-4 py-3 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400
+              font-bold rounded-xl border border-emerald-200 dark:border-emerald-800
+              flex items-center gap-2 shadow-sm transition-all active:scale-95"
+            type="button"
+            title="Generate AR PDF"
           >
-            {({ loading: pdfLoading }) => (
-              <button disabled={pdfLoading}
-                className="px-4 py-3 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400
-                  font-bold rounded-xl border border-emerald-200 dark:border-emerald-800
-                  flex items-center gap-2 shadow-sm disabled:opacity-70 transition-all active:scale-95">
-                {pdfLoading ? <Loader2 size={18} className="animate-spin" /> : <Download size={16} />}
-                AR
-              </button>
-            )}
-          </PDFDownloadLink>
+            <Download size={16} />
+            AR
+          </button>
         </div>
       </div>
 
