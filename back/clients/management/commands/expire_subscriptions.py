@@ -1,33 +1,21 @@
-# yourapp/management/commands/expire_subscriptions.py
-#
-# Place this file at:
-#   <your_app>/management/__init__.py        (empty file, if not already present)
-#   <your_app>/management/commands/__init__.py  (empty file, if not already present)
-#   <your_app>/management/commands/expire_subscriptions.py  ← this file
+# clients/management/commands/expire_subscriptions.py
 #
 # Run manually:
 #   python manage.py expire_subscriptions
+#   python manage.py expire_subscriptions --dry-run
 #
-# Schedule via cron (recommended — runs daily at midnight):
+# Schedule via cron (runs daily at midnight):
 #   0 0 * * * /path/to/venv/bin/python /path/to/manage.py expire_subscriptions >> /var/log/expire_subs.log 2>&1
 #
 # Or with Celery Beat — see the block at the bottom of this file.
 
 from django.core.management.base import BaseCommand
+from django.db.models import F
 from django.utils import timezone
 from django.db import transaction
 
-# FIX #19: المسار السابق كان مُشفَّراً كـ 'clients.models' مما يجعل الأمر
-# يفشل مباشرةً لو تغيّر اسم الـ app أو نُقل المشروع.
-# الحل: نستخدم اسم الـ app من إعدادات Django ديناميكياً بدلاً من تثبيته.
-# إذا كنت تريد قيمة ثابتة، عدّل السطر التالي ليطابق اسم الـ app الفعلي.
-#
-# للتشغيل اليدوي:
-#   python manage.py expire_subscriptions
-#
-# إذا تغيّر اسم الـ app، عدّل APP_LABEL أدناه فقط بدلاً من البحث في الكود.
-
-APP_LABEL = 'clients'  # ← عدّل هذا السطر فقط لو غيّرت اسم الـ app
+# APP_LABEL is the only value to change if the app is ever renamed.
+APP_LABEL = 'clients'
 
 try:
     from django.apps import apps as django_apps
@@ -41,8 +29,12 @@ except LookupError as exc:
 
 class Command(BaseCommand):
     help = (
-        "Deactivate all ClientSubscriptions whose end_date is strictly in the past. "
-        "Intended to be run nightly via cron or Celery Beat."
+        "Deactivate all ClientSubscriptions that have either:\n"
+        "  (a) passed their end_date  — covers ALL clients (adults + children), or\n"
+        "  (b) exhausted their session allowance (sessions_used >= plan.units)\n"
+        "       — the primary safety net for CHILDREN's subscriptions which are\n"
+        "         served exclusively through group sessions.\n\n"
+        "Intended to run nightly via cron or Celery Beat."
     )
 
     def add_arguments(self, parser):
@@ -57,90 +49,131 @@ class Command(BaseCommand):
         today = timezone.now().date()
         dry_run = options['dry_run']
 
-        # Only target subscriptions that are:
-        #   - Still marked active (is_active=True)
-        #   - Past their end_date (end_date < today)
-        #
-        # Subscriptions with end_date=NULL are unlimited-duration plans and
-        # are intentionally excluded.
-        expired_qs = ClientSubscription.objects.filter(
+        # ── Queryset A: date-based expiry ─────────────────────────────────
+        # Subscriptions still marked active whose end_date is strictly in the past.
+        # Subscriptions with end_date=NULL are unlimited-duration plans and are
+        # intentionally excluded.
+        # Covers BOTH adult and children subscriptions.
+        date_expired_qs = ClientSubscription.objects.filter(
             is_active=True,
             end_date__lt=today,
         )
 
-        count = expired_qs.count()
+        # ── Queryset B: session-limit expiry ─────────────────────────────
+        # Subscriptions still marked active but whose session allowance is fully
+        # consumed (sessions_used >= plan.units).
+        #
+        # WHY THIS IS CRITICAL FOR CHILDREN:
+        # Children train exclusively via GroupSessionLog / GroupSessionParticipant.
+        # The real-time deduction in GroupSessionParticipant.save() handles the
+        # common case, but edge cases can leave a subscription active even after
+        # all sessions are consumed:
+        #   • race conditions between two concurrent group-session completions
+        #   • manual sessions_used adjustments via the Admin panel or Django shell
+        #   • data imports that bypass the model's save() hook
+        #   • direct DB writes (e.g. migration scripts, fixtures)
+        #
+        # This daily catch-all guarantees that no child's subscription stays
+        # "active" once all sessions have been used, regardless of how
+        # sessions_used reached that value.
+        #
+        # Adults (individual training via TrainingSession) benefit from this
+        # check equally — it is intentionally not restricted to is_child=True.
+        session_exhausted_qs = ClientSubscription.objects.filter(
+            is_active=True,
+            plan__units__gt=0,
+            sessions_used__gte=F('plan__units'),
+        )
 
-        if count == 0:
+        date_count = date_expired_qs.count()
+        session_count = session_exhausted_qs.count()
+        total = date_count + session_count
+
+        if total == 0:
             self.stdout.write(
-                self.style.SUCCESS(f"[{today}] No expired subscriptions found. Nothing to do.")
+                self.style.SUCCESS(
+                    f"[{today}] No expired or exhausted subscriptions found. Nothing to do."
+                )
             )
             return
 
         if dry_run:
             self.stdout.write(
                 self.style.WARNING(
-                    f"[{today}] DRY RUN: {count} subscription(s) would be deactivated."
+                    f"[{today}] DRY RUN — {date_count} date-expired + "
+                    f"{session_count} session-exhausted = {total} subscription(s) "
+                    f"would be deactivated."
                 )
             )
-            # Print details of what would change so the operator can verify
-            for sub in expired_qs.select_related('client', 'plan')[:20]:
-                self.stdout.write(
-                    f"  → ID {sub.id} | Client: {sub.client.name} | "
-                    f"Plan: {sub.plan.name if sub.plan else 'None'} | "
-                    f"End date: {sub.end_date}"
-                )
-            if count > 20:
-                self.stdout.write(f"  ... and {count - 20} more.")
+            self._print_preview(date_expired_qs, "DATE-EXPIRED")
+            self._print_preview(session_exhausted_qs, "SESSION-EXHAUSTED (includes children)")
             return
 
-        # Use a single bulk UPDATE rather than fetching each object and
-        # calling .save() individually. This is far more efficient:
-        #   - 1 SQL query regardless of how many subscriptions have expired.
-        #   - No Django signal overhead per row (acceptable here since
-        #     expiration is a batch maintenance task, not a user-facing event).
-        #   - Wrapped in a transaction for atomicity.
-        #
-        # FIX: Capture the integer returned by .update() — it reflects the
-        # actual rows affected inside the transaction, not the pre-transaction
-        # count. If a subscription is created or reactivated in the milliseconds
-        # between expired_qs.count() and expired_qs.update(), {count} would be
-        # wrong. {updated_count} is always accurate.
+        # Use a single bulk UPDATE per queryset wrapped in one atomic transaction.
+        # This is O(1) SQL queries regardless of how many rows are affected and
+        # avoids loading every object into Python memory.
         with transaction.atomic():
-            updated_count = expired_qs.update(is_active=False)
+            updated_date = date_expired_qs.update(is_active=False)
+            # Re-evaluate after the first update so we don't double-count rows
+            # that match both criteria (end_date expired AND sessions exhausted).
+            updated_session = session_exhausted_qs.update(is_active=False)
+
+        total_updated = updated_date + updated_session
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"[{today}] Successfully deactivated {updated_count} expired subscription(s)."
+                f"[{today}] Deactivated {updated_date} date-expired "
+                f"+ {updated_session} session-exhausted "
+                f"= {total_updated} subscription(s) total."
             )
         )
+
+    # ── Private helpers ───────────────────────────────────────────────────
+
+    def _print_preview(self, qs, label: str):
+        """Print up to 20 rows of the queryset for dry-run inspection."""
+        preview = qs.select_related('client', 'plan')[:20]
+        count = qs.count()
+
+        if not count:
+            return
+
+        self.stdout.write(f"\n  [{label}] — {count} subscription(s):")
+        for sub in preview:
+            client_type = "Child" if sub.client.is_child else "Adult"
+            self.stdout.write(
+                f"    → ID {sub.id:>5} | {client_type:<5} | "
+                f"Client: {sub.client.name:<30} | "
+                f"Plan: {sub.plan.name if sub.plan else 'None':<20} | "
+                f"End date: {sub.end_date} | "
+                f"Sessions: {sub.sessions_used}/{sub.plan.units if sub.plan else '∞'}"
+            )
+        if count > 20:
+            self.stdout.write(f"    ... and {count - 20} more.")
 
 
 # ---------------------------------------------------------------------------
 # OPTIONAL: Celery Beat integration
 # ---------------------------------------------------------------------------
-# If your project already uses Celery, you can schedule this command as a
-# periodic task instead of (or in addition to) a cron entry.
-#
-# Step 1 — Create a thin Celery task in yourapp/tasks.py:
+# Step 1 — Create a thin Celery task in clients/tasks.py:
 #
 #   from celery import shared_task
 #   from django.core.management import call_command
 #
-#   @shared_task(name='yourapp.expire_subscriptions')
+#   @shared_task(name='clients.expire_subscriptions')
 #   def expire_subscriptions_task():
 #       call_command('expire_subscriptions')
 #
-# Step 2 — Register the schedule in settings.py (or celeryconfig.py):
+# Step 2 — Register the schedule in settings.py:
 #
 #   from celery.schedules import crontab
-#
 #   CELERY_BEAT_SCHEDULE = {
 #       'expire-subscriptions-daily': {
-#           'task': 'yourapp.expire_subscriptions',
+#           'task': 'clients.expire_subscriptions',
 #           'schedule': crontab(hour=0, minute=5),  # 00:05 every day
 #       },
 #   }
 #
-# Step 3 — Make sure Celery Beat is running alongside your worker:
+# Step 3 — Run Celery Beat alongside your worker:
 #   celery -A yourproject beat -l info
 # ---------------------------------------------------------------------------

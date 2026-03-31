@@ -2,7 +2,44 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from .views import *
+from .views import (
+    # Auth
+    MyTokenObtainPairView,
+    CurrentUserView,
+    # Clients & Trainers
+    ClientViewSet,
+    ManageTrainersViewSet,
+    # Subscriptions
+    ClientSubscriptionViewSet,
+    SubscriptionViewSet,
+    CountryViewSet,
+    # Training
+    TrainingPlanViewSet,
+    TrainingExerciseViewSet,
+    SessionLogViewSet,
+    TrainingSessionViewSet,
+    # Nutrition
+    NutritionPlanViewSet,
+    MealPlanViewSet,
+    FoodItemViewSet,
+    NutritionProgressViewSet,
+    FoodDatabaseViewSet,
+    # Dashboard
+    DashboardAnalyticsViewSet,
+    # Group & Schedule
+    CoachScheduleViewSet,
+    GroupTrainingViewSet,
+    GroupWorkoutTemplateViewSet,
+    TrainerShiftViewSet,
+    TrainerScheduleViewSet,
+    # Transfers
+    SessionTransferRequestViewSet,
+    # Manual saves
+    ManualNutritionSaveViewSet,
+    ManualWorkoutSaveViewSet,
+    # Admin
+    AdminTrainerOversightViewSet,
+)
 
 router = DefaultRouter()
 
@@ -41,35 +78,17 @@ router.register(r'transfers', SessionTransferRequestViewSet, basename='transfers
 router.register(r'manual-nutrition', ManualNutritionSaveViewSet, basename='manual-nutrition')
 router.register(r'manual-workouts', ManualWorkoutSaveViewSet, basename='manual-workouts')
 
-# ── NEW: Trainer Shift & Weekly Schedule ─────────────────────────────────────
-# Trainer shift (working hours):
-#   GET    /api/trainer-shift/mine/           → get own shift
-#   PUT    /api/trainer-shift/mine/           → update own shift
-#   GET    /api/trainer-shift/?trainer_id=5   → admin: get shift for trainer 5
+# ── Trainer Shift & Weekly Schedule ─────────────────────────────────────────
 router.register(r'trainer-shift', TrainerShiftViewSet, basename='trainer-shift')
-
-# Trainer weekly schedule slots:
-#   GET    /api/trainer-schedule/                      → own slots
-#   GET    /api/trainer-schedule/?trainer_id=5         → admin: slots for trainer 5
-#   GET    /api/trainer-schedule/active-clients/       → eligible clients
-#   GET    /api/trainer-schedule/active-clients/?trainer_id=5 → admin: eligible clients
-#   POST   /api/trainer-schedule/                      → create slot
-#   DELETE /api/trainer-schedule/{id}/                 → remove slot
 router.register(r'trainer-schedule', TrainerScheduleViewSet, basename='trainer-schedule')
 
-# Admin Trainer Oversight:
-#   GET /api/admin-trainer-oversight/{trainer_id}/details/       → full overview
-#   GET /api/admin-trainer-oversight/{trainer_id}/mini-dashboard/ → chart only
+# ── Admin Trainer Oversight ──────────────────────────────────────────────────
 router.register(r'admin-trainer-oversight', AdminTrainerOversightViewSet, basename='admin-trainer-oversight')
 
 urlpatterns = [
     path('', include(router.urls)),
-    # ── Auth ────────────────────────────────────────────────────────────────
+    # Auth
     path('auth/login/', MyTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    # BUG-2 FIX: WorkoutEditor.jsx calls GET /auth/users/me/ to get the logged-in
-    # user's id for the isReadOnly guard. This endpoint was missing entirely,
-    # causing a 404 that was swallowed silently, leaving currentUserId as null
-    # and permanently disabling the read-only protection on completed sessions.
     path('auth/users/me/', CurrentUserView.as_view(), name='current_user'),
 ]
