@@ -104,7 +104,15 @@ class TrainingSessionViewSet(viewsets.ModelViewSet):
 
         return qs
 
+    def perform_create(self, serializer):
+        if self.request.user.groups.filter(name="REC").exists():
+            raise PermissionDenied("Receptionists cannot create training sessions.")
+        serializer.save()
+
     def perform_update(self, serializer):
+        if self.request.user.groups.filter(name="REC").exists():
+            raise PermissionDenied("Receptionists cannot modify training sessions.")
+
         with transaction.atomic():
             locked_session = TrainingSession.objects.select_for_update().get(
                 pk=serializer.instance.pk

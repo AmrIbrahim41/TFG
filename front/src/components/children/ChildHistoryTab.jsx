@@ -239,18 +239,27 @@ const ChildHistoryTab = ({ clientId }) => {
     const [selectedSession, setSelectedSession] = useState(null);
     const [pagination, setPagination] = useState({ count: 0, next: null, previous: null, currentPage: 1, totalPages: 1 });
 
-    useEffect(() => { fetchHistory(1); }, [clientId]);
+    useEffect(() => {
+        const controller = new AbortController();
+        fetchHistory(1, controller.signal);
+        return () => controller.abort();
+    }, [clientId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const fetchHistory = async (page = 1) => {
+    const fetchHistory = async (page = 1, signal) => {
         setLoading(true);
         try {
-            const res = await api.get(`/group-training/child_history/?client_id=${clientId}&page=${page}`);
-            if (res.data.results) {
-                setHistory(res.data.results);
-                setPagination({ count: res.data.count, next: res.data.next, previous: res.data.previous, currentPage: page, totalPages: Math.ceil(res.data.count / PAGE_SIZE) });
-            } else { setHistory(res.data); }
-        } catch (err) { console.error('Error fetching child history:', err); }
-        finally { setLoading(false); }
+            const res = await api.get(`/group-training/child_history/?client_id=${clientId}&page=${page}`, { signal });
+            if (!signal?.aborted) {
+                if (res.data.results) {
+                    setHistory(res.data.results);
+                    setPagination({ count: res.data.count, next: res.data.next, previous: res.data.previous, currentPage: page, totalPages: Math.ceil(res.data.count / PAGE_SIZE) });
+                } else { setHistory(res.data); }
+            }
+        } catch (err) {
+            if (err.name !== 'CanceledError' && err.code !== 'ERR_CANCELED') {
+                console.error('Error fetching child history:', err);
+            }
+        } finally { if (!signal?.aborted) setLoading(false); }
     };
 
     const handlePageChange = (newPage) => {

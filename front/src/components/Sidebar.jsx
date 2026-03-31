@@ -42,8 +42,10 @@ const Sidebar = () => {
         { path: '/children', label: 'Children', icon: Baby },
         { path: '/subscriptions', label: 'Subscriptions', icon: Ticket },
         { path: '/food-database', label: 'Food Database', icon: Database },
-        { path: '/quick-plan', label: 'Quick Nutrition', icon: Calculator },
-        { path: '/quick-workout', label: 'Quick Workout', icon: Dumbbell },
+        ...(!user?.is_receptionist ? [
+            { path: '/quick-plan', label: 'Quick Nutrition', icon: Calculator },
+            { path: '/quick-workout', label: 'Quick Workout', icon: Dumbbell },
+        ] : []),
         { path: '/profile', label: 'My Profile', icon: Briefcase },
         ...(user?.is_superuser ? [{ path: '/admin', label: 'Admin Panel', icon: ShieldCheck }] : []),
     ];
@@ -59,10 +61,11 @@ const Sidebar = () => {
         [user]
     );
 
-    const getUserRole = useCallback(
-        () => (user?.is_superuser ? 'Super Admin' : 'Trainer'),
-        [user]
-    );
+    const getUserRole = useCallback(() => {
+        if (user?.is_superuser) return 'Super Admin';
+        if (user?.is_receptionist) return 'Receptionist';
+        return 'Trainer';
+    }, [user]);
 
     // إعدادات الأنيميشن لعناصر القائمة (Staggered Effect)
     const containerVariants = {
@@ -241,7 +244,11 @@ const Sidebar = () => {
                                     <p className="text-zinc-900 dark:text-white text-sm font-bold truncate">
                                         {getDisplayName()}
                                     </p>
-                                    <p className="text-orange-600 dark:text-orange-400 text-[10px] font-bold uppercase tracking-wider truncate mt-0.5">
+                                    <p className={`text-[10px] font-bold uppercase tracking-wider truncate mt-0.5 ${
+                                        user?.is_receptionist
+                                            ? 'text-violet-600 dark:text-violet-400'
+                                            : 'text-orange-600 dark:text-orange-400'
+                                    }`}>
                                         {getUserRole()}
                                     </p>
                                 </div>

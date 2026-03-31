@@ -153,7 +153,9 @@ const FoodDatabase = () => {
             console.error(error);
             toast.error('Failed to load food database.');
         } finally {
-            setLoading(false);
+            if (!signal?.aborted) {
+                setLoading(false);
+            }
         }
     }, []);
 

@@ -12,15 +12,22 @@ export function useCountries() {
   const [countries, setCountries] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchCountries = useCallback(async () => {
+  const fetchCountries = useCallback(async (signal) => {
     try {
-      const res = await api.get('/countries/');
-      setCountries(res.data);
-    } catch (e) { console.error(e); }
-    finally { setIsLoading(false); }
+      const res = await api.get('/countries/', { signal });
+      if (!signal?.aborted) setCountries(res.data);
+    } catch (e) {
+      if (e.name !== 'CanceledError' && e.code !== 'ERR_CANCELED') console.error(e);
+    } finally {
+      if (!signal?.aborted) setIsLoading(false);
+    }
   }, []);
 
-  useEffect(() => { fetchCountries(); }, [fetchCountries]);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchCountries(controller.signal);
+    return () => controller.abort();
+  }, [fetchCountries]);
 
   const addCountry = async (data) => {
     await api.post('/countries/', data);

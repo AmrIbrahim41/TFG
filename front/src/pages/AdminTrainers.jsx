@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
 import {
     UserPlus, Shield, CheckCircle, AlertCircle,
-    Trash2, Edit2, X, Save, User, Loader2,
+    Trash2, Edit2, X, Save, User, Loader2, Dumbbell, ClipboardList,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -26,7 +26,7 @@ const TrainerCardSkeleton = () => (
 const AdminTrainers = () => {
     const [trainers, setTrainers]               = useState([]);
     const [loadingTrainers, setLoadingTrainers] = useState(true);
-    const [formData, setFormData]               = useState({ username: '', first_name: '', email: '', password: '' });
+    const [formData, setFormData]               = useState({ username: '', first_name: '', email: '', password: '', role: 'trainer' });
     const [formErrors, setFormErrors]           = useState({});
     const [status, setStatus]                   = useState({ type: '', message: '' });
     const [isLoading, setIsLoading]             = useState(false);
@@ -34,7 +34,7 @@ const AdminTrainers = () => {
 
     // Edit State
     const [editingId, setEditingId]     = useState(null);
-    const [editData, setEditData]       = useState({ username: '', first_name: '', email: '', password: '' });
+    const [editData, setEditData]       = useState({ username: '', first_name: '', email: '', password: '', role: 'trainer' });
     const [isSavingEdit, setIsSavingEdit] = useState(false);
 
     // ---------------------------------------------------------------------------
@@ -126,9 +126,11 @@ const AdminTrainers = () => {
                 first_name: formData.first_name.trim(),
                 email:      formData.email.trim(),
                 password:   formData.password,
+                role:       formData.role,
             });
-            showStatus('success', 'Trainer account created successfully!');
-            setFormData({ username: '', first_name: '', email: '', password: '' });
+            const label = formData.role === 'rec' ? 'Receptionist' : 'Trainer';
+            showStatus('success', `${label} account created successfully!`);
+            setFormData({ username: '', first_name: '', email: '', password: '', role: 'trainer' });
             // Refresh without a signal — user-triggered action, no unmount concern.
             fetchTrainers();
         } catch (error) {
@@ -166,12 +168,13 @@ const AdminTrainers = () => {
             first_name: trainer.first_name || '',
             email:      trainer.email || '',
             password:   '',
+            role:       trainer.is_receptionist ? 'rec' : 'trainer',
         });
     }, []);
 
     const cancelEdit = useCallback(() => {
         setEditingId(null);
-        setEditData({ username: '', first_name: '', email: '', password: '' });
+        setEditData({ username: '', first_name: '', email: '', password: '', role: 'trainer' });
     }, []);
 
     const saveEdit = useCallback(async (id) => {
@@ -190,6 +193,7 @@ const AdminTrainers = () => {
                 username:   editData.username.trim(),
                 first_name: editData.first_name.trim(),
                 email:      editData.email.trim(),
+                role:       editData.role,
             };
             if (editData.password.length > 0) payload.password = editData.password;
 
@@ -242,8 +246,37 @@ const AdminTrainers = () => {
                             <Shield size={24} />
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-zinc-900 dark:text-white">Register New Trainer</h2>
-                            <p className="text-zinc-500 text-sm">Create credentials for new gym staff.</p>
+                            <h2 className="text-xl font-bold text-zinc-900 dark:text-white">Register New Staff Account</h2>
+                            <p className="text-zinc-500 text-sm">Create credentials for a trainer or receptionist.</p>
+                        </div>
+                    </div>
+
+                    {/* Role Toggle */}
+                    <div className="mb-6">
+                        <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3 ml-1">Account Role</p>
+                        <div className="inline-flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800/60 rounded-2xl border border-zinc-200 dark:border-zinc-700">
+                            <button
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, role: 'trainer' }))}
+                                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                                    formData.role === 'trainer'
+                                        ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30'
+                                        : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                                }`}
+                            >
+                                <Dumbbell size={15} /> Trainer
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, role: 'rec' }))}
+                                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                                    formData.role === 'rec'
+                                        ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/30'
+                                        : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                                }`}
+                            >
+                                <ClipboardList size={15} /> Receptionist
+                            </button>
                         </div>
                     </div>
 
@@ -367,6 +400,31 @@ const AdminTrainers = () => {
                                                 className="bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 focus:border-orange-500 rounded-lg px-3 py-2 text-sm text-zinc-900 dark:text-white outline-none w-full"
                                                 placeholder="New Password (leave blank to keep)"
                                             />
+                                            {/* Role selector in edit mode */}
+                                            <div className="flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditData(prev => ({ ...prev, role: 'trainer' }))}
+                                                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all ${
+                                                        editData.role === 'trainer'
+                                                            ? 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-500/30'
+                                                            : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 border border-transparent hover:border-zinc-300 dark:hover:border-zinc-700'
+                                                    }`}
+                                                >
+                                                    <Dumbbell size={12} /> Trainer
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditData(prev => ({ ...prev, role: 'rec' }))}
+                                                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all ${
+                                                        editData.role === 'rec'
+                                                            ? 'bg-violet-500/15 text-violet-600 dark:text-violet-400 border border-violet-500/30'
+                                                            : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 border border-transparent hover:border-zinc-300 dark:hover:border-zinc-700'
+                                                    }`}
+                                                >
+                                                    <ClipboardList size={12} /> Reception
+                                                </button>
+                                            </div>
                                             <div className="flex gap-2 pt-1">
                                                 <button
                                                     onClick={() => saveEdit(trainer.id)}
@@ -389,13 +447,26 @@ const AdminTrainers = () => {
                                         /* View Mode */
                                         <>
                                             <div className="flex items-center gap-4 min-w-0 flex-1">
-                                                <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-400 font-bold border border-zinc-300 dark:border-zinc-700 shrink-0 text-sm">
+                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border shrink-0 text-sm ${
+                                                    trainer.is_receptionist
+                                                        ? 'bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-300 dark:border-violet-500/30'
+                                                        : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-300 dark:border-zinc-700'
+                                                }`}>
                                                     {(trainer.first_name || trainer.username)[0].toUpperCase()}
                                                 </div>
-                                                <div className="min-w-0">
-                                                    <h3 className="font-bold text-zinc-900 dark:text-white truncate">
-                                                        {trainer.first_name || trainer.username}
-                                                    </h3>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <h3 className="font-bold text-zinc-900 dark:text-white truncate">
+                                                            {trainer.first_name || trainer.username}
+                                                        </h3>
+                                                        <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                                            trainer.is_receptionist
+                                                                ? 'bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400'
+                                                                : 'bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400'
+                                                        }`}>
+                                                            {trainer.is_receptionist ? 'Reception' : 'Trainer'}
+                                                        </span>
+                                                    </div>
                                                     <p className="text-zinc-500 text-xs truncate">
                                                         @{trainer.username} • {trainer.email || 'No email'}
                                                     </p>

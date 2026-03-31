@@ -167,26 +167,33 @@ function useNutritionPlans(clientId, showToast) {
   useEffect(() => { clientIdRef.current  = clientId;  }, [clientId]);
   useEffect(() => { showToastRef.current = showToast; }, [showToast]);
 
-  const fetchPage = useCallback(async (pageNum) => {
+  const fetchPage = useCallback(async (pageNum, signal) => {
     const cid = clientIdRef.current;
     if (!cid) return;
     setLoading(true);
     try {
       // FIX: Backend now accepts client_id (see views.py fix BUG-BE-1)
-      const res  = await api.get(`/nutrition-plans/?client_id=${cid}&page=${pageNum}`);
-      const data = res.data.results ?? res.data;
-      setPlans(Array.isArray(data) ? data : []);
-      setTotal(res.data.count ?? (Array.isArray(data) ? data.length : 0));
-    } catch {
-      showToastRef.current('Failed to load nutrition plans.', 'error');
+      const res  = await api.get(`/nutrition-plans/?client_id=${cid}&page=${pageNum}`, { signal });
+      if (!signal?.aborted) {
+        const data = res.data.results ?? res.data;
+        setPlans(Array.isArray(data) ? data : []);
+        setTotal(res.data.count ?? (Array.isArray(data) ? data.length : 0));
+      }
+    } catch (err) {
+      if (err.name !== 'CanceledError' && err.code !== 'ERR_CANCELED') {
+        showToastRef.current('Failed to load nutrition plans.', 'error');
+      }
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, []); // empty deps — fully stable via refs
 
   // Only re-run when clientId or page changes (no double-fetch risk)
   useEffect(() => {
-    if (clientId) fetchPage(page);
+    if (!clientId) return;
+    const controller = new AbortController();
+    fetchPage(page, controller.signal);
+    return () => controller.abort();
   }, [clientId, page, fetchPage]);
 
   const refetch = useCallback((pageNum) => fetchPage(pageNum ?? page), [fetchPage, page]);

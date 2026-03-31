@@ -53,6 +53,17 @@ const AdminRoute = ({ children }) => {
   return children;
 };
 
+/**
+ * TrainerOnlyRoute – redirects receptionists to home.
+ * Wraps routes that require an active trainer (conducting sessions, quick plans).
+ */
+const TrainerOnlyRoute = ({ children }) => {
+  const { user } = useContext(AuthContext);
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.is_receptionist) return <Navigate to="/" replace />;
+  return children;
+};
+
 // ── Route Adapters for Group Session ─────────────────────────────────────────
 // These wrappers extract shared state from React Router's location object
 // and map them into the highly decoupled props required by the new components.
@@ -166,11 +177,11 @@ const AnimatedRoutes = () => {
               } />
 
               <Route path="/quick-plan" element={
-                <PrivateRoute><PageTransition><ManualNutritionPlan /></PageTransition></PrivateRoute>
+                <TrainerOnlyRoute><PageTransition><ManualNutritionPlan /></PageTransition></TrainerOnlyRoute>
               } />
 
               <Route path="/quick-workout" element={
-                <PrivateRoute><PageTransition><ManualTrainingPlan /></PageTransition></PrivateRoute>
+                <TrainerOnlyRoute><PageTransition><ManualTrainingPlan /></PageTransition></TrainerOnlyRoute>
               } />
 
               <Route path="/children" element={
@@ -192,15 +203,15 @@ const AnimatedRoutes = () => {
               {/* ── NEW: Group Session Split Routes ── */}
               {/* تمت إزالة PageTransition لمنع تضارب الأنيميشن مع fixed inset-0 */}
               <Route path="/group-session/setup" element={
-                <PrivateRoute>
+                <TrainerOnlyRoute>
                   <SessionPlannerPage />
-                </PrivateRoute>
+                </TrainerOnlyRoute>
               } />
 
               <Route path="/group-session/live" element={
-                <PrivateRoute>
+                <TrainerOnlyRoute>
                   <LiveSessionPage />
-                </PrivateRoute>
+                </TrainerOnlyRoute>
               } />
 
               {/* ── Admin-only routes ── */}

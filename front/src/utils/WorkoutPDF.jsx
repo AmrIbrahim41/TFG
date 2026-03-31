@@ -82,17 +82,13 @@ const safeText = (t) => {
     return String(t);
 };
 
-const getStyle = (text) => {
+const getStyle = (text, notFoundFallback = { bg: 'transparent', text: theme.textMuted, border: 'transparent' }) => {
     if (!text) return badgeStyles['Regular'];
     const key = Object.keys(badgeStyles).find(k => String(text).toLowerCase().includes(k.toLowerCase()));
-    return badgeStyles[key] || { bg: 'transparent', text: theme.textMuted, border: 'transparent' };
+    return badgeStyles[key] || notFoundFallback;
 };
 
-const getTechStyle = (text) => {
-    if (!text) return badgeStyles['Regular'];
-    const key = Object.keys(badgeStyles).find(k => String(text).toLowerCase().includes(k.toLowerCase()));
-    return badgeStyles[key] || badgeStyles['Regular'];
-};
+const getTechStyle = (text) => getStyle(text, badgeStyles['Regular']);
 
 // التعديل تم هنا: استقبال brandName
 const WorkoutPDF = ({ sessionNumber, clientName, trainerName, date, exercises = [], sessionName, brandName }) => {

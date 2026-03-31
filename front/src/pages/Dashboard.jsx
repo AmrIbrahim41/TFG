@@ -695,6 +695,95 @@ const Dashboard = () => {
             </div>
           </div>
         )}
+
+        {/* ── RECEPTIONIST VIEW ───────────────────────────────── */}
+        {data?.role === 'rec' && (
+          <div className="space-y-8 animate-in fade-in duration-500">
+
+            {/* Welcome banner */}
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-violet-600 to-violet-700 p-6 md:p-8 text-white shadow-lg shadow-violet-500/20">
+              <div className="absolute right-0 top-0 w-64 h-64 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl pointer-events-none" />
+              <div className="relative z-10">
+                <p className="text-violet-200 text-xs font-bold uppercase tracking-widest mb-1">Reception</p>
+                <h2 className="text-2xl md:text-3xl font-black tracking-tight mb-1">Trainer Overview</h2>
+                <p className="text-violet-200 text-sm">
+                  {data.trainers.length} trainer{data.trainers.length !== 1 ? 's' : ''} on the team
+                </p>
+              </div>
+            </div>
+
+            {/* Trainer cards grid */}
+            {data.trainers.length === 0 ? (
+              <div className="border border-dashed border-zinc-300 dark:border-zinc-800 rounded-3xl p-16 flex flex-col items-center gap-3 text-zinc-400">
+                <Users size={40} className="opacity-30" />
+                <p className="font-medium text-sm">No trainers registered yet.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {data.trainers.map((trainer) => (
+                  <motion.div
+                    key={trainer.id}
+                    whileHover={{ y: -3, scale: 1.01 }}
+                    className="bg-white dark:bg-[#121214] border border-zinc-200 dark:border-zinc-800 rounded-3xl p-5 md:p-6 flex flex-col gap-5 shadow-sm hover:shadow-md hover:border-violet-300 dark:hover:border-violet-500/30 transition-all"
+                  >
+                    {/* Trainer header */}
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center text-white font-black text-lg shadow-md shadow-violet-500/20 shrink-0">
+                        {(trainer.name || trainer.username).charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-bold text-zinc-900 dark:text-white truncate">
+                          {trainer.name || trainer.username}
+                        </h3>
+                        <p className="text-zinc-500 text-xs truncate">@{trainer.username}</p>
+                      </div>
+                    </div>
+
+                    {/* Stats row */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-3 flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                          <UserCheck size={10} className="text-green-500" /> Active Clients
+                        </div>
+                        <div className="text-2xl font-black text-zinc-900 dark:text-white">
+                          {trainer.active_clients}
+                        </div>
+                      </div>
+                      <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-3 flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                          <Hash size={10} className="text-violet-500" /> Booked Slots
+                        </div>
+                        <div className="text-2xl font-black text-zinc-900 dark:text-white">
+                          {trainer.booked_slots}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Shift hours */}
+                    <div className="flex items-center gap-3 bg-violet-50 dark:bg-violet-500/5 border border-violet-200 dark:border-violet-500/15 rounded-2xl px-4 py-3">
+                      <Calendar size={16} className="text-violet-500 shrink-0" />
+                      {trainer.shift_start && trainer.shift_end ? (
+                        <div>
+                          <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wider">Working Hours</p>
+                          <p className="text-sm font-bold text-zinc-900 dark:text-white">
+                            {trainer.shift_start} — {trainer.shift_end}
+                            {trainer.slot_duration && (
+                              <span className="text-xs font-medium text-zinc-500 ml-2">
+                                ({trainer.slot_duration} min slots)
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-zinc-400 italic">No shift set</p>
+                      )}
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

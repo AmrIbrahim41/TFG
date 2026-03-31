@@ -12,7 +12,7 @@ from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..models import ClientSubscription, TrainingSession, GroupSessionParticipant
+from ..models import ClientSubscription, TrainingSession, GroupSessionParticipant, TrainerShift, TrainerSchedule
 from .utils import _build_client_dict, _compute_group_adjustments
 
 
@@ -91,45 +91,55 @@ class DashboardAnalyticsViewSet(viewsets.ViewSet):
 
         # ── VIEW 2: RECEPTIONIST ──────────────────────────────────────────
         elif is_rec:
-            active_members_count = ClientSubscription.objects.filter(is_active=True).count()
-            current_month_qs = ClientSubscription.objects.filter(
-                created_at__month=month, created_at__year=year
+            trainers = (
+                User.objects.filter(is_superuser=False)
+                .exclude(groups__name="REC")
+                .prefetch_related("trainer_schedule_slots")
             )
-            new_sales_count = current_month_qs.count()
 
-            today = timezone.now().date()
-            checkins_today = TrainingSession.objects.filter(
-                is_completed=True, date_completed=today
-            ).count()
-            group_checkins_today = GroupSessionParticipant.objects.filter(
-                session__date__date=today,
-                deducted=True,
-            ).count()
+            # Build a shift lookup: trainer_id → TrainerShift (or None)
+            shifts = {
+                s.trainer_id: s
+                for s in TrainerShift.objects.filter(
+                    trainer__in=trainers
+                ).select_related("trainer")
+            }
 
-            recent_subs = current_month_qs.select_related(
-                "client", "plan", "trainer"
-            ).order_by("-created_at")[:10]
-            recent_list = [
-                {
-                    "id": sub.id,
-                    "client_name": sub.client.name,
-                    "plan_name": sub.plan.name if sub.plan else "-",
-                    "trainer_name": (
-                        sub.trainer.first_name if sub.trainer else "Unassigned"
-                    ),
-                    "date": sub.created_at.date(),
-                }
-                for sub in recent_subs
-            ]
+            # Count booked schedule slots per trainer
+            slot_counts = (
+                TrainerSchedule.objects.filter(trainer__in=trainers)
+                .values("trainer_id")
+                .annotate(count=Count("id"))
+            )
+            slot_count_map = {row["trainer_id"]: row["count"] for row in slot_counts}
+
+            # Count active subscriptions per trainer
+            active_counts = (
+                ClientSubscription.objects.filter(
+                    trainer__in=trainers, is_active=True
+                )
+                .values("trainer_id")
+                .annotate(count=Count("id"))
+            )
+            active_count_map = {row["trainer_id"]: row["count"] for row in active_counts}
+
+            trainers_data = []
+            for trainer in trainers:
+                shift = shifts.get(trainer.id)
+                trainers_data.append({
+                    "id": trainer.id,
+                    "name": trainer.first_name or trainer.username,
+                    "username": trainer.username,
+                    "shift_start": shift.shift_start.strftime("%H:%M") if shift else None,
+                    "shift_end": shift.shift_end.strftime("%H:%M") if shift else None,
+                    "slot_duration": shift.slot_duration if shift else None,
+                    "booked_slots": slot_count_map.get(trainer.id, 0),
+                    "active_clients": active_count_map.get(trainer.id, 0),
+                })
 
             return Response({
                 "role": "rec",
-                "summary": {
-                    "active_members": active_members_count,
-                    "new_sales_this_month": new_sales_count,
-                    "visits_today": checkins_today + group_checkins_today,
-                },
-                "recent_sales": recent_list,
+                "trainers": trainers_data,
             })
 
         # ── VIEW 3: ADMIN ─────────────────────────────────────────────────

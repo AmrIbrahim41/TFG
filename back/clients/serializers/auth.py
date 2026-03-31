@@ -14,10 +14,14 @@ class TrainerSerializer(serializers.ModelSerializer):
         write_only=True,
         default='trainer',
     )
+    is_receptionist = serializers.SerializerMethodField(read_only=True)
+
+    def get_is_receptionist(self, obj):
+        return obj.groups.filter(name='REC').exists()
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'first_name', 'email', 'password', 'date_joined', 'role')
+        fields = ('id', 'username', 'first_name', 'email', 'password', 'date_joined', 'role', 'is_receptionist')
         extra_kwargs = {'password': {'write_only': True, 'required': False}}
 
     def validate_password(self, value):

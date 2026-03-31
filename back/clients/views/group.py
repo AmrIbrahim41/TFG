@@ -4,6 +4,7 @@ from django.db import transaction
 
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from ..models import (
@@ -52,6 +53,8 @@ class GroupTrainingViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
+        if self.request.user.groups.filter(name="REC").exists():
+            raise PermissionDenied("Receptionists cannot log group training sessions.")
         serializer.save(coach=self.request.user)
 
     @action(

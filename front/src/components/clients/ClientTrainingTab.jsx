@@ -121,34 +121,39 @@ const ClientTrainingTab = ({ subscriptions }) => {
     const showToast = useCallback((message, type = 'error') => setToast({ message, type }), []);
     const dismissToast = useCallback(() => setToast(null), []);
 
+    const fetchAbortRef = useRef(null);
+
     const fetchPlan = useCallback(async (subId) => {
-        let cancelled = false;
+        if (fetchAbortRef.current) fetchAbortRef.current.abort();
+        const controller = new AbortController();
+        fetchAbortRef.current = controller;
+        const { signal } = controller;
+
         setLoadingPlan(true);
         setTrainingPlan(null);
         setLogs([]);
         setSetupStep(0);
         try {
             const [planRes, logRes] = await Promise.all([
-                api.get(`/training-plans/?subscription_id=${subId}`),
-                api.get(`/training-sessions/?subscription_id=${subId}&is_completed=true`),
+                api.get(`/training-plans/?subscription_id=${subId}`, { signal }),
+                api.get(`/training-sessions/?subscription_id=${subId}&is_completed=true`, { signal }),
             ]);
-            if (!cancelled) {
-                const planData = planRes.data.results ?? planRes.data;
-                if (planData.length > 0) {
-                    setTrainingPlan(planData[0]);
-                } else {
-                    setSetupStep(1);
-                    setCycleLength(3);
-                    setDayNames({});
-                }
-                setLogs(logRes.data.results ?? logRes.data);
+            const planData = planRes.data.results ?? planRes.data;
+            if (planData.length > 0) {
+                setTrainingPlan(planData[0]);
+            } else {
+                setSetupStep(1);
+                setCycleLength(3);
+                setDayNames({});
             }
+            setLogs(logRes.data.results ?? logRes.data);
         } catch (error) {
-            if (!cancelled) showToast('Failed to load training plan.');
+            if (error.name !== 'CanceledError' && error.code !== 'ERR_CANCELED') {
+                showToast('Failed to load training plan.');
+            }
         } finally {
-            if (!cancelled) setLoadingPlan(false);
+            if (!signal.aborted) setLoadingPlan(false);
         }
-        return () => { cancelled = true; };
     }, [showToast]);
 
     const handleSelectSub = useCallback((sub) => {
