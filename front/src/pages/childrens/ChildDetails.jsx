@@ -114,8 +114,8 @@ const ChildDetails = () => {
                     api.get(`/client-subscriptions/?client_id=${id}`),
                     api.get('/subscriptions/?target=child'),
                 ];
-                if (user?.is_superuser) {
-                    requests.push(api.get('/manage-trainers/'));
+                if (user?.is_superuser || user?.is_receptionist) {
+                    requests.push(api.get('/manage-trainers/?exclude_rec=1'));
                 }
 
                 const results = await Promise.all(requests);
@@ -217,7 +217,7 @@ const ChildDetails = () => {
                 start_date: newSubData.start_date,
                 is_active: true,
             };
-            if (user?.is_superuser) {
+            if (user?.is_superuser || user?.is_receptionist) {
                 if (newSubData.trainer) payload.trainer = newSubData.trainer;
             } else {
                 payload.trainer = user.id;
@@ -444,7 +444,7 @@ const ChildDetails = () => {
                                     ))}
                                 </select>
                             </div>
-                            {user?.is_superuser && (
+                            {(user?.is_superuser || user?.is_receptionist) && (
                                 <div>
                                     <label className="text-xs font-bold text-zinc-500 uppercase ml-1 block mb-1.5">Assign Trainer</label>
                                     <select

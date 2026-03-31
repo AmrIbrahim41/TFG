@@ -17,7 +17,7 @@ class TrainerSerializer(serializers.ModelSerializer):
     is_receptionist = serializers.SerializerMethodField(read_only=True)
 
     def get_is_receptionist(self, obj):
-        return obj.groups.filter(name='REC').exists()
+        return any(g.name == 'REC' for g in obj.groups.all())
 
     class Meta:
         model = User

@@ -155,8 +155,8 @@ const ClientDetails = () => {
                 setSubscriptions(newSubs);
                 setAvailablePlans(plansRes.data);
 
-                if (user?.is_superuser) {
-                    const trainersRes = await api.get('/manage-trainers/');
+                if (user?.is_superuser || user?.is_receptionist) {
+                    const trainersRes = await api.get('/manage-trainers/?exclude_rec=1');
                     if (!cancelled) setTrainers(trainersRes.data);
                 }
             } catch (error) {
@@ -226,7 +226,7 @@ const ClientDetails = () => {
                 start_date: newSubData.start_date,
                 is_active: true,
             };
-            if (user?.is_superuser && newSubData.trainer) payload.trainer = newSubData.trainer;
+            if ((user?.is_superuser || user?.is_receptionist) && newSubData.trainer) payload.trainer = newSubData.trainer;
             await api.post('/client-subscriptions/', payload);
 
             const subRes = await api.get(`/client-subscriptions/?client_id=${id}`);
@@ -511,7 +511,7 @@ const ClientDetails = () => {
                                     ))}
                                 </select>
                             </div>
-                            {user?.is_superuser && (
+                            {(user?.is_superuser || user?.is_receptionist) && (
                                 <div>
                                     <label className="text-xs font-bold text-zinc-500 uppercase ml-1 block mb-1.5">Assign Trainer</label>
                                     <select

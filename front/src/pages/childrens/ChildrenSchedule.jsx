@@ -100,7 +100,7 @@ const ChildrenSchedule = () => {
         let cancelled = false;
         const init = async () => {
             try {
-                const trainersRes = await api.get('/manage-trainers/');
+                const trainersRes = await api.get('/manage-trainers/?exclude_rec=1');
                 if (cancelled) return;
                 const trainerList = trainersRes.data.results || trainersRes.data;
                 setTrainers(trainerList);

@@ -142,7 +142,7 @@ const Sidebar = () => {
 
             {/* القائمة الجانبية */}
             <aside className={`
-                fixed top-0 left-0 z-[100] h-screen w-72
+                fixed top-0 bottom-0 left-0 z-[100] w-72
                 bg-white/95 dark:bg-[#09090b]/95 backdrop-blur-xl
                 border-r border-zinc-200 dark:border-zinc-800/80
                 flex flex-col transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]

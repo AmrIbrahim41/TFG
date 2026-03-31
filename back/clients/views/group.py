@@ -28,7 +28,7 @@ class CoachScheduleViewSet(viewsets.ModelViewSet):
         if trainer_id:
             return CoachSchedule.objects.filter(coach_id=trainer_id).select_related("client")
         user = self.request.user
-        if user.is_superuser:
+        if user.is_superuser or user.groups.filter(name="REC").exists():
             return CoachSchedule.objects.all().select_related("client")
         return CoachSchedule.objects.filter(coach=user).select_related("client")
 

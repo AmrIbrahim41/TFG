@@ -39,7 +39,10 @@ class ManageTrainersViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         from django.contrib.auth.models import User
-        return User.objects.filter(is_superuser=False).order_by("-date_joined")
+        qs = User.objects.filter(is_superuser=False).prefetch_related("groups").order_by("-date_joined")
+        if self.request.query_params.get("exclude_rec") == "1":
+            qs = qs.exclude(groups__name="REC")
+        return qs
 
     def get_serializer_class(self):
         if self.request.user.is_superuser:
